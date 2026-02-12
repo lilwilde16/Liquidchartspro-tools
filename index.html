@@ -1,1 +1,133 @@
-html
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LiquidCharts Widget - Test</title>
+
+  <!-- LiquidCharts Pro widget resources -->
+  <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
+  <link rel="stylesheet" href="https://pro.liquidcharts.com/scripts/widget-css">
+
+  <style>
+    body.Widget{ margin:0; font-family:-apple-system, Segoe UI, Roboto, Arial; background:#f6f7fb; }
+    #app{ min-height:100vh; padding:14px; box-sizing:border-box; }
+    .card{ background:#fff; border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:14px; margin-bottom:12px; }
+    .title{ font-size:18px; font-weight:900; margin:0 0 10px 0; }
+    .pill{ display:inline-block; padding:8px 12px; border-radius:999px; font-weight:900; font-size:13px; }
+    .ok{ background: rgba(0,160,0,.12); }
+    .warn{ background: rgba(255,165,0,.18); }
+    .bad{ background: rgba(220,0,0,.12); }
+    #log{
+      background:#0b0b0b; color:#31ff3a; border-radius:12px; padding:10px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      white-space:pre-wrap; max-height:40vh; overflow:auto;
+    }
+    button{
+      padding:10px 12px; border-radius:12px; border:1px solid rgba(0,0,0,.18);
+      background:#f2f3f7; font-weight:900; cursor:pointer;
+    }
+  </style>
+</head>
+
+<body class="Widget">
+<div id="app">
+
+  <div class="card">
+    <div class="title">✅ GitHub Pages + LiquidCharts Widget Test</div>
+    <div class="pill warn" id="statusPill">Loading framework…</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Chart Context</div>
+    <div id="ctx">Waiting…</div>
+    <div style="margin-top:10px;">
+      <button id="btnPing" disabled>Ping Framework</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="title">Log</div>
+    <div id="log"></div>
+  </div>
+
+</div>
+
+<script>
+  // Guard: if LC scripts failed, show it clearly
+  const $ = (id)=>document.getElementById(id);
+
+  function setStatus(text, kind){
+    const pill = $("statusPill");
+    pill.textContent = text;
+    pill.className = "pill " + (kind || "");
+  }
+
+  function ts(){
+    const d=new Date(), pad=n=>(n<10?"0":"")+n;
+    let h=d.getHours(), m=d.getMinutes(), s=d.getSeconds();
+    const ampm=h>=12?"PM":"AM"; h=h%12; if(h===0) h=12;
+    return `[${h}:${pad(m)}:${pad(s)} ${ampm}]`;
+  }
+
+  function log(msg){
+    $("log").textContent = `${ts()} ${msg}\n` + $("log").textContent;
+  }
+
+  // If Sway.Framework doesn't exist, the page is loading but LC scripts didn't attach
+  if (typeof Sway === "undefined" || typeof Sway.Framework !== "function") {
+    setStatus("❌ LiquidCharts scripts not loaded", "bad");
+    log("Sway.Framework missing. Check you loaded this INSIDE LiquidCharts External Widget.");
+  } else {
+    var Framework = new Sway.Framework();
+
+    Framework.OnLoad = function(){
+      setStatus("✅ Framework loaded", "ok");
+      log("Framework loaded.");
+
+      $("btnPing").disabled = false;
+
+      // Try to read active chart context if available
+      try{
+        let inst = null, tf = null;
+
+        // Some environments expose Chart / Instrument fields differently.
+        // We'll attempt a few common places safely.
+        if (Framework.Chart && Framework.Chart.instrumentId) inst = Framework.Chart.instrumentId;
+        if (!inst && Framework.Instrument && Framework.Instrument.id) inst = Framework.Instrument.id;
+
+        if (Framework.Chart && Framework.Chart.timeframe) tf = Framework.Chart.timeframe;
+
+        $("ctx").innerHTML = `
+          <div><b>Instrument:</b> ${inst || "Unknown"}</div>
+          <div><b>Timeframe:</b> ${tf || "Unknown"}</div>
+          <div style="opacity:.7; font-size:12px; margin-top:6px;">
+            If Instrument/Timeframe show Unknown, that’s OK — framework is still connected.
+          </div>
+        `;
+      } catch(e){
+        $("ctx").textContent = "Context read failed: " + (e.message || String(e));
+        log("Context read failed: " + (e.message || String(e)));
+      }
+
+      $("btnPing").onclick = function(){
+        log("Ping clicked.");
+        try{
+          // A harmless call that often exists:
+          if (typeof Framework.RequestPrices === "function") {
+            log("RequestPrices exists ✅");
+          } else {
+            log("RequestPrices not available in this context.");
+          }
+          setStatus("✅ Framework responding", "ok");
+        } catch(e){
+          setStatus("⚠️ Framework ping error", "warn");
+          log("Ping error: " + (e.message || String(e)));
+        }
+      };
+    };
+  }
+</script>
+
+</body>
+</html>
