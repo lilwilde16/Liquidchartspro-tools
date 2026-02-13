@@ -3,25 +3,166 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>LiquidChartsPro Tools</title>
+  <title>LiquidCharts - Cross Instrument Candle Test</title>
 
-  <!-- LiquidCharts widget runtime -->
   <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
   <link rel="stylesheet" href="https://pro.liquidcharts.com/scripts/widget-css">
 
-  <!-- Your separated CSS -->
-  <link rel="stylesheet" href="./style.css?v=1" />
+  <style>
+    body.Widget{ margin:0; font-family:-apple-system, Segoe UI, Roboto, Arial; background:#f6f7fb; }
+    #app{ height:100vh; overflow-y:auto; padding:10px; box-sizing:border-box; }
+    .card{ background:#fff; border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; margin-bottom:10px; }
+    .title{ font-size:18px; font-weight:900; margin:0 0 10px 0; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+    .field{ flex:1; min-width:150px; }
+    label{ display:block; font-size:12px; opacity:.8; margin:0 0 6px 0; }
+    input, select{
+      width:100%; box-sizing:border-box; padding:10px; font-size:15px;
+      border-radius:12px; border:1px solid rgba(0,0,0,.2); background:#fff;
+    }
+    button{
+      padding:10px 12px; border-radius:12px; border:1px solid rgba(0,0,0,.18);
+      background:#2d6cdf; color:#fff; font-weight:900; cursor:pointer;
+    }
+    button:disabled{ opacity:.55; cursor:not-allowed; }
+    .pill{ display:inline-block; padding:7px 10px; border-radius:999px; background:#eef1f7; font-weight:900; font-size:12px; }
+    .ok{ background: rgba(0,160,0,.12); }
+    .bad{ background: rgba(220,0,0,.12); }
+    #log{
+      background:#0b0b0b; color:#31ff3a; border-radius:12px; padding:10px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      white-space:pre-wrap; max-height:50vh; overflow:auto;
+    }
+  </style>
 </head>
 
 <body class="Widget">
-  <div id="app">
-    <div class="card">
-      <div class="title">Loading…</div>
-      <div class="small">If you see this for more than ~5 seconds, open Tools → Log.</div>
+<div id="app">
+  <div class="card">
+    <div class="title">Cross-Instrument Candle Pull Test</div>
+    <div class="row">
+      <div class="field">
+        <label>Status</label>
+        <div class="pill" id="statusPill">Loading…</div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <div class="field">
+        <label>InstrumentId (try: EUR/USD, GBP/USD, USD/JPY)</label>
+        <input id="instrumentId" value="EUR/USD" />
+      </div>
+      <div class="field">
+        <label>Timeframe</label>
+        <select id="tf">
+          <option value="300">M5</option>
+          <option value="900" selected>M15</option>
+          <option value="1800">M30</option>
+          <option value="3600">H1</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Count</label>
+        <input id="count" type="number" min="50" max="2000" value="300" />
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <button id="btnFetch" disabled>Fetch Candles</button>
+      <button id="btnPrices" disabled>Request Prices</button>
+      <button id="btnClear" disabled>Clear Log</button>
     </div>
   </div>
 
-  <!-- Your separated JS -->
-  <script src="./app.js?v=1"></script>
+  <div class="card">
+    <div class="title">Log</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+  var Framework = new Sway.Framework();
+  const $ = (id)=>document.getElementById(id);
+
+  function ts(){
+    const d=new Date(), pad=n=>(n<10?"0":"")+n;
+    let h=d.getHours(), m=d.getMinutes(), s=d.getSeconds();
+    const ampm=h>=12?"PM":"AM"; h=h%12; if(h===0) h=12;
+    return `[${h}:${pad(m)}:${pad(s)} ${ampm}]`;
+  }
+  function log(msg){
+    $("log").textContent = `${ts()} ${msg}\n` + $("log").textContent;
+  }
+  function setStatus(text, kind){
+    const pill=$("statusPill");
+    pill.textContent=text;
+    pill.className="pill " + (kind||"");
+  }
+
+  async function requestCandles(instrumentId, timeframe, count){
+    // supports both pRequestCandles (promise) and callback style
+    if(Framework.pRequestCandles){
+      return await Framework.pRequestCandles({ instrumentId, timeframe, count, streaming:false });
+    }
+    return await new Promise((resolve) => {
+      Framework.RequestCandles({ instrumentId, timeframe, count, streaming:false }, (m)=>resolve(m));
+    });
+  }
+
+  async function fetchCandles(){
+    const instrumentId = $("instrumentId").value.trim();
+    const timeframe = parseInt($("tf").value, 10);
+    const count = parseInt($("count").value, 10);
+
+    setStatus("Fetching candles…", "");
+    log(`FetchCandles instrument=${instrumentId} tf=${timeframe}s count=${count}`);
+
+    try{
+      const msg = await requestCandles(instrumentId, timeframe, count);
+      const candles = msg && msg.candles ? msg.candles : null;
+
+      if(!candles || !candles.length){
+        setStatus("No candles returned", "bad");
+        log("❌ No candles returned. (instrumentId might be wrong on your feed)");
+        log("Raw msg: " + safeJson(msg));
+        return;
+      }
+
+      setStatus(`OK (${candles.length} candles)`, "ok");
+
+      // show last few closes
+      const closes = candles.slice(0, 5).map(c=>c.c);
+      log("✅ Got candles. Latest 5 closes (platform order): " + closes.join(", "));
+      log("Sample candle keys: " + Object.keys(candles[0]).join(", "));
+    }catch(e){
+      setStatus("Fetch failed", "bad");
+      log("❌ Error: " + (e.message || String(e)));
+    }
+  }
+
+  function safeJson(x){ try{return JSON.stringify(x);}catch(e){return "(unstringifiable)";} }
+
+  Framework.OnLoad = function(){
+    setStatus("Framework connected", "ok");
+    log("✅ Framework loaded");
+
+    $("btnFetch").disabled = false;
+    $("btnPrices").disabled = false;
+    $("btnClear").disabled = false;
+
+    $("btnFetch").onclick = fetchCandles;
+    $("btnPrices").onclick = ()=>{
+      const instrumentId = $("instrumentId").value.trim();
+      try{
+        Framework.RequestPrices([instrumentId]);
+        log("✅ RequestPrices sent for " + instrumentId);
+      }catch(e){
+        log("❌ RequestPrices error: " + (e.message||String(e)));
+      }
+    };
+    $("btnClear").onclick = ()=>{ $("log").textContent=""; };
+  };
+</script>
+
 </body>
 </html>
