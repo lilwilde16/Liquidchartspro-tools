@@ -3,86 +3,280 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>LiquidCharts - Cross Instrument Candle Test</title>
+  <title>LiquidCharts Pro — AutoTrader + Backtest Tab</title>
 
+  <!-- LiquidCharts widget framework -->
   <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
   <link rel="stylesheet" href="https://pro.liquidcharts.com/scripts/widget-css">
 
   <style>
-    body.Widget{ margin:0; font-family:-apple-system, Segoe UI, Roboto, Arial; background:#f6f7fb; }
-    #app{ height:100vh; overflow-y:auto; padding:10px; box-sizing:border-box; }
-    .card{ background:#fff; border:1px solid rgba(0,0,0,.12); border-radius:14px; padding:12px; margin-bottom:10px; }
-    .title{ font-size:18px; font-weight:900; margin:0 0 10px 0; }
+    body.Widget{ margin:0; font-family:-apple-system, Segoe UI, Roboto, Arial; background:#f6f7fb; color:#111; }
+    #app{ min-height:100vh; overflow-y:auto; padding:12px; box-sizing:border-box; }
+
+    .tabs{
+      display:flex; gap:10px; position:sticky; top:0; z-index:10;
+      background:#f6f7fb; padding:8px 0;
+    }
+    .tabBtn{
+      flex:1; padding:12px; border-radius:14px;
+      border:1px solid rgba(0,0,0,.18);
+      background:#fff; font-weight:900; cursor:pointer;
+      box-shadow: 0 1px 0 rgba(0,0,0,.04);
+    }
+    .tabBtn.active{
+      background:#2d6cdf; color:#fff; border-color:#2d6cdf;
+      box-shadow: 0 3px 10px rgba(45,108,223,.25);
+    }
+
+    .card{
+      background:#fff; border:1px solid rgba(0,0,0,.12);
+      border-radius:16px; padding:14px; margin-bottom:12px;
+      box-shadow: 0 1px 0 rgba(0,0,0,.04);
+    }
+    .title{ font-size:18px; font-weight:1000; margin:0 0 10px 0; }
+    .sub{ font-size:12px; opacity:.75; margin-top:6px; line-height:1.3; }
+
     .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
-    .field{ flex:1; min-width:150px; }
-    label{ display:block; font-size:12px; opacity:.8; margin:0 0 6px 0; }
-    input, select{
-      width:100%; box-sizing:border-box; padding:10px; font-size:15px;
-      border-radius:12px; border:1px solid rgba(0,0,0,.2); background:#fff;
+    .field{ flex:1; min-width:160px; }
+    label{ display:block; font-size:12px; opacity:.8; margin:0 0 6px 0; font-weight:700; }
+
+    input, select, textarea{
+      width:100%; box-sizing:border-box; padding:12px; font-size:15px;
+      border-radius:14px; border:1px solid rgba(0,0,0,.20); background:#fff;
+      outline:none;
     }
+    textarea{ min-height:150px; resize:vertical; font-family:ui-monospace, Menlo, Consolas, monospace; }
+
     button{
-      padding:10px 12px; border-radius:12px; border:1px solid rgba(0,0,0,.18);
-      background:#2d6cdf; color:#fff; font-weight:900; cursor:pointer;
+      padding:12px 14px; border-radius:14px;
+      border:1px solid rgba(0,0,0,.18);
+      background:#f2f3f7; font-weight:900; cursor:pointer;
     }
+    button.primary{ background:#2d6cdf; color:#fff; border-color:#2d6cdf; }
+    button.danger{ background:#e34b4b; color:#fff; border-color:#e34b4b; }
     button:disabled{ opacity:.55; cursor:not-allowed; }
-    .pill{ display:inline-block; padding:7px 10px; border-radius:999px; background:#eef1f7; font-weight:900; font-size:12px; }
-    .ok{ background: rgba(0,160,0,.12); }
-    .bad{ background: rgba(220,0,0,.12); }
-    #log{
-      background:#0b0b0b; color:#31ff3a; border-radius:12px; padding:10px;
-      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-      white-space:pre-wrap; max-height:50vh; overflow:auto;
+
+    .pill{
+      display:inline-block; padding:8px 12px; border-radius:999px;
+      background:#eef1f7; font-weight:900; font-size:12px;
     }
+    .ok{ background: rgba(0,160,0,.14); }
+    .bad{ background: rgba(220,0,0,.14); }
+    .warn{ background: rgba(255,165,0,.20); }
+
+    table{ width:100%; border-collapse:collapse; font-size:13px; }
+    th, td{ padding:8px; border-bottom:1px solid rgba(0,0,0,.10); text-align:center; }
+    th{ background: rgba(0,0,0,.05); position:sticky; top:0; z-index:2; }
+    td.left{ text-align:left; }
+
+    #log{
+      background:#0b0b0b; color:#31ff3a; border-radius:14px; padding:12px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      white-space:pre-wrap; max-height:45vh; overflow:auto;
+    }
+    .hidden{ display:none; }
   </style>
 </head>
 
 <body class="Widget">
 <div id="app">
-  <div class="card">
-    <div class="title">Cross-Instrument Candle Pull Test</div>
-    <div class="row">
-      <div class="field">
-        <label>Status</label>
-        <div class="pill" id="statusPill">Loading…</div>
+
+  <div class="tabs">
+    <button class="tabBtn active" id="tabHome">Home</button>
+    <button class="tabBtn" id="tabSettings">Settings</button>
+    <button class="tabBtn" id="tabBacktest">Backtest</button>
+    <button class="tabBtn" id="tabTools">Tools</button>
+  </div>
+
+  <!-- HOME -->
+  <div id="pageHome">
+    <div class="card">
+      <div class="title">AutoTrader Shell (Framework Connected)</div>
+      <div class="row">
+        <div class="field">
+          <label>Status</label>
+          <div class="pill" id="statusPill">Loading framework…</div>
+        </div>
+        <div class="field">
+          <label>ARM</label>
+          <select id="arm">
+            <option value="off" selected>ARM OFF (ticket only)</option>
+            <option value="on">ARM ON (SendOrder)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Refresh (sec)</label>
+          <input id="refreshSec" type="number" min="5" max="300" value="20" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="btnPing" class="primary" disabled>Ping Framework</button>
+        <button id="btnOpenTicket" disabled>Open Ticket (Chart)</button>
+        <button id="btnSendTest" class="danger" disabled>SendOrder Test (Chart)</button>
+      </div>
+
+      <div class="sub">
+        This page is just a shell so you can keep trading controls while we build.
+        The real work you asked for is in the <b>Backtest</b> tab.
       </div>
     </div>
 
-    <div class="row" style="margin-top:10px;">
-      <div class="field">
-        <label>InstrumentId (try: EUR/USD, GBP/USD, USD/JPY)</label>
-        <input id="instrumentId" value="EUR/USD" />
-      </div>
-      <div class="field">
-        <label>Timeframe</label>
-        <select id="tf">
-          <option value="300">M5</option>
-          <option value="900" selected>M15</option>
-          <option value="1800">M30</option>
-          <option value="3600">H1</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Count</label>
-        <input id="count" type="number" min="50" max="2000" value="300" />
-      </div>
-    </div>
-
-    <div class="row" style="margin-top:10px;">
-      <button id="btnFetch" disabled>Fetch Candles</button>
-      <button id="btnPrices" disabled>Request Prices</button>
-      <button id="btnClear" disabled>Clear Log</button>
+    <div class="card">
+      <div class="title">Chart Context</div>
+      <div class="sub"><b>Instrument:</b> <span id="ctxInstrument">Unknown</span></div>
+      <div class="sub"><b>Timeframe:</b> <span id="ctxTimeframe">Unknown</span></div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="title">Log</div>
-    <div id="log"></div>
+  <!-- SETTINGS -->
+  <div id="pageSettings" class="hidden">
+    <div class="card">
+      <div class="title">General Settings</div>
+      <div class="row">
+        <div class="field">
+          <label>Default instrument list (one per line)</label>
+          <textarea id="pairs">EUR/USD
+GBP/USD
+USD/JPY
+USD/CHF
+AUD/USD
+NZD/USD
+USD/CAD
+EUR/JPY
+GBP/JPY
+AUD/JPY
+NZD/JPY
+CAD/JPY
+CHF/JPY
+EUR/GBP
+EUR/AUD
+EUR/NZD
+GBP/AUD
+GBP/NZD
+AUD/NZD
+EUR/CHF
+GBP/CHF</textarea>
+          <div class="sub">Use your exact instrumentIds (LiquidCharts format like <b>EUR/USD</b>).</div>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <!-- BACKTEST -->
+  <div id="pageBacktest" class="hidden">
+    <div class="card">
+      <div class="title">Backtest (Simple + In-App)</div>
+
+      <div class="row">
+        <div class="field">
+          <label>Universe</label>
+          <select id="btUniverse">
+            <option value="chart">Chart instrument only</option>
+            <option value="list" selected>Use instrument list (Settings)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Timeframe</label>
+          <select id="btTf">
+            <option value="60">M1</option>
+            <option value="300">M5</option>
+            <option value="900" selected>M15</option>
+            <option value="1800">M30</option>
+            <option value="3600">H1</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Candles to pull (per instrument)</label>
+          <input id="btCount" type="number" min="200" max="20000" value="2000" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <div class="field">
+          <label>Spread model</label>
+          <select id="btSpreadMode">
+            <option value="none" selected>Ignore spread</option>
+            <option value="useQuotes">Use current bid/ask spread (rough)</option>
+          </select>
+          <div class="sub">This is a simple backtest. Real fills/slippage will differ.</div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="btnBtRun" class="primary" disabled>Run Backtest</button>
+        <button id="btnBtStop" disabled>Stop</button>
+        <button id="btnBtClear" disabled>Clear Results</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">Strategy (JSON)</div>
+      <textarea id="strategyJson">{
+  "name": "MA Cross + ATR SL/TP",
+  "type": "ma_cross",
+  "params": {
+    "fastMA": 10,
+    "slowMA": 30,
+    "atrLen": 14,
+    "slAtrMult": 1.2,
+    "rr": 2.0
+  }
+}</textarea>
+
+      <div class="sub">
+        Supported types right now: <b>ma_cross</b> (fast/slow SMA cross) using ATR-based SL and RR TP.
+        We can add your other systems after this base works.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">Summary</div>
+      <div id="btSummary" class="sub">No backtest yet.</div>
+    </div>
+
+    <div class="card">
+      <div class="title">Top Instruments</div>
+      <div id="btTop" style="overflow-x:auto;"></div>
+      <div class="sub">Ranks by total P/L in “R” (risk units) and win rate.</div>
+    </div>
+
+    <div class="card">
+      <div class="title">Trades (first 200)</div>
+      <div id="btTrades" style="overflow-x:auto;"></div>
+    </div>
+  </div>
+
+  <!-- TOOLS -->
+  <div id="pageTools" class="hidden">
+    <div class="card">
+      <div class="title">Tools / Diagnostic</div>
+      <div class="row">
+        <button id="btnHealth" disabled>Health Check</button>
+        <button id="btnClearLog" disabled>Clear Log</button>
+      </div>
+      <div class="sub">Health check verifies that candles + basic APIs are available.</div>
+    </div>
+
+    <div class="card">
+      <div class="title">Log</div>
+      <div id="log"></div>
+    </div>
+  </div>
+
 </div>
 
 <script>
+  // ======================
+  //  Framework + Helpers
+  // ======================
   var Framework = new Sway.Framework();
   const $ = (id)=>document.getElementById(id);
+
+  let timer=null;
+  let stopFlag=false;
 
   function ts(){
     const d=new Date(), pad=n=>(n<10?"0":"")+n;
@@ -98,10 +292,25 @@
     pill.textContent=text;
     pill.className="pill " + (kind||"");
   }
+  function safeJson(x){ try{return JSON.stringify(x);}catch(e){return "(unstringifiable)";} }
+
+  function parsePairs(){
+    return $("pairs").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  }
+  function armed(){ return $("arm").value==="on"; }
+
+  function tfLabel(sec){
+    sec = parseInt(sec,10);
+    if(sec===60) return "M1";
+    if(sec===300) return "M5";
+    if(sec===900) return "M15";
+    if(sec===1800) return "M30";
+    if(sec===3600) return "H1";
+    return sec+"s";
+  }
 
   async function requestCandles(instrumentId, timeframe, count){
-    // supports both pRequestCandles (promise) and callback style
-    if(Framework.pRequestCandles){
+    if (Framework.pRequestCandles){
       return await Framework.pRequestCandles({ instrumentId, timeframe, count, streaming:false });
     }
     return await new Promise((resolve) => {
@@ -109,60 +318,537 @@
     });
   }
 
-  async function fetchCandles(){
-    const instrumentId = $("instrumentId").value.trim();
-    const timeframe = parseInt($("tf").value, 10);
-    const count = parseInt($("count").value, 10);
+  // Liquid candles: often newest-first with [0] current forming. We'll convert to chronological closed bars.
+  function toChronClosed(candles){
+    if(!candles || !candles.length) return [];
+    // drop [0] forming candle if it has "u" (update) or just always drop index 0
+    const arr = candles.slice(1);
+    // reverse newest->oldest to oldest->newest
+    return arr.reverse();
+  }
 
-    setStatus("Fetching candles…", "");
-    log(`FetchCandles instrument=${instrumentId} tf=${timeframe}s count=${count}`);
+  // ======================
+  //  Indicators (SMA, ATR)
+  // ======================
+  function sma(values, len){
+    const out = new Array(values.length).fill(null);
+    if(len<=1) return values.slice();
+    let sum=0;
+    for(let i=0;i<values.length;i++){
+      sum += values[i];
+      if(i>=len) sum -= values[i-len];
+      if(i>=len-1) out[i] = sum/len;
+    }
+    return out;
+  }
+
+  function trueRange(prev, cur){
+    const hi=cur.h, lo=cur.l, pc=prev.c;
+    const a = hi-lo;
+    const b = Math.abs(hi-pc);
+    const c = Math.abs(lo-pc);
+    return Math.max(a,b,c);
+  }
+
+  function atr(candlesChron, len){
+    const out = new Array(candlesChron.length).fill(null);
+    if(candlesChron.length < len+1) return out;
+    // simple ATR: SMA(TR, len)
+    const tr = new Array(candlesChron.length).fill(null);
+    for(let i=1;i<candlesChron.length;i++){
+      tr[i] = trueRange(candlesChron[i-1], candlesChron[i]);
+    }
+    // SMA over TR
+    let sum=0, n=0;
+    for(let i=0;i<tr.length;i++){
+      const v = tr[i];
+      if(v==null) continue;
+      sum += v; n++;
+      if(n>len){
+        // remove tr[i-len]? Need track; easiest: compute SMA using array
+      }
+    }
+    // Do SMA properly
+    const trVals = tr.map(x => x==null ? 0 : x);
+    const atrSma = sma(trVals, len);
+    for(let i=0;i<atrSma.length;i++){
+      // only valid after len and i>=len
+      if(i>=len) out[i]=atrSma[i];
+    }
+    return out;
+  }
+
+  // ======================
+  //  Strategy Engine
+  //  (simple, one trade at a time)
+  // ======================
+  function parseStrategy(){
+    let obj=null;
+    try{
+      obj = JSON.parse($("strategyJson").value);
+    }catch(e){
+      throw new Error("Strategy JSON invalid: " + (e.message||String(e)));
+    }
+    if(!obj || !obj.type) throw new Error("Strategy JSON must include 'type'");
+    obj.params = obj.params || {};
+    return obj;
+  }
+
+  function computeSignals_ma_cross(candlesChron, params){
+    const fast = parseInt(params.fastMA||10,10);
+    const slow = parseInt(params.slowMA||30,10);
+    const closes = candlesChron.map(c=>c.c);
+    const f = sma(closes, fast);
+    const s = sma(closes, slow);
+    // signals on bar close: when fast crosses slow
+    // return array of {i, dir} where i is bar index in chron (entry at close of i)
+    const sigs=[];
+    for(let i=1;i<candlesChron.length;i++){
+      if(f[i-1]==null || s[i-1]==null || f[i]==null || s[i]==null) continue;
+      const prevDiff = f[i-1] - s[i-1];
+      const diff = f[i] - s[i];
+      if(prevDiff<=0 && diff>0) sigs.push({i, dir:"BUY"});
+      if(prevDiff>=0 && diff<0) sigs.push({i, dir:"SELL"});
+    }
+    return sigs;
+  }
+
+  function backtestOneInstrument(instrumentId, candlesChron, strategy, spreadPts){
+    const p = strategy.params || {};
+    const atrLen = parseInt(p.atrLen||14,10);
+    const slAtrMult = parseFloat(p.slAtrMult||1.2);
+    const rr = parseFloat(p.rr||2.0);
+
+    const atrArr = atr(candlesChron, atrLen);
+
+    let signals=[];
+    if(strategy.type==="ma_cross"){
+      signals = computeSignals_ma_cross(candlesChron, p);
+    }else{
+      throw new Error("Unsupported strategy type: " + strategy.type);
+    }
+
+    const trades=[];
+    let pos=null; // {dir, entry, sl, tp, entryIndex, risk}
+    let sigPtr=0;
+
+    for(let i=0;i<candlesChron.length;i++){
+      // stop request
+      if(stopFlag) break;
+
+      const bar = candlesChron[i];
+
+      // if no position, see if there is a signal at this bar
+      if(!pos){
+        while(sigPtr < signals.length && signals[sigPtr].i < i) sigPtr++;
+        if(sigPtr < signals.length && signals[sigPtr].i === i){
+          const sig = signals[sigPtr];
+          const a = atrArr[i];
+          if(a==null || a<=0){
+            sigPtr++;
+            continue;
+          }
+
+          // entry price (simple): close price, optionally add/sub half spread in points
+          let entry = bar.c;
+          if(spreadPts && spreadPts>0){
+            // rough: BUY pays ask => +spread/2, SELL pays bid => -spread/2
+            entry = sig.dir==="BUY" ? (entry + spreadPts/2) : (entry - spreadPts/2);
+          }
+
+          const risk = a * slAtrMult;
+          const sl = sig.dir==="BUY" ? (entry - risk) : (entry + risk);
+          const tp = sig.dir==="BUY" ? (entry + risk*rr) : (entry - risk*rr);
+
+          pos = {
+            dir: sig.dir,
+            entry,
+            sl,
+            tp,
+            entryIndex: i,
+            entryTime: bar.ts || bar.date || null,
+            risk
+          };
+          sigPtr++;
+        }
+      } else {
+        // manage position using this bar's high/low
+        const hi = bar.h, lo = bar.l;
+
+        // Determine hit order within bar (simple assumption):
+        // BUY: if low <= SL first, else if high >= TP.
+        // SELL: if high >= SL first, else if low <= TP.
+        let exit=null;
+        if(pos.dir==="BUY"){
+          if(lo <= pos.sl) exit = {price: pos.sl, reason:"SL"};
+          else if(hi >= pos.tp) exit = {price: pos.tp, reason:"TP"};
+        }else{
+          if(hi >= pos.sl) exit = {price: pos.sl, reason:"SL"};
+          else if(lo <= pos.tp) exit = {price: pos.tp, reason:"TP"};
+        }
+
+        if(exit){
+          // optional spread at exit (rough)
+          let exitPrice = exit.price;
+          if(spreadPts && spreadPts>0){
+            // BUY exits at bid (worse) -> -spread/2; SELL exits at ask (worse) -> +spread/2
+            exitPrice = pos.dir==="BUY" ? (exitPrice - spreadPts/2) : (exitPrice + spreadPts/2);
+          }
+
+          const pnl = (pos.dir==="BUY") ? (exitPrice - pos.entry) : (pos.entry - exitPrice);
+          const r = pos.risk>0 ? (pnl / pos.risk) : 0;
+
+          trades.push({
+            instrumentId,
+            dir: pos.dir,
+            entryIndex: pos.entryIndex,
+            exitIndex: i,
+            entry: pos.entry,
+            exit: exitPrice,
+            reason: exit.reason,
+            r
+          });
+          pos=null;
+        }
+      }
+    }
+
+    // Summary
+    let wins=0, losses=0, sumR=0;
+    for(const t of trades){
+      sumR += t.r;
+      if(t.r>0) wins++; else losses++;
+    }
+    const total = trades.length;
+    const winRate = total ? (wins/total)*100 : 0;
+
+    return {
+      instrumentId,
+      trades,
+      totalTrades: total,
+      wins, losses,
+      winRate,
+      sumR,
+      avgR: total ? (sumR/total) : 0
+    };
+  }
+
+  // ======================
+  //  Rendering
+  // ======================
+  function renderSummary(overall){
+    const html = `
+      <div class="row">
+        <span class="pill ${overall.totalTrades? "ok":"warn"}">Trades: ${overall.totalTrades}</span>
+        <span class="pill">Win%: ${overall.winRate.toFixed(1)}%</span>
+        <span class="pill">Total R: ${overall.sumR.toFixed(2)}</span>
+        <span class="pill">Avg R: ${overall.avgR.toFixed(3)}</span>
+        <span class="pill">Instruments: ${overall.instruments}</span>
+      </div>
+      <div class="sub" style="margin-top:8px;">
+        Strategy: <b>${overall.strategyName}</b> (${overall.strategyType}) • TF: <b>${overall.tf}</b> • Candles: <b>${overall.count}</b>
+      </div>
+    `;
+    $("btSummary").innerHTML = html;
+  }
+
+  function renderTop(results){
+    // sort by sumR
+    const rows = results.slice().sort((a,b)=>b.sumR-a.sumR);
+    let html = `<table><thead>
+      <tr><th>Rank</th><th>Instrument</th><th>Trades</th><th>Win%</th><th>Total R</th><th>Avg R</th></tr>
+    </thead><tbody>`;
+    rows.forEach((r,idx)=>{
+      html += `<tr>
+        <td>${idx+1}</td>
+        <td class="left"><b>${r.instrumentId}</b></td>
+        <td>${r.totalTrades}</td>
+        <td>${r.winRate.toFixed(1)}%</td>
+        <td>${r.sumR.toFixed(2)}</td>
+        <td>${r.avgR.toFixed(3)}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+    $("btTop").innerHTML = html;
+  }
+
+  function renderTrades(allTrades){
+    const take = allTrades.slice(0,200);
+    let html = `<table><thead>
+      <tr><th>#</th><th>Instrument</th><th>Dir</th><th>EntryIdx</th><th>ExitIdx</th><th>Entry</th><th>Exit</th><th>Exit</th><th>R</th></tr>
+    </thead><tbody>`;
+    take.forEach((t,idx)=>{
+      const pillClass = t.r>=0 ? "ok" : "bad";
+      html += `<tr>
+        <td>${idx+1}</td>
+        <td class="left"><b>${t.instrumentId}</b></td>
+        <td>${t.dir}</td>
+        <td>${t.entryIndex}</td>
+        <td>${t.exitIndex}</td>
+        <td>${t.entry.toFixed(5)}</td>
+        <td>${t.exit.toFixed(5)}</td>
+        <td>${t.reason}</td>
+        <td><span class="pill ${pillClass}">${t.r.toFixed(2)}</span></td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+    $("btTrades").innerHTML = html;
+  }
+
+  // ======================
+  //  Backtest Runner
+  // ======================
+  async function getSpreadPts(instrumentId){
+    const mode = $("btSpreadMode").value;
+    if(mode!=="useQuotes") return 0;
 
     try{
-      const msg = await requestCandles(instrumentId, timeframe, count);
-      const candles = msg && msg.candles ? msg.candles : null;
-
-      if(!candles || !candles.length){
-        setStatus("No candles returned", "bad");
-        log("❌ No candles returned. (instrumentId might be wrong on your feed)");
-        log("Raw msg: " + safeJson(msg));
-        return;
+      // request prices to populate
+      Framework.RequestPrices([instrumentId]);
+      const m = Framework.Instruments.getOrBlank(instrumentId);
+      if(m && m.ask && m.bid){
+        return Math.abs(m.ask - m.bid);
       }
+    }catch(e){}
+    return 0;
+  }
 
-      setStatus(`OK (${candles.length} candles)`, "ok");
+  async function runBacktest(){
+    stopFlag=false;
+    $("btnBtRun").disabled=true;
+    $("btnBtStop").disabled=false;
 
-      // show last few closes
-      const closes = candles.slice(0, 5).map(c=>c.c);
-      log("✅ Got candles. Latest 5 closes (platform order): " + closes.join(", "));
-      log("Sample candle keys: " + Object.keys(candles[0]).join(", "));
+    const tf = parseInt($("btTf").value,10);
+    const count = Math.max(200, parseInt($("btCount").value||"2000",10));
+
+    let universe=[];
+    if($("btUniverse").value==="chart"){
+      const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
+      if(!inst) throw new Error("Chart instrument not available (try Universe: list).");
+      universe=[inst];
+    }else{
+      universe=parsePairs();
+    }
+
+    const strategy = parseStrategy();
+
+    log(`🧪 Backtest start: universe=${universe.length} tf=${tfLabel(tf)} count=${count} strategy=${strategy.type}`);
+
+    const results=[];
+    const allTrades=[];
+
+    for(const instrumentId of universe){
+      if(stopFlag) break;
+
+      try{
+        // candles
+        const msg = await requestCandles(instrumentId, tf, count);
+        const candles = msg && msg.candles ? msg.candles : null;
+        const chron = toChronClosed(candles);
+        if(chron.length < 200){
+          log(`⚠️ ${instrumentId}: not enough candles (${chron.length})`);
+          results.push({ instrumentId, trades:[], totalTrades:0, wins:0, losses:0, winRate:0, sumR:0, avgR:0 });
+          continue;
+        }
+
+        const spreadPts = await getSpreadPts(instrumentId);
+
+        const r = backtestOneInstrument(instrumentId, chron, strategy, spreadPts);
+        results.push(r);
+        for(const t of r.trades) allTrades.push(t);
+
+        log(`✅ ${instrumentId}: trades=${r.totalTrades} win%=${r.winRate.toFixed(1)} totalR=${r.sumR.toFixed(2)}`);
+      }catch(e){
+        log(`❌ ${instrumentId}: ${e.message || String(e)}`);
+        results.push({ instrumentId, trades:[], totalTrades:0, wins:0, losses:0, winRate:0, sumR:0, avgR:0 });
+      }
+    }
+
+    // overall
+    let totalTrades=0, wins=0, losses=0, sumR=0;
+    results.forEach(r=>{
+      totalTrades += r.totalTrades;
+      wins += r.wins;
+      losses += r.losses;
+      sumR += r.sumR;
+    });
+
+    const overall = {
+      instruments: results.length,
+      totalTrades,
+      wins, losses,
+      winRate: totalTrades ? (wins/totalTrades)*100 : 0,
+      sumR,
+      avgR: totalTrades ? (sumR/totalTrades) : 0,
+      tf: tfLabel(tf),
+      count,
+      strategyName: strategy.name || "Unnamed",
+      strategyType: strategy.type
+    };
+
+    renderSummary(overall);
+    renderTop(results);
+    renderTrades(allTrades);
+
+    log(`🏁 Backtest done. trades=${overall.totalTrades} win%=${overall.winRate.toFixed(1)} totalR=${overall.sumR.toFixed(2)}`);
+
+    $("btnBtRun").disabled=false;
+    $("btnBtStop").disabled=true;
+    $("btnBtClear").disabled=false;
+  }
+
+  function stopBacktest(){
+    stopFlag=true;
+    log("🛑 Stop requested.");
+    $("btnBtStop").disabled=true;
+    $("btnBtRun").disabled=false;
+  }
+
+  function clearBacktest(){
+    $("btSummary").textContent="No backtest yet.";
+    $("btTop").innerHTML="";
+    $("btTrades").innerHTML="";
+    log("🧹 Backtest results cleared.");
+  }
+
+  // ======================
+  //  Tabs
+  // ======================
+  function setTab(which){
+    ["Home","Settings","Backtest","Tools"].forEach(x=>{
+      $("tab"+x).classList.remove("active");
+      $("page"+x).classList.add("hidden");
+    });
+    $("tab"+which).classList.add("active");
+    $("page"+which).classList.remove("hidden");
+  }
+
+  // ======================
+  //  Tools
+  // ======================
+  function healthCheck(){
+    try{
+      const hasCandles = !!(Framework.pRequestCandles || Framework.RequestCandles);
+      const hasSendOrder = typeof Framework.SendOrder === "function";
+      log("=== HEALTH CHECK ===");
+      log("Candles API: " + (hasCandles?"✅":"❌"));
+      log("SendOrder: " + (hasSendOrder?"✅":"❌"));
+      log("====================");
+      setStatus("Ready", "ok");
     }catch(e){
-      setStatus("Fetch failed", "bad");
-      log("❌ Error: " + (e.message || String(e)));
+      log("Health check failed: " + (e.message||String(e)));
+      setStatus("Ready", "warn");
     }
   }
 
-  function safeJson(x){ try{return JSON.stringify(x);}catch(e){return "(unstringifiable)";} }
+  // ======================
+  //  Home actions
+  // ======================
+  function pingFramework(){
+    try{
+      log("Ping clicked.");
+      log("RequestPrices exists " + (typeof Framework.RequestPrices==="function" ? "✅" : "❌"));
+      setStatus("Framework responding", "ok");
+    }catch(e){
+      setStatus("Framework error", "bad");
+      log("Ping error: " + (e.message||String(e)));
+    }
+  }
 
+  function openTicketChart(){
+    try{
+      const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
+      if(!inst){ log("Chart instrument unknown."); return; }
+      Framework.CreateDialog({ type:"dealticket", settings:{ instrumentId: inst }});
+      log(`✅ DealTicket opened for ${inst}`);
+    }catch(e){
+      log("Ticket error: " + (e.message||String(e)));
+    }
+  }
+
+  function sendOrderTestChart(){
+    try{
+      const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
+      if(!inst){ log("Chart instrument unknown."); return; }
+      if(!armed()){
+        log("🛡️ ARM OFF → ticket only (turn ARM ON to SendOrder)");
+        openTicketChart();
+        return;
+      }
+      const action = Liquid.OrderTypes.BUY;
+      const def = { instrumentId: inst, tradingAction: action, volume:{ lots: 0.01 } };
+      Framework.SendOrder(def, function(res){
+        log("↩️ SendOrder result=" + safeJson(res));
+      });
+      log(`🚀 SendOrder BUY ${inst} lots=0.01`);
+    }catch(e){
+      log("SendOrder error: " + (e.message||String(e)));
+    }
+  }
+
+  // ======================
+  //  Framework OnLoad
+  // ======================
   Framework.OnLoad = function(){
-    setStatus("Framework connected", "ok");
     log("✅ Framework loaded");
+    setStatus("Ready", "ok");
 
-    $("btnFetch").disabled = false;
-    $("btnPrices").disabled = false;
-    $("btnClear").disabled = false;
+    // try show chart context if available
+    try{
+      const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
+      $("ctxInstrument").textContent = inst || "Unknown";
+    }catch(e){}
+    try{
+      const tf = (Framework && Framework.TimeFrame && Framework.TimeFrame.seconds) ? Framework.TimeFrame.seconds : null;
+      $("ctxTimeframe").textContent = tf ? tfLabel(tf) : "Unknown";
+    }catch(e){}
 
-    $("btnFetch").onclick = fetchCandles;
-    $("btnPrices").onclick = ()=>{
-      const instrumentId = $("instrumentId").value.trim();
-      try{
-        Framework.RequestPrices([instrumentId]);
-        log("✅ RequestPrices sent for " + instrumentId);
-      }catch(e){
-        log("❌ RequestPrices error: " + (e.message||String(e)));
+    // enable UI
+    $("btnPing").disabled=false;
+    $("btnOpenTicket").disabled=false;
+    $("btnSendTest").disabled=false;
+
+    $("btnHealth").disabled=false;
+    $("btnClearLog").disabled=false;
+
+    $("btnBtRun").disabled=false;
+    $("btnBtStop").disabled=true;
+    $("btnBtClear").disabled=true;
+
+    // hooks
+    $("tabHome").onclick=()=>setTab("Home");
+    $("tabSettings").onclick=()=>setTab("Settings");
+    $("tabBacktest").onclick=()=>setTab("Backtest");
+    $("tabTools").onclick=()=>setTab("Tools");
+
+    $("btnPing").onclick=pingFramework;
+    $("btnOpenTicket").onclick=openTicketChart;
+    $("btnSendTest").onclick=sendOrderTestChart;
+
+    $("btnHealth").onclick=healthCheck;
+    $("btnClearLog").onclick=()=>{ $("log").textContent=""; };
+
+    $("btnBtRun").onclick=async ()=>{
+      try{ await runBacktest(); }
+      catch(e){
+        log("❌ Backtest error: " + (e.message||String(e)));
+        $("btnBtRun").disabled=false;
+        $("btnBtStop").disabled=true;
       }
     };
-    $("btnClear").onclick = ()=>{ $("log").textContent=""; };
+    $("btnBtStop").onclick=stopBacktest;
+    $("btnBtClear").onclick=clearBacktest;
+
+    // keep prices refreshed a bit (helps spread mode)
+    setInterval(()=>{
+      try{
+        const u = ($("btUniverse").value==="chart")
+          ? [(Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null].filter(Boolean)
+          : parsePairs();
+        if(u.length) Framework.RequestPrices(u.slice(0,30)); // cap to avoid spam
+      }catch(e){}
+    }, 4000);
   };
 </script>
-
 </body>
 </html>
