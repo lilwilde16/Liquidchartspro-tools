@@ -2,79 +2,164 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>LiquidCharts Pro — AutoTrader + Backtest Tab</title>
 
-  <!-- LiquidCharts widget framework -->
   <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
   <link rel="stylesheet" href="https://pro.liquidcharts.com/scripts/widget-css">
 
   <style>
-    body.Widget{ margin:0; font-family:-apple-system, Segoe UI, Roboto, Arial; background:#f6f7fb; color:#111; }
-    #app{ min-height:100vh; overflow-y:auto; padding:12px; box-sizing:border-box; }
+    html, body { height: 100%; }
+    body.Widget{
+      margin:0;
+      font-family:-apple-system, Segoe UI, Roboto, Arial;
+      background:#f6f7fb; color:#111;
+      overflow:hidden; /* important: let #app own the scroll */
+    }
+
+    /* Global scroll container */
+    #app{
+      height:100vh;
+      overflow-y:auto;
+      overflow-x:hidden;
+      -webkit-overflow-scrolling:touch;
+      padding:12px;
+      padding-top: calc(12px + env(safe-area-inset-top));
+      padding-bottom: calc(12px + env(safe-area-inset-bottom));
+      box-sizing:border-box;
+    }
 
     .tabs{
-      display:flex; gap:10px; position:sticky; top:0; z-index:10;
-      background:#f6f7fb; padding:8px 0;
+      display:flex; gap:10px;
+      position:sticky; top:0; z-index:10;
+      background:#f6f7fb;
+      padding:8px 0;
+      margin-bottom:8px;
     }
     .tabBtn{
-      flex:1; padding:12px; border-radius:14px;
+      flex:1;
+      padding:12px 10px;
+      border-radius:14px;
       border:1px solid rgba(0,0,0,.18);
-      background:#fff; font-weight:900; cursor:pointer;
+      background:#fff;
+      font-weight:900;
+      cursor:pointer;
       box-shadow: 0 1px 0 rgba(0,0,0,.04);
+      font-size:14px;
+      line-height:1.1;
+      touch-action: manipulation;
     }
     .tabBtn.active{
       background:#2d6cdf; color:#fff; border-color:#2d6cdf;
       box-shadow: 0 3px 10px rgba(45,108,223,.25);
     }
 
+    /* Each tab page should have enough height to scroll naturally */
+    .page{
+      min-height: calc(100vh - 90px);
+    }
+
     .card{
-      background:#fff; border:1px solid rgba(0,0,0,.12);
-      border-radius:16px; padding:14px; margin-bottom:12px;
+      background:#fff;
+      border:1px solid rgba(0,0,0,.12);
+      border-radius:16px;
+      padding:14px;
+      margin-bottom:12px;
       box-shadow: 0 1px 0 rgba(0,0,0,.04);
     }
     .title{ font-size:18px; font-weight:1000; margin:0 0 10px 0; }
-    .sub{ font-size:12px; opacity:.75; margin-top:6px; line-height:1.3; }
+    .sub{ font-size:12px; opacity:.75; margin-top:6px; line-height:1.35; }
 
     .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
     .field{ flex:1; min-width:160px; }
     label{ display:block; font-size:12px; opacity:.8; margin:0 0 6px 0; font-weight:700; }
 
     input, select, textarea{
-      width:100%; box-sizing:border-box; padding:12px; font-size:15px;
-      border-radius:14px; border:1px solid rgba(0,0,0,.20); background:#fff;
+      width:100%;
+      box-sizing:border-box;
+      padding:12px;
+      font-size:15px;
+      border-radius:14px;
+      border:1px solid rgba(0,0,0,.20);
+      background:#fff;
       outline:none;
     }
-    textarea{ min-height:150px; resize:vertical; font-family:ui-monospace, Menlo, Consolas, monospace; }
+    textarea{
+      min-height:150px;
+      resize:vertical;
+      font-family:ui-monospace, Menlo, Consolas, monospace;
+    }
 
     button{
-      padding:12px 14px; border-radius:14px;
+      padding:12px 14px;
+      border-radius:14px;
       border:1px solid rgba(0,0,0,.18);
-      background:#f2f3f7; font-weight:900; cursor:pointer;
+      background:#f2f3f7;
+      font-weight:900;
+      cursor:pointer;
+      touch-action: manipulation;
     }
     button.primary{ background:#2d6cdf; color:#fff; border-color:#2d6cdf; }
     button.danger{ background:#e34b4b; color:#fff; border-color:#e34b4b; }
     button:disabled{ opacity:.55; cursor:not-allowed; }
 
     .pill{
-      display:inline-block; padding:8px 12px; border-radius:999px;
-      background:#eef1f7; font-weight:900; font-size:12px;
+      display:inline-block;
+      padding:8px 12px;
+      border-radius:999px;
+      background:#eef1f7;
+      font-weight:900;
+      font-size:12px;
     }
     .ok{ background: rgba(0,160,0,.14); }
     .bad{ background: rgba(220,0,0,.14); }
     .warn{ background: rgba(255,165,0,.20); }
 
-    table{ width:100%; border-collapse:collapse; font-size:13px; }
-    th, td{ padding:8px; border-bottom:1px solid rgba(0,0,0,.10); text-align:center; }
-    th{ background: rgba(0,0,0,.05); position:sticky; top:0; z-index:2; }
+    /* Make wide content mobile-friendly */
+    .scrollX{
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:13px;
+      min-width: 640px; /* forces horizontal scroll on phones */
+    }
+    th, td{
+      padding:8px;
+      border-bottom:1px solid rgba(0,0,0,.10);
+      text-align:center;
+      white-space:nowrap;
+    }
+    th{
+      background: rgba(0,0,0,.05);
+      position:sticky;
+      top:0;
+      z-index:2;
+    }
     td.left{ text-align:left; }
 
     #log{
-      background:#0b0b0b; color:#31ff3a; border-radius:14px; padding:12px;
+      background:#0b0b0b;
+      color:#31ff3a;
+      border-radius:14px;
+      padding:12px;
       font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-      white-space:pre-wrap; max-height:45vh; overflow:auto;
+      white-space:pre-wrap;
+      max-height:45vh;
+      overflow:auto;
+      -webkit-overflow-scrolling:touch;
     }
+
     .hidden{ display:none; }
+
+    /* Extra-small phones */
+    @media (max-width: 380px){
+      .tabBtn{ padding:11px 8px; font-size:13px; }
+      .field{ min-width: 140px; }
+    }
   </style>
 </head>
 
@@ -89,7 +174,7 @@
   </div>
 
   <!-- HOME -->
-  <div id="pageHome">
+  <div id="pageHome" class="page">
     <div class="card">
       <div class="title">AutoTrader Shell (Framework Connected)</div>
       <div class="row">
@@ -117,8 +202,7 @@
       </div>
 
       <div class="sub">
-        This page is just a shell so you can keep trading controls while we build.
-        The real work you asked for is in the <b>Backtest</b> tab.
+        Backtesting is in the <b>Backtest</b> tab.
       </div>
     </div>
 
@@ -130,7 +214,7 @@
   </div>
 
   <!-- SETTINGS -->
-  <div id="pageSettings" class="hidden">
+  <div id="pageSettings" class="page hidden">
     <div class="card">
       <div class="title">General Settings</div>
       <div class="row">
@@ -157,14 +241,14 @@ GBP/NZD
 AUD/NZD
 EUR/CHF
 GBP/CHF</textarea>
-          <div class="sub">Use your exact instrumentIds (LiquidCharts format like <b>EUR/USD</b>).</div>
+          <div class="sub">Use exact LiquidCharts instrumentIds (like <b>EUR/USD</b>).</div>
         </div>
       </div>
     </div>
   </div>
 
   <!-- BACKTEST -->
-  <div id="pageBacktest" class="hidden">
+  <div id="pageBacktest" class="page hidden">
     <div class="card">
       <div class="title">Backtest (Simple + In-App)</div>
 
@@ -201,7 +285,7 @@ GBP/CHF</textarea>
             <option value="none" selected>Ignore spread</option>
             <option value="useQuotes">Use current bid/ask spread (rough)</option>
           </select>
-          <div class="sub">This is a simple backtest. Real fills/slippage will differ.</div>
+          <div class="sub">Simple backtest = approximate fills.</div>
         </div>
       </div>
 
@@ -225,10 +309,8 @@ GBP/CHF</textarea>
     "rr": 2.0
   }
 }</textarea>
-
       <div class="sub">
-        Supported types right now: <b>ma_cross</b> (fast/slow SMA cross) using ATR-based SL and RR TP.
-        We can add your other systems after this base works.
+        Supported now: <b>ma_cross</b> (fast/slow SMA cross) with ATR SL and RR TP.
       </div>
     </div>
 
@@ -239,25 +321,25 @@ GBP/CHF</textarea>
 
     <div class="card">
       <div class="title">Top Instruments</div>
-      <div id="btTop" style="overflow-x:auto;"></div>
-      <div class="sub">Ranks by total P/L in “R” (risk units) and win rate.</div>
+      <div id="btTop" class="scrollX"></div>
+      <div class="sub">Ranks by total P/L in “R” and win rate.</div>
     </div>
 
     <div class="card">
       <div class="title">Trades (first 200)</div>
-      <div id="btTrades" style="overflow-x:auto;"></div>
+      <div id="btTrades" class="scrollX"></div>
     </div>
   </div>
 
   <!-- TOOLS -->
-  <div id="pageTools" class="hidden">
+  <div id="pageTools" class="page hidden">
     <div class="card">
       <div class="title">Tools / Diagnostic</div>
       <div class="row">
         <button id="btnHealth" disabled>Health Check</button>
         <button id="btnClearLog" disabled>Clear Log</button>
       </div>
-      <div class="sub">Health check verifies that candles + basic APIs are available.</div>
+      <div class="sub">Verifies candles + core APIs.</div>
     </div>
 
     <div class="card">
@@ -269,13 +351,9 @@ GBP/CHF</textarea>
 </div>
 
 <script>
-  // ======================
-  //  Framework + Helpers
-  // ======================
   var Framework = new Sway.Framework();
   const $ = (id)=>document.getElementById(id);
 
-  let timer=null;
   let stopFlag=false;
 
   function ts(){
@@ -293,10 +371,7 @@ GBP/CHF</textarea>
     pill.className="pill " + (kind||"");
   }
   function safeJson(x){ try{return JSON.stringify(x);}catch(e){return "(unstringifiable)";} }
-
-  function parsePairs(){
-    return $("pairs").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  }
+  function parsePairs(){ return $("pairs").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean); }
   function armed(){ return $("arm").value==="on"; }
 
   function tfLabel(sec){
@@ -318,18 +393,12 @@ GBP/CHF</textarea>
     });
   }
 
-  // Liquid candles: often newest-first with [0] current forming. We'll convert to chronological closed bars.
   function toChronClosed(candles){
     if(!candles || !candles.length) return [];
-    // drop [0] forming candle if it has "u" (update) or just always drop index 0
-    const arr = candles.slice(1);
-    // reverse newest->oldest to oldest->newest
-    return arr.reverse();
+    const arr = candles.slice(1); // drop forming bar
+    return arr.reverse(); // oldest->newest
   }
 
-  // ======================
-  //  Indicators (SMA, ATR)
-  // ======================
   function sma(values, len){
     const out = new Array(values.length).fill(null);
     if(len<=1) return values.slice();
@@ -344,51 +413,28 @@ GBP/CHF</textarea>
 
   function trueRange(prev, cur){
     const hi=cur.h, lo=cur.l, pc=prev.c;
-    const a = hi-lo;
-    const b = Math.abs(hi-pc);
-    const c = Math.abs(lo-pc);
-    return Math.max(a,b,c);
+    return Math.max(hi-lo, Math.abs(hi-pc), Math.abs(lo-pc));
   }
 
   function atr(candlesChron, len){
     const out = new Array(candlesChron.length).fill(null);
     if(candlesChron.length < len+1) return out;
-    // simple ATR: SMA(TR, len)
     const tr = new Array(candlesChron.length).fill(null);
     for(let i=1;i<candlesChron.length;i++){
       tr[i] = trueRange(candlesChron[i-1], candlesChron[i]);
     }
-    // SMA over TR
-    let sum=0, n=0;
-    for(let i=0;i<tr.length;i++){
-      const v = tr[i];
-      if(v==null) continue;
-      sum += v; n++;
-      if(n>len){
-        // remove tr[i-len]? Need track; easiest: compute SMA using array
-      }
-    }
-    // Do SMA properly
     const trVals = tr.map(x => x==null ? 0 : x);
     const atrSma = sma(trVals, len);
     for(let i=0;i<atrSma.length;i++){
-      // only valid after len and i>=len
       if(i>=len) out[i]=atrSma[i];
     }
     return out;
   }
 
-  // ======================
-  //  Strategy Engine
-  //  (simple, one trade at a time)
-  // ======================
   function parseStrategy(){
     let obj=null;
-    try{
-      obj = JSON.parse($("strategyJson").value);
-    }catch(e){
-      throw new Error("Strategy JSON invalid: " + (e.message||String(e)));
-    }
+    try{ obj = JSON.parse($("strategyJson").value); }
+    catch(e){ throw new Error("Strategy JSON invalid: " + (e.message||String(e))); }
     if(!obj || !obj.type) throw new Error("Strategy JSON must include 'type'");
     obj.params = obj.params || {};
     return obj;
@@ -400,8 +446,6 @@ GBP/CHF</textarea>
     const closes = candlesChron.map(c=>c.c);
     const f = sma(closes, fast);
     const s = sma(closes, slow);
-    // signals on bar close: when fast crosses slow
-    // return array of {i, dir} where i is bar index in chron (entry at close of i)
     const sigs=[];
     for(let i=1;i<candlesChron.length;i++){
       if(f[i-1]==null || s[i-1]==null || f[i]==null || s[i]==null) continue;
@@ -413,7 +457,7 @@ GBP/CHF</textarea>
     return sigs;
   }
 
-  function backtestOneInstrument(instrumentId, candlesChron, strategy, spreadPts){
+  function backtestOneInstrument(instrumentId, candlesChron, strategy){
     const p = strategy.params || {};
     const atrLen = parseInt(p.atrLen||14,10);
     const slAtrMult = parseFloat(p.slAtrMult||1.2);
@@ -422,63 +466,36 @@ GBP/CHF</textarea>
     const atrArr = atr(candlesChron, atrLen);
 
     let signals=[];
-    if(strategy.type==="ma_cross"){
-      signals = computeSignals_ma_cross(candlesChron, p);
-    }else{
-      throw new Error("Unsupported strategy type: " + strategy.type);
-    }
+    if(strategy.type==="ma_cross") signals = computeSignals_ma_cross(candlesChron, p);
+    else throw new Error("Unsupported strategy type: " + strategy.type);
 
     const trades=[];
-    let pos=null; // {dir, entry, sl, tp, entryIndex, risk}
+    let pos=null;
     let sigPtr=0;
 
     for(let i=0;i<candlesChron.length;i++){
-      // stop request
       if(stopFlag) break;
-
       const bar = candlesChron[i];
 
-      // if no position, see if there is a signal at this bar
       if(!pos){
         while(sigPtr < signals.length && signals[sigPtr].i < i) sigPtr++;
         if(sigPtr < signals.length && signals[sigPtr].i === i){
           const sig = signals[sigPtr];
           const a = atrArr[i];
-          if(a==null || a<=0){
-            sigPtr++;
-            continue;
-          }
+          if(a==null || a<=0){ sigPtr++; continue; }
 
-          // entry price (simple): close price, optionally add/sub half spread in points
-          let entry = bar.c;
-          if(spreadPts && spreadPts>0){
-            // rough: BUY pays ask => +spread/2, SELL pays bid => -spread/2
-            entry = sig.dir==="BUY" ? (entry + spreadPts/2) : (entry - spreadPts/2);
-          }
-
+          const entry = bar.c;
           const risk = a * slAtrMult;
           const sl = sig.dir==="BUY" ? (entry - risk) : (entry + risk);
           const tp = sig.dir==="BUY" ? (entry + risk*rr) : (entry - risk*rr);
 
-          pos = {
-            dir: sig.dir,
-            entry,
-            sl,
-            tp,
-            entryIndex: i,
-            entryTime: bar.ts || bar.date || null,
-            risk
-          };
+          pos = { dir:sig.dir, entry, sl, tp, entryIndex:i, risk };
           sigPtr++;
         }
       } else {
-        // manage position using this bar's high/low
         const hi = bar.h, lo = bar.l;
-
-        // Determine hit order within bar (simple assumption):
-        // BUY: if low <= SL first, else if high >= TP.
-        // SELL: if high >= SL first, else if low <= TP.
         let exit=null;
+
         if(pos.dir==="BUY"){
           if(lo <= pos.sl) exit = {price: pos.sl, reason:"SL"};
           else if(hi >= pos.tp) exit = {price: pos.tp, reason:"TP"};
@@ -488,14 +505,7 @@ GBP/CHF</textarea>
         }
 
         if(exit){
-          // optional spread at exit (rough)
-          let exitPrice = exit.price;
-          if(spreadPts && spreadPts>0){
-            // BUY exits at bid (worse) -> -spread/2; SELL exits at ask (worse) -> +spread/2
-            exitPrice = pos.dir==="BUY" ? (exitPrice - spreadPts/2) : (exitPrice + spreadPts/2);
-          }
-
-          const pnl = (pos.dir==="BUY") ? (exitPrice - pos.entry) : (pos.entry - exitPrice);
+          const pnl = (pos.dir==="BUY") ? (exit.price - pos.entry) : (pos.entry - exit.price);
           const r = pos.risk>0 ? (pnl / pos.risk) : 0;
 
           trades.push({
@@ -504,7 +514,7 @@ GBP/CHF</textarea>
             entryIndex: pos.entryIndex,
             exitIndex: i,
             entry: pos.entry,
-            exit: exitPrice,
+            exit: exit.price,
             reason: exit.reason,
             r
           });
@@ -513,7 +523,6 @@ GBP/CHF</textarea>
       }
     }
 
-    // Summary
     let wins=0, losses=0, sumR=0;
     for(const t of trades){
       sumR += t.r;
@@ -522,22 +531,11 @@ GBP/CHF</textarea>
     const total = trades.length;
     const winRate = total ? (wins/total)*100 : 0;
 
-    return {
-      instrumentId,
-      trades,
-      totalTrades: total,
-      wins, losses,
-      winRate,
-      sumR,
-      avgR: total ? (sumR/total) : 0
-    };
+    return { instrumentId, trades, totalTrades: total, wins, losses, winRate, sumR, avgR: total ? (sumR/total) : 0 };
   }
 
-  // ======================
-  //  Rendering
-  // ======================
   function renderSummary(overall){
-    const html = `
+    $("btSummary").innerHTML = `
       <div class="row">
         <span class="pill ${overall.totalTrades? "ok":"warn"}">Trades: ${overall.totalTrades}</span>
         <span class="pill">Win%: ${overall.winRate.toFixed(1)}%</span>
@@ -549,11 +547,9 @@ GBP/CHF</textarea>
         Strategy: <b>${overall.strategyName}</b> (${overall.strategyType}) • TF: <b>${overall.tf}</b> • Candles: <b>${overall.count}</b>
       </div>
     `;
-    $("btSummary").innerHTML = html;
   }
 
   function renderTop(results){
-    // sort by sumR
     const rows = results.slice().sort((a,b)=>b.sumR-a.sumR);
     let html = `<table><thead>
       <tr><th>Rank</th><th>Instrument</th><th>Trades</th><th>Win%</th><th>Total R</th><th>Avg R</th></tr>
@@ -595,24 +591,6 @@ GBP/CHF</textarea>
     $("btTrades").innerHTML = html;
   }
 
-  // ======================
-  //  Backtest Runner
-  // ======================
-  async function getSpreadPts(instrumentId){
-    const mode = $("btSpreadMode").value;
-    if(mode!=="useQuotes") return 0;
-
-    try{
-      // request prices to populate
-      Framework.RequestPrices([instrumentId]);
-      const m = Framework.Instruments.getOrBlank(instrumentId);
-      if(m && m.ask && m.bid){
-        return Math.abs(m.ask - m.bid);
-      }
-    }catch(e){}
-    return 0;
-  }
-
   async function runBacktest(){
     stopFlag=false;
     $("btnBtRun").disabled=true;
@@ -631,7 +609,6 @@ GBP/CHF</textarea>
     }
 
     const strategy = parseStrategy();
-
     log(`🧪 Backtest start: universe=${universe.length} tf=${tfLabel(tf)} count=${count} strategy=${strategy.type}`);
 
     const results=[];
@@ -641,7 +618,6 @@ GBP/CHF</textarea>
       if(stopFlag) break;
 
       try{
-        // candles
         const msg = await requestCandles(instrumentId, tf, count);
         const candles = msg && msg.candles ? msg.candles : null;
         const chron = toChronClosed(candles);
@@ -651,9 +627,7 @@ GBP/CHF</textarea>
           continue;
         }
 
-        const spreadPts = await getSpreadPts(instrumentId);
-
-        const r = backtestOneInstrument(instrumentId, chron, strategy, spreadPts);
+        const r = backtestOneInstrument(instrumentId, chron, strategy);
         results.push(r);
         for(const t of r.trades) allTrades.push(t);
 
@@ -664,7 +638,6 @@ GBP/CHF</textarea>
       }
     }
 
-    // overall
     let totalTrades=0, wins=0, losses=0, sumR=0;
     results.forEach(r=>{
       totalTrades += r.totalTrades;
@@ -711,9 +684,6 @@ GBP/CHF</textarea>
     log("🧹 Backtest results cleared.");
   }
 
-  // ======================
-  //  Tabs
-  // ======================
   function setTab(which){
     ["Home","Settings","Backtest","Tools"].forEach(x=>{
       $("tab"+x).classList.remove("active");
@@ -723,9 +693,6 @@ GBP/CHF</textarea>
     $("page"+which).classList.remove("hidden");
   }
 
-  // ======================
-  //  Tools
-  // ======================
   function healthCheck(){
     try{
       const hasCandles = !!(Framework.pRequestCandles || Framework.RequestCandles);
@@ -741,9 +708,6 @@ GBP/CHF</textarea>
     }
   }
 
-  // ======================
-  //  Home actions
-  // ======================
   function pingFramework(){
     try{
       log("Ping clicked.");
@@ -786,14 +750,10 @@ GBP/CHF</textarea>
     }
   }
 
-  // ======================
-  //  Framework OnLoad
-  // ======================
   Framework.OnLoad = function(){
     log("✅ Framework loaded");
     setStatus("Ready", "ok");
 
-    // try show chart context if available
     try{
       const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
       $("ctxInstrument").textContent = inst || "Unknown";
@@ -803,7 +763,6 @@ GBP/CHF</textarea>
       $("ctxTimeframe").textContent = tf ? tfLabel(tf) : "Unknown";
     }catch(e){}
 
-    // enable UI
     $("btnPing").disabled=false;
     $("btnOpenTicket").disabled=false;
     $("btnSendTest").disabled=false;
@@ -815,7 +774,6 @@ GBP/CHF</textarea>
     $("btnBtStop").disabled=true;
     $("btnBtClear").disabled=true;
 
-    // hooks
     $("tabHome").onclick=()=>setTab("Home");
     $("tabSettings").onclick=()=>setTab("Settings");
     $("tabBacktest").onclick=()=>setTab("Backtest");
@@ -837,17 +795,7 @@ GBP/CHF</textarea>
       }
     };
     $("btnBtStop").onclick=stopBacktest;
-    $("btnBtClear").onclick=clearBacktest;
-
-    // keep prices refreshed a bit (helps spread mode)
-    setInterval(()=>{
-      try{
-        const u = ($("btUniverse").value==="chart")
-          ? [(Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null].filter(Boolean)
-          : parsePairs();
-        if(u.length) Framework.RequestPrices(u.slice(0,30)); // cap to avoid spam
-      }catch(e){}
-    }, 4000);
+    $("btnBtClear").onclick=()=>{ clearBacktest(); $("btnBtClear").disabled=true; };
   };
 </script>
 </body>
