@@ -3,800 +3,171 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>LiquidCharts Pro — AutoTrader + Backtest Tab</title>
+  <title>LiquidChartsPro Tools</title>
 
+  <!-- LiquidCharts widget framework -->
   <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
   <link rel="stylesheet" href="https://pro.liquidcharts.com/scripts/widget-css">
-
-  <style>
-    html, body { height: 100%; }
-    body.Widget{
-      margin:0;
-      font-family:-apple-system, Segoe UI, Roboto, Arial;
-      background:#f6f7fb; color:#111;
-      overflow:hidden; /* important: let #app own the scroll */
-    }
-
-    /* Global scroll container */
-    #app{
-      height:100vh;
-      overflow-y:auto;
-      overflow-x:hidden;
-      -webkit-overflow-scrolling:touch;
-      padding:12px;
-      padding-top: calc(12px + env(safe-area-inset-top));
-      padding-bottom: calc(12px + env(safe-area-inset-bottom));
-      box-sizing:border-box;
-    }
-
-    .tabs{
-      display:flex; gap:10px;
-      position:sticky; top:0; z-index:10;
-      background:#f6f7fb;
-      padding:8px 0;
-      margin-bottom:8px;
-    }
-    .tabBtn{
-      flex:1;
-      padding:12px 10px;
-      border-radius:14px;
-      border:1px solid rgba(0,0,0,.18);
-      background:#fff;
-      font-weight:900;
-      cursor:pointer;
-      box-shadow: 0 1px 0 rgba(0,0,0,.04);
-      font-size:14px;
-      line-height:1.1;
-      touch-action: manipulation;
-    }
-    .tabBtn.active{
-      background:#2d6cdf; color:#fff; border-color:#2d6cdf;
-      box-shadow: 0 3px 10px rgba(45,108,223,.25);
-    }
-
-    /* Each tab page should have enough height to scroll naturally */
-    .page{
-      min-height: calc(100vh - 90px);
-    }
-
-    .card{
-      background:#fff;
-      border:1px solid rgba(0,0,0,.12);
-      border-radius:16px;
-      padding:14px;
-      margin-bottom:12px;
-      box-shadow: 0 1px 0 rgba(0,0,0,.04);
-    }
-    .title{ font-size:18px; font-weight:1000; margin:0 0 10px 0; }
-    .sub{ font-size:12px; opacity:.75; margin-top:6px; line-height:1.35; }
-
-    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
-    .field{ flex:1; min-width:160px; }
-    label{ display:block; font-size:12px; opacity:.8; margin:0 0 6px 0; font-weight:700; }
-
-    input, select, textarea{
-      width:100%;
-      box-sizing:border-box;
-      padding:12px;
-      font-size:15px;
-      border-radius:14px;
-      border:1px solid rgba(0,0,0,.20);
-      background:#fff;
-      outline:none;
-    }
-    textarea{
-      min-height:150px;
-      resize:vertical;
-      font-family:ui-monospace, Menlo, Consolas, monospace;
-    }
-
-    button{
-      padding:12px 14px;
-      border-radius:14px;
-      border:1px solid rgba(0,0,0,.18);
-      background:#f2f3f7;
-      font-weight:900;
-      cursor:pointer;
-      touch-action: manipulation;
-    }
-    button.primary{ background:#2d6cdf; color:#fff; border-color:#2d6cdf; }
-    button.danger{ background:#e34b4b; color:#fff; border-color:#e34b4b; }
-    button:disabled{ opacity:.55; cursor:not-allowed; }
-
-    .pill{
-      display:inline-block;
-      padding:8px 12px;
-      border-radius:999px;
-      background:#eef1f7;
-      font-weight:900;
-      font-size:12px;
-    }
-    .ok{ background: rgba(0,160,0,.14); }
-    .bad{ background: rgba(220,0,0,.14); }
-    .warn{ background: rgba(255,165,0,.20); }
-
-    /* Make wide content mobile-friendly */
-    .scrollX{
-      overflow-x:auto;
-      -webkit-overflow-scrolling:touch;
-    }
-
-    table{
-      width:100%;
-      border-collapse:collapse;
-      font-size:13px;
-      min-width: 640px; /* forces horizontal scroll on phones */
-    }
-    th, td{
-      padding:8px;
-      border-bottom:1px solid rgba(0,0,0,.10);
-      text-align:center;
-      white-space:nowrap;
-    }
-    th{
-      background: rgba(0,0,0,.05);
-      position:sticky;
-      top:0;
-      z-index:2;
-    }
-    td.left{ text-align:left; }
-
-    #log{
-      background:#0b0b0b;
-      color:#31ff3a;
-      border-radius:14px;
-      padding:12px;
-      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-      white-space:pre-wrap;
-      max-height:45vh;
-      overflow:auto;
-      -webkit-overflow-scrolling:touch;
-    }
-
-    .hidden{ display:none; }
-
-    /* Extra-small phones */
-    @media (max-width: 380px){
-      .tabBtn{ padding:11px 8px; font-size:13px; }
-      .field{ min-width: 140px; }
-    }
-  </style>
+  <link rel="stylesheet" href="./css/app.css">
 </head>
 
 <body class="Widget">
-<div id="app">
+  <div id="app">
 
-  <div class="tabs">
-    <button class="tabBtn active" id="tabHome">Home</button>
-    <button class="tabBtn" id="tabSettings">Settings</button>
-    <button class="tabBtn" id="tabBacktest">Backtest</button>
-    <button class="tabBtn" id="tabTools">Tools</button>
-  </div>
-
-  <!-- HOME -->
-  <div id="pageHome" class="page">
-    <div class="card">
-      <div class="title">AutoTrader Shell (Framework Connected)</div>
-      <div class="row">
-        <div class="field">
-          <label>Status</label>
-          <div class="pill" id="statusPill">Loading framework…</div>
-        </div>
-        <div class="field">
-          <label>ARM</label>
-          <select id="arm">
-            <option value="off" selected>ARM OFF (ticket only)</option>
-            <option value="on">ARM ON (SendOrder)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Refresh (sec)</label>
-          <input id="refreshSec" type="number" min="5" max="300" value="20" />
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:10px;">
-        <button id="btnPing" class="primary" disabled>Ping Framework</button>
-        <button id="btnOpenTicket" disabled>Open Ticket (Chart)</button>
-        <button id="btnSendTest" class="danger" disabled>SendOrder Test (Chart)</button>
-      </div>
-
-      <div class="sub">
-        Backtesting is in the <b>Backtest</b> tab.
-      </div>
+    <div class="tabs">
+      <button class="tabBtn active" data-tab="home">Home</button>
+      <button class="tabBtn" data-tab="settings">Settings</button>
+      <button class="tabBtn" data-tab="strength">Strength</button>
+      <button class="tabBtn" data-tab="backtest">Backtest</button>
+      <button class="tabBtn" data-tab="tools">Tools</button>
     </div>
 
-    <div class="card">
-      <div class="title">Chart Context</div>
-      <div class="sub"><b>Instrument:</b> <span id="ctxInstrument">Unknown</span></div>
-      <div class="sub"><b>Timeframe:</b> <span id="ctxTimeframe">Unknown</span></div>
-    </div>
-  </div>
+    <!-- HOME -->
+    <section class="page" id="page-home">
+      <div class="card">
+        <h1 class="title">LiquidChartsPro Tools</h1>
+        <div class="row">
+          <div class="field">
+            <label>Status</label>
+            <div class="pill" id="statusPill">Loading framework…</div>
+          </div>
+          <div class="field">
+            <label>Instrument (chart)</label>
+            <input id="ctxInstrument" value="Unknown" readonly />
+          </div>
+          <div class="field">
+            <label>Timeframe (chart)</label>
+            <input id="ctxTf" value="Unknown" readonly />
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnPing" class="primary" disabled>Ping Framework</button>
+          <button id="btnReqPrices" disabled>RequestPrices (test)</button>
+        </div>
+      </div>
 
-  <!-- SETTINGS -->
-  <div id="pageSettings" class="page hidden">
-    <div class="card">
-      <div class="title">General Settings</div>
-      <div class="row">
-        <div class="field">
-          <label>Default instrument list (one per line)</label>
-          <textarea id="pairs">EUR/USD
+      <div class="card">
+        <h2 class="title">Log</h2>
+        <div id="log" class="log"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="page hidden" id="page-settings">
+      <div class="card">
+        <h2 class="title">Settings</h2>
+        <label>Pairs universe (instrumentId, one per line)</label>
+        <textarea id="pairs" class="mono" rows="10">EUR/USD
 GBP/USD
 USD/JPY
-USD/CHF
 AUD/USD
 NZD/USD
 USD/CAD
+EUR/GBP
 EUR/JPY
 GBP/JPY
 AUD/JPY
-NZD/JPY
-CAD/JPY
-CHF/JPY
-EUR/GBP
-EUR/AUD
-EUR/NZD
-GBP/AUD
-GBP/NZD
-AUD/NZD
-EUR/CHF
-GBP/CHF</textarea>
-          <div class="sub">Use exact LiquidCharts instrumentIds (like <b>EUR/USD</b>).</div>
-        </div>
+NZD/JPY</textarea>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <!-- BACKTEST -->
-  <div id="pageBacktest" class="page hidden">
-    <div class="card">
-      <div class="title">Backtest (Simple + In-App)</div>
-
-      <div class="row">
-        <div class="field">
-          <label>Universe</label>
-          <select id="btUniverse">
-            <option value="chart">Chart instrument only</option>
-            <option value="list" selected>Use instrument list (Settings)</option>
-          </select>
+    <!-- STRENGTH -->
+    <section class="page hidden" id="page-strength">
+      <div class="card">
+        <h2 class="title">Currency Strength</h2>
+        <div class="row">
+          <div class="field">
+            <label>Timeframe</label>
+            <select id="strengthTf">
+              <option value="300">M5</option>
+              <option value="900" selected>M15</option>
+              <option value="1800">M30</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Candles</label>
+            <input id="strengthCount" type="number" value="500" min="100" max="5000" />
+          </div>
         </div>
-
-        <div class="field">
-          <label>Timeframe</label>
-          <select id="btTf">
-            <option value="60">M1</option>
-            <option value="300">M5</option>
-            <option value="900" selected>M15</option>
-            <option value="1800">M30</option>
-            <option value="3600">H1</option>
-          </select>
+        <div class="btnRow">
+          <button id="btnStrengthRun" class="primary" disabled>Refresh Now</button>
         </div>
-
-        <div class="field">
-          <label>Candles to pull (per instrument)</label>
-          <input id="btCount" type="number" min="200" max="20000" value="2000" />
-        </div>
+        <div class="subtitle" id="strengthStatus">No results yet.</div>
       </div>
 
-      <div class="row" style="margin-top:10px;">
-        <div class="field">
-          <label>Spread model</label>
-          <select id="btSpreadMode">
-            <option value="none" selected>Ignore spread</option>
-            <option value="useQuotes">Use current bid/ask spread (rough)</option>
-          </select>
-          <div class="sub">Simple backtest = approximate fills.</div>
+      <div class="card">
+        <h2 class="title">Strength Table</h2>
+        <div id="strengthTable"></div>
+      </div>
+    </section>
+
+    <!-- BACKTEST -->
+    <section class="page hidden" id="page-backtest">
+      <div class="card">
+        <h2 class="title">Backtest</h2>
+        <div class="row">
+          <div class="field">
+            <label>Timeframe</label>
+            <select id="btTf">
+              <option value="300">M5</option>
+              <option value="900" selected>M15</option>
+              <option value="1800">M30</option>
+              <option value="3600">H1</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Candles per instrument</label>
+            <input id="btCount" type="number" value="2000" min="200" max="30000" />
+          </div>
         </div>
-      </div>
 
-      <div class="row" style="margin-top:10px;">
-        <button id="btnBtRun" class="primary" disabled>Run Backtest</button>
-        <button id="btnBtStop" disabled>Stop</button>
-        <button id="btnBtClear" disabled>Clear Results</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="title">Strategy (JSON)</div>
-      <textarea id="strategyJson">{
-  "name": "MA Cross + ATR SL/TP",
+        <label>Strategy (JSON)</label>
+        <textarea id="btStrategy" class="mono" rows="8">{
   "type": "ma_cross",
-  "params": {
-    "fastMA": 10,
-    "slowMA": 30,
-    "atrLen": 14,
-    "slAtrMult": 1.2,
-    "rr": 2.0
-  }
+  "settings": { "fastMA": 10, "slowMA": 30, "atrLen": 14, "slAtrMult": 1.2, "rr": 2.0 }
 }</textarea>
-      <div class="sub">
-        Supported now: <b>ma_cross</b> (fast/slow SMA cross) with ATR SL and RR TP.
+
+        <div class="btnRow">
+          <button id="btnRunBt" class="primary" disabled>Run Backtest</button>
+          <button id="btnStopBt" disabled>Stop</button>
+          <button id="btnClearBt">Clear</button>
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <div class="title">Summary</div>
-      <div id="btSummary" class="sub">No backtest yet.</div>
-    </div>
+      <div class="card">
+        <h2 class="title">Summary</h2>
+        <div id="btSummary" class="subtitle">No results yet.</div>
+      </div>
 
-    <div class="card">
-      <div class="title">Top Instruments</div>
-      <div id="btTop" class="scrollX"></div>
-      <div class="sub">Ranks by total P/L in “R” and win rate.</div>
-    </div>
+      <div class="card">
+        <h2 class="title">Trades</h2>
+        <div id="btTrades"></div>
+      </div>
+    </section>
 
-    <div class="card">
-      <div class="title">Trades (first 200)</div>
-      <div id="btTrades" class="scrollX"></div>
-    </div>
+    <!-- TOOLS -->
+    <section class="page hidden" id="page-tools">
+      <div class="card">
+        <h2 class="title">Tools</h2>
+        <div class="btnRow">
+          <button id="btnHealth" disabled>Health Check</button>
+          <button id="btnClearLog" disabled>Clear Log</button>
+        </div>
+      </div>
+    </section>
+
   </div>
 
-  <!-- TOOLS -->
-  <div id="pageTools" class="page hidden">
-    <div class="card">
-      <div class="title">Tools / Diagnostic</div>
-      <div class="row">
-        <button id="btnHealth" disabled>Health Check</button>
-        <button id="btnClearLog" disabled>Clear Log</button>
-      </div>
-      <div class="sub">Verifies candles + core APIs.</div>
-    </div>
+  <!-- JS modules -->
+  <script src="./js/ui-tabs.js"></script>
+  <script src="./js/util-format.js"></script>
+  <script src="./js/util-indicators.js"></script>
+  <script src="./js/lc-framework.js"></script>
 
-    <div class="card">
-      <div class="title">Log</div>
-      <div id="log"></div>
-    </div>
-  </div>
+  <script src="./js/engine-strength.js"></script>
+  <script src="./js/engine-backtest.js"></script>
+  <script src="./js/engine-autotrader.js"></script>
 
-</div>
-
-<script>
-  var Framework = new Sway.Framework();
-  const $ = (id)=>document.getElementById(id);
-
-  let stopFlag=false;
-
-  function ts(){
-    const d=new Date(), pad=n=>(n<10?"0":"")+n;
-    let h=d.getHours(), m=d.getMinutes(), s=d.getSeconds();
-    const ampm=h>=12?"PM":"AM"; h=h%12; if(h===0) h=12;
-    return `[${h}:${pad(m)}:${pad(s)} ${ampm}]`;
-  }
-  function log(msg){
-    $("log").textContent = `${ts()} ${msg}\n` + $("log").textContent;
-  }
-  function setStatus(text, kind){
-    const pill=$("statusPill");
-    pill.textContent=text;
-    pill.className="pill " + (kind||"");
-  }
-  function safeJson(x){ try{return JSON.stringify(x);}catch(e){return "(unstringifiable)";} }
-  function parsePairs(){ return $("pairs").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean); }
-  function armed(){ return $("arm").value==="on"; }
-
-  function tfLabel(sec){
-    sec = parseInt(sec,10);
-    if(sec===60) return "M1";
-    if(sec===300) return "M5";
-    if(sec===900) return "M15";
-    if(sec===1800) return "M30";
-    if(sec===3600) return "H1";
-    return sec+"s";
-  }
-
-  async function requestCandles(instrumentId, timeframe, count){
-    if (Framework.pRequestCandles){
-      return await Framework.pRequestCandles({ instrumentId, timeframe, count, streaming:false });
-    }
-    return await new Promise((resolve) => {
-      Framework.RequestCandles({ instrumentId, timeframe, count, streaming:false }, (m)=>resolve(m));
-    });
-  }
-
-  function toChronClosed(candles){
-    if(!candles || !candles.length) return [];
-    const arr = candles.slice(1); // drop forming bar
-    return arr.reverse(); // oldest->newest
-  }
-
-  function sma(values, len){
-    const out = new Array(values.length).fill(null);
-    if(len<=1) return values.slice();
-    let sum=0;
-    for(let i=0;i<values.length;i++){
-      sum += values[i];
-      if(i>=len) sum -= values[i-len];
-      if(i>=len-1) out[i] = sum/len;
-    }
-    return out;
-  }
-
-  function trueRange(prev, cur){
-    const hi=cur.h, lo=cur.l, pc=prev.c;
-    return Math.max(hi-lo, Math.abs(hi-pc), Math.abs(lo-pc));
-  }
-
-  function atr(candlesChron, len){
-    const out = new Array(candlesChron.length).fill(null);
-    if(candlesChron.length < len+1) return out;
-    const tr = new Array(candlesChron.length).fill(null);
-    for(let i=1;i<candlesChron.length;i++){
-      tr[i] = trueRange(candlesChron[i-1], candlesChron[i]);
-    }
-    const trVals = tr.map(x => x==null ? 0 : x);
-    const atrSma = sma(trVals, len);
-    for(let i=0;i<atrSma.length;i++){
-      if(i>=len) out[i]=atrSma[i];
-    }
-    return out;
-  }
-
-  function parseStrategy(){
-    let obj=null;
-    try{ obj = JSON.parse($("strategyJson").value); }
-    catch(e){ throw new Error("Strategy JSON invalid: " + (e.message||String(e))); }
-    if(!obj || !obj.type) throw new Error("Strategy JSON must include 'type'");
-    obj.params = obj.params || {};
-    return obj;
-  }
-
-  function computeSignals_ma_cross(candlesChron, params){
-    const fast = parseInt(params.fastMA||10,10);
-    const slow = parseInt(params.slowMA||30,10);
-    const closes = candlesChron.map(c=>c.c);
-    const f = sma(closes, fast);
-    const s = sma(closes, slow);
-    const sigs=[];
-    for(let i=1;i<candlesChron.length;i++){
-      if(f[i-1]==null || s[i-1]==null || f[i]==null || s[i]==null) continue;
-      const prevDiff = f[i-1] - s[i-1];
-      const diff = f[i] - s[i];
-      if(prevDiff<=0 && diff>0) sigs.push({i, dir:"BUY"});
-      if(prevDiff>=0 && diff<0) sigs.push({i, dir:"SELL"});
-    }
-    return sigs;
-  }
-
-  function backtestOneInstrument(instrumentId, candlesChron, strategy){
-    const p = strategy.params || {};
-    const atrLen = parseInt(p.atrLen||14,10);
-    const slAtrMult = parseFloat(p.slAtrMult||1.2);
-    const rr = parseFloat(p.rr||2.0);
-
-    const atrArr = atr(candlesChron, atrLen);
-
-    let signals=[];
-    if(strategy.type==="ma_cross") signals = computeSignals_ma_cross(candlesChron, p);
-    else throw new Error("Unsupported strategy type: " + strategy.type);
-
-    const trades=[];
-    let pos=null;
-    let sigPtr=0;
-
-    for(let i=0;i<candlesChron.length;i++){
-      if(stopFlag) break;
-      const bar = candlesChron[i];
-
-      if(!pos){
-        while(sigPtr < signals.length && signals[sigPtr].i < i) sigPtr++;
-        if(sigPtr < signals.length && signals[sigPtr].i === i){
-          const sig = signals[sigPtr];
-          const a = atrArr[i];
-          if(a==null || a<=0){ sigPtr++; continue; }
-
-          const entry = bar.c;
-          const risk = a * slAtrMult;
-          const sl = sig.dir==="BUY" ? (entry - risk) : (entry + risk);
-          const tp = sig.dir==="BUY" ? (entry + risk*rr) : (entry - risk*rr);
-
-          pos = { dir:sig.dir, entry, sl, tp, entryIndex:i, risk };
-          sigPtr++;
-        }
-      } else {
-        const hi = bar.h, lo = bar.l;
-        let exit=null;
-
-        if(pos.dir==="BUY"){
-          if(lo <= pos.sl) exit = {price: pos.sl, reason:"SL"};
-          else if(hi >= pos.tp) exit = {price: pos.tp, reason:"TP"};
-        }else{
-          if(hi >= pos.sl) exit = {price: pos.sl, reason:"SL"};
-          else if(lo <= pos.tp) exit = {price: pos.tp, reason:"TP"};
-        }
-
-        if(exit){
-          const pnl = (pos.dir==="BUY") ? (exit.price - pos.entry) : (pos.entry - exit.price);
-          const r = pos.risk>0 ? (pnl / pos.risk) : 0;
-
-          trades.push({
-            instrumentId,
-            dir: pos.dir,
-            entryIndex: pos.entryIndex,
-            exitIndex: i,
-            entry: pos.entry,
-            exit: exit.price,
-            reason: exit.reason,
-            r
-          });
-          pos=null;
-        }
-      }
-    }
-
-    let wins=0, losses=0, sumR=0;
-    for(const t of trades){
-      sumR += t.r;
-      if(t.r>0) wins++; else losses++;
-    }
-    const total = trades.length;
-    const winRate = total ? (wins/total)*100 : 0;
-
-    return { instrumentId, trades, totalTrades: total, wins, losses, winRate, sumR, avgR: total ? (sumR/total) : 0 };
-  }
-
-  function renderSummary(overall){
-    $("btSummary").innerHTML = `
-      <div class="row">
-        <span class="pill ${overall.totalTrades? "ok":"warn"}">Trades: ${overall.totalTrades}</span>
-        <span class="pill">Win%: ${overall.winRate.toFixed(1)}%</span>
-        <span class="pill">Total R: ${overall.sumR.toFixed(2)}</span>
-        <span class="pill">Avg R: ${overall.avgR.toFixed(3)}</span>
-        <span class="pill">Instruments: ${overall.instruments}</span>
-      </div>
-      <div class="sub" style="margin-top:8px;">
-        Strategy: <b>${overall.strategyName}</b> (${overall.strategyType}) • TF: <b>${overall.tf}</b> • Candles: <b>${overall.count}</b>
-      </div>
-    `;
-  }
-
-  function renderTop(results){
-    const rows = results.slice().sort((a,b)=>b.sumR-a.sumR);
-    let html = `<table><thead>
-      <tr><th>Rank</th><th>Instrument</th><th>Trades</th><th>Win%</th><th>Total R</th><th>Avg R</th></tr>
-    </thead><tbody>`;
-    rows.forEach((r,idx)=>{
-      html += `<tr>
-        <td>${idx+1}</td>
-        <td class="left"><b>${r.instrumentId}</b></td>
-        <td>${r.totalTrades}</td>
-        <td>${r.winRate.toFixed(1)}%</td>
-        <td>${r.sumR.toFixed(2)}</td>
-        <td>${r.avgR.toFixed(3)}</td>
-      </tr>`;
-    });
-    html += `</tbody></table>`;
-    $("btTop").innerHTML = html;
-  }
-
-  function renderTrades(allTrades){
-    const take = allTrades.slice(0,200);
-    let html = `<table><thead>
-      <tr><th>#</th><th>Instrument</th><th>Dir</th><th>EntryIdx</th><th>ExitIdx</th><th>Entry</th><th>Exit</th><th>Exit</th><th>R</th></tr>
-    </thead><tbody>`;
-    take.forEach((t,idx)=>{
-      const pillClass = t.r>=0 ? "ok" : "bad";
-      html += `<tr>
-        <td>${idx+1}</td>
-        <td class="left"><b>${t.instrumentId}</b></td>
-        <td>${t.dir}</td>
-        <td>${t.entryIndex}</td>
-        <td>${t.exitIndex}</td>
-        <td>${t.entry.toFixed(5)}</td>
-        <td>${t.exit.toFixed(5)}</td>
-        <td>${t.reason}</td>
-        <td><span class="pill ${pillClass}">${t.r.toFixed(2)}</span></td>
-      </tr>`;
-    });
-    html += `</tbody></table>`;
-    $("btTrades").innerHTML = html;
-  }
-
-  async function runBacktest(){
-    stopFlag=false;
-    $("btnBtRun").disabled=true;
-    $("btnBtStop").disabled=false;
-
-    const tf = parseInt($("btTf").value,10);
-    const count = Math.max(200, parseInt($("btCount").value||"2000",10));
-
-    let universe=[];
-    if($("btUniverse").value==="chart"){
-      const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
-      if(!inst) throw new Error("Chart instrument not available (try Universe: list).");
-      universe=[inst];
-    }else{
-      universe=parsePairs();
-    }
-
-    const strategy = parseStrategy();
-    log(`🧪 Backtest start: universe=${universe.length} tf=${tfLabel(tf)} count=${count} strategy=${strategy.type}`);
-
-    const results=[];
-    const allTrades=[];
-
-    for(const instrumentId of universe){
-      if(stopFlag) break;
-
-      try{
-        const msg = await requestCandles(instrumentId, tf, count);
-        const candles = msg && msg.candles ? msg.candles : null;
-        const chron = toChronClosed(candles);
-        if(chron.length < 200){
-          log(`⚠️ ${instrumentId}: not enough candles (${chron.length})`);
-          results.push({ instrumentId, trades:[], totalTrades:0, wins:0, losses:0, winRate:0, sumR:0, avgR:0 });
-          continue;
-        }
-
-        const r = backtestOneInstrument(instrumentId, chron, strategy);
-        results.push(r);
-        for(const t of r.trades) allTrades.push(t);
-
-        log(`✅ ${instrumentId}: trades=${r.totalTrades} win%=${r.winRate.toFixed(1)} totalR=${r.sumR.toFixed(2)}`);
-      }catch(e){
-        log(`❌ ${instrumentId}: ${e.message || String(e)}`);
-        results.push({ instrumentId, trades:[], totalTrades:0, wins:0, losses:0, winRate:0, sumR:0, avgR:0 });
-      }
-    }
-
-    let totalTrades=0, wins=0, losses=0, sumR=0;
-    results.forEach(r=>{
-      totalTrades += r.totalTrades;
-      wins += r.wins;
-      losses += r.losses;
-      sumR += r.sumR;
-    });
-
-    const overall = {
-      instruments: results.length,
-      totalTrades,
-      wins, losses,
-      winRate: totalTrades ? (wins/totalTrades)*100 : 0,
-      sumR,
-      avgR: totalTrades ? (sumR/totalTrades) : 0,
-      tf: tfLabel(tf),
-      count,
-      strategyName: strategy.name || "Unnamed",
-      strategyType: strategy.type
-    };
-
-    renderSummary(overall);
-    renderTop(results);
-    renderTrades(allTrades);
-
-    log(`🏁 Backtest done. trades=${overall.totalTrades} win%=${overall.winRate.toFixed(1)} totalR=${overall.sumR.toFixed(2)}`);
-
-    $("btnBtRun").disabled=false;
-    $("btnBtStop").disabled=true;
-    $("btnBtClear").disabled=false;
-  }
-
-  function stopBacktest(){
-    stopFlag=true;
-    log("🛑 Stop requested.");
-    $("btnBtStop").disabled=true;
-    $("btnBtRun").disabled=false;
-  }
-
-  function clearBacktest(){
-    $("btSummary").textContent="No backtest yet.";
-    $("btTop").innerHTML="";
-    $("btTrades").innerHTML="";
-    log("🧹 Backtest results cleared.");
-  }
-
-  function setTab(which){
-    ["Home","Settings","Backtest","Tools"].forEach(x=>{
-      $("tab"+x).classList.remove("active");
-      $("page"+x).classList.add("hidden");
-    });
-    $("tab"+which).classList.add("active");
-    $("page"+which).classList.remove("hidden");
-  }
-
-  function healthCheck(){
-    try{
-      const hasCandles = !!(Framework.pRequestCandles || Framework.RequestCandles);
-      const hasSendOrder = typeof Framework.SendOrder === "function";
-      log("=== HEALTH CHECK ===");
-      log("Candles API: " + (hasCandles?"✅":"❌"));
-      log("SendOrder: " + (hasSendOrder?"✅":"❌"));
-      log("====================");
-      setStatus("Ready", "ok");
-    }catch(e){
-      log("Health check failed: " + (e.message||String(e)));
-      setStatus("Ready", "warn");
-    }
-  }
-
-  function pingFramework(){
-    try{
-      log("Ping clicked.");
-      log("RequestPrices exists " + (typeof Framework.RequestPrices==="function" ? "✅" : "❌"));
-      setStatus("Framework responding", "ok");
-    }catch(e){
-      setStatus("Framework error", "bad");
-      log("Ping error: " + (e.message||String(e)));
-    }
-  }
-
-  function openTicketChart(){
-    try{
-      const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
-      if(!inst){ log("Chart instrument unknown."); return; }
-      Framework.CreateDialog({ type:"dealticket", settings:{ instrumentId: inst }});
-      log(`✅ DealTicket opened for ${inst}`);
-    }catch(e){
-      log("Ticket error: " + (e.message||String(e)));
-    }
-  }
-
-  function sendOrderTestChart(){
-    try{
-      const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
-      if(!inst){ log("Chart instrument unknown."); return; }
-      if(!armed()){
-        log("🛡️ ARM OFF → ticket only (turn ARM ON to SendOrder)");
-        openTicketChart();
-        return;
-      }
-      const action = Liquid.OrderTypes.BUY;
-      const def = { instrumentId: inst, tradingAction: action, volume:{ lots: 0.01 } };
-      Framework.SendOrder(def, function(res){
-        log("↩️ SendOrder result=" + safeJson(res));
-      });
-      log(`🚀 SendOrder BUY ${inst} lots=0.01`);
-    }catch(e){
-      log("SendOrder error: " + (e.message||String(e)));
-    }
-  }
-
-  Framework.OnLoad = function(){
-    log("✅ Framework loaded");
-    setStatus("Ready", "ok");
-
-    try{
-      const inst = (Framework && Framework.Instrument && Framework.Instrument.id) ? Framework.Instrument.id : null;
-      $("ctxInstrument").textContent = inst || "Unknown";
-    }catch(e){}
-    try{
-      const tf = (Framework && Framework.TimeFrame && Framework.TimeFrame.seconds) ? Framework.TimeFrame.seconds : null;
-      $("ctxTimeframe").textContent = tf ? tfLabel(tf) : "Unknown";
-    }catch(e){}
-
-    $("btnPing").disabled=false;
-    $("btnOpenTicket").disabled=false;
-    $("btnSendTest").disabled=false;
-
-    $("btnHealth").disabled=false;
-    $("btnClearLog").disabled=false;
-
-    $("btnBtRun").disabled=false;
-    $("btnBtStop").disabled=true;
-    $("btnBtClear").disabled=true;
-
-    $("tabHome").onclick=()=>setTab("Home");
-    $("tabSettings").onclick=()=>setTab("Settings");
-    $("tabBacktest").onclick=()=>setTab("Backtest");
-    $("tabTools").onclick=()=>setTab("Tools");
-
-    $("btnPing").onclick=pingFramework;
-    $("btnOpenTicket").onclick=openTicketChart;
-    $("btnSendTest").onclick=sendOrderTestChart;
-
-    $("btnHealth").onclick=healthCheck;
-    $("btnClearLog").onclick=()=>{ $("log").textContent=""; };
-
-    $("btnBtRun").onclick=async ()=>{
-      try{ await runBacktest(); }
-      catch(e){
-        log("❌ Backtest error: " + (e.message||String(e)));
-        $("btnBtRun").disabled=false;
-        $("btnBtStop").disabled=true;
-      }
-    };
-    $("btnBtStop").onclick=stopBacktest;
-    $("btnBtClear").onclick=()=>{ clearBacktest(); $("btnBtClear").disabled=true; };
-  };
-</script>
+  <script src="./js/app.js"></script>
 </body>
 </html>
