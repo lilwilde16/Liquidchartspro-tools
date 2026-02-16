@@ -1,0 +1,17 @@
+Top 8 parameter sets (portfolio-average):
+ combo_id  fast  slow  atr_stop  allow_short  avg_cagr  avg_max_dd  avg_sharpe  avg_win_rate  avg_total_return
+       31    50   300     1.500        False     0.291      -3.512       0.197        58.879             4.366
+       40   100   200     3.000         True     0.714     -11.892       0.187        36.754            11.160
+        4    20   100     3.000         True     0.971     -17.353       0.178        35.762            15.876
+       38   100   200     2.000         True     0.477      -8.168       0.166        39.803             7.259
+        3    20   100     2.000        False     0.569      -9.683       0.165        40.509             9.674
+       22    50   100     3.000         True     0.550     -18.224       0.138        38.347             9.555
+        2    20   100     2.000         True     0.897     -12.994       0.138        38.649            17.656
+       14    20   300     2.000         True     0.434     -11.014       0.134        42.631             6.657
+
+Best set by pair:
+    pair  bars  trades  win_rate  cagr  max_dd  sharpe  total_return
+EURUSD=X  3675       7    71.429 0.463  -4.042   0.303         6.974
+GBPUSD=X  3677       7    57.143 0.068  -2.651   0.054         0.991
+USDJPY=X  3676       8    62.500 0.499  -2.931   0.346         7.537
+AUDUSD=X  3676       9    44.444 0.133  -4.422   0.087         1.960

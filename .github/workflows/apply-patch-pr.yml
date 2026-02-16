@@ -1,0 +1,67 @@
+name: Apply Patch and Open PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: "Branch name to create/update"
+        required: true
+        default: "ai-updates"
+      commit_message:
+        description: "Commit message"
+        required: true
+        default: "Apply AI updates"
+      patch_base64:
+        description: "Base64-encoded unified diff patch"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  apply_patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create or switch to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="${{ github.event.inputs.branch_name }}"
+          git checkout -B "$BRANCH"
+
+      - name: Decode patch
+        run: |
+          echo "${{ github.event.inputs.patch_base64 }}" | base64 -d > changes.patch
+
+      - name: Apply patch
+        run: |
+          git apply --whitespace=fix changes.patch
+
+      - name: Commit changes
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "${{ github.event.inputs.commit_message }}"
+
+      - name: Push branch
+        run: |
+          BRANCH="${{ github.event.inputs.branch_name }}"
+          git push -u origin "$BRANCH" --force
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.event.inputs.branch_name }}
+          title: ${{ github.event.inputs.commit_message }}
+          body: "Automated PR created by GitHub Actions from an AI patch."
+          base: ${{ github.ref_name }}
