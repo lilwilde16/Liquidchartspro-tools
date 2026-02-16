@@ -9,7 +9,7 @@ html, body{
 body.Widget{
   margin:0;
   font-family:-apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background:linear-gradient(180deg,#eef3ff 0%,#f6f8fc 45%,#eef4ff 100%);
+  background:linear-gradient(180deg,#fff8e3 0%,#fff3cc 45%,#f6f8fc 100%);
   color:#111827;
   min-height:100dvh;
   overflow-x:hidden;
@@ -40,7 +40,7 @@ body.Widget{
   position:sticky;
   top:0;
   z-index:30;
-  background:linear-gradient(180deg,#eef3ff 0%,#f6f8fc 45%,#eef4ff 100%);
+  background:linear-gradient(180deg,#fff8e3 0%,#fff3cc 45%,#f6f8fc 100%);
   padding:10px 0;
   overflow-x:auto;
 }
@@ -163,3 +163,7 @@ td.left{text-align:left;}
 .modern-note{border-left:4px solid #2d6cdf; background:linear-gradient(180deg,#ffffff,#f7fbff);}
 
 #atStatus{margin-top:8px; font-weight:700;}
+
+.home-gold{background:linear-gradient(145deg,#fff8dc 0%,#ffe8a3 55%,#ffd46b 100%); border-color:#e6bf52; box-shadow:0 12px 30px rgba(191,138,19,.25);}
+.home-gold .title{color:#7a4b00;}
+.home-gold .subtitle{color:#7a5908;}

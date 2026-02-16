@@ -21,9 +21,9 @@
     </div>
 
     <section class="page" id="page-home">
-      <div class="card">
+      <div class="card home-gold">
         <h1 class="title">LiquidChartsPro Tools</h1>
-        <div class="subtitle" id="homeProofText">A streamlined control panel for framework checks, strength scans, and quick backtest planning.</div>
+        <div class="subtitle" id="homeProofText">A gold-standard control panel for framework checks, smart strength scanning, adaptive auto-trading, and sharp backtest planning.</div>
         <div class="row">
           <div class="field">
             <label>Status</label>
@@ -49,99 +49,6 @@
         <div id="log" class="log"></div>
       </div>
 
-      <div class="card">
-        <h2 class="title">Auto Trader (Mon-Fri)</h2>
-        <div class="subtitle">Uses strength ranking + supply/demand zone confirmation. No strategy is foolproof; keep ARM OFF until forward-tested.</div>
-        <div class="row">
-          <div class="field">
-            <label>Signal timeframe</label>
-            <select id="atTf">
-              <option value="M5">M5</option>
-              <option value="M15" selected>M15</option>
-              <option value="M30">M30</option>
-              <option value="H1">H1</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Candles per scan</label>
-            <input id="atCandles" type="number" value="500" min="200" max="3000" step="50" />
-          </div>
-          <div class="field">
-            <label>Scan interval (sec)</label>
-            <input id="atPollSec" type="number" value="120" min="30" max="3600" step="10" />
-          </div>
-          <div class="field">
-            <label>Lots</label>
-            <input id="atLots" type="number" value="0.01" min="0.01" step="0.01" />
-          </div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label>Risk:Reward</label>
-            <input id="atRr" type="number" value="1.5" min="1" max="4" step="0.1" />
-          </div>
-          <div class="field">
-            <label>SL ATR multiple</label>
-            <input id="atSlAtr" type="number" value="1.1" min="0.5" max="4" step="0.1" />
-          </div>
-          <div class="field">
-            <label>Use Mon-Fri schedule</label>
-            <select id="atUseSchedule">
-              <option value="yes" selected>Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Risk profile</label>
-            <select id="atRiskMode">
-              <option value="conservative" selected>Conservative</option>
-              <option value="balanced">Balanced</option>
-            </select>
-          </div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label>Start hour UTC</label>
-            <input id="atStartHour" type="number" value="6" min="0" max="23" step="1" />
-          </div>
-          <div class="field">
-            <label>End hour UTC</label>
-            <input id="atEndHour" type="number" value="20" min="0" max="23" step="1" />
-          </div>
-          <div class="field">
-            <label>Max trades / day</label>
-            <input id="atMaxTradesDay" type="number" value="4" min="1" max="20" step="1" />
-          </div>
-          <div class="field">
-            <label>Cooldown (min)</label>
-            <input id="atCooldownMin" type="number" value="45" min="1" max="240" step="1" />
-          </div>
-        </div>
-        <div class="btnRow">
-          <button id="btnAutoStart" class="primary" disabled>Start Auto Trader</button>
-          <button id="btnAutoStop" disabled>Stop Auto Trader</button>
-        </div>
-        <div class="subtitle" id="atStatus">Stopped.</div>
-      </div>
-
-    </section>
-
-    <section class="page hidden" id="page-settings">
-      <div class="card">
-        <h2 class="title">Settings</h2>
-        <label>Pairs universe (instrumentId, one per line)</label>
-        <textarea id="pairs" class="mono" rows="10">EUR/USD
-GBP/USD
-USD/JPY
-AUD/USD
-NZD/USD
-USD/CAD
-EUR/GBP
-EUR/JPY
-GBP/JPY
-AUD/JPY
-NZD/JPY</textarea>
-      </div>
     </section>
 
     <section class="page hidden" id="page-strength">
@@ -470,12 +377,34 @@ Filter: Optional long-only via Allow short trades toggle</textarea>
             <input id="atEndHour" type="number" value="20" min="0" max="23" step="1" />
           </div>
           <div class="field">
+            <label>Volatile window start UTC</label>
+            <input id="atVolStart" type="number" value="12" min="0" max="23" step="1" />
+          </div>
+          <div class="field">
+            <label>Volatile window end UTC</label>
+            <input id="atVolEnd" type="number" value="16" min="0" max="23" step="1" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
             <label>Max trades / day</label>
             <input id="atMaxTradesDay" type="number" value="4" min="1" max="20" step="1" />
           </div>
           <div class="field">
             <label>Cooldown (min)</label>
             <input id="atCooldownMin" type="number" value="45" min="1" max="240" step="1" />
+          </div>
+          <div class="field">
+            <label>Adaptive learning</label>
+            <select id="atLearning">
+              <option value="on" selected>ON</option>
+              <option value="off">OFF</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Minimum confidence</label>
+            <input id="atMinConfidence" type="number" value="0.58" min="0.4" max="0.9" step="0.01" />
           </div>
         </div>
         <div class="btnRow">
