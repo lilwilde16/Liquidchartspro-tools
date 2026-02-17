@@ -59,7 +59,6 @@
     select.onchange = ()=>applyStrategyToForm(registry.byId[select.value]);
   }
 
-
   function initBacktestDateDefaults(){
     const end = new Date();
     const start = new Date(end.getTime() - (1000 * 60 * 60 * 24 * 30));
@@ -123,6 +122,81 @@
     window.LC = window.LC || {};
     window.LC.refreshBacktestMarkets = populateBacktestMarkets;
     window.LC.refreshBacktestStrategies = populateStrategyDropdown;
+
+    const SETTINGS_KEY = "lc_settings_v1";
+    const settingsFields = ["pairs"];
+
+    window.getSettings = () => {
+      try {
+        return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {};
+      } catch (e) {
+        console.warn("Settings: failed to parse localStorage", e);
+        return {};
+      }
+    };
+
+    window.setSettings = (partial = {}) => {
+      const current = window.getSettings();
+      const next = { ...current, ...partial };
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      return next;
+    };
+
+    window.applySettingsToUI = () => {
+      const s = window.getSettings();
+      settingsFields.forEach((id) => {
+        const el = $(id);
+        if (!el) {
+          console.warn(`Settings: missing element #${id}`);
+          return;
+        }
+        if (s[id] !== undefined) el.value = s[id];
+      });
+    };
+
+    window.readUIToSettings = () => {
+      const out = {};
+      settingsFields.forEach((id) => {
+        const el = $(id);
+        if (!el) {
+          console.warn(`Settings: missing element #${id}`);
+          return;
+        }
+        out[id] = el.value;
+      });
+      return out;
+    };
+
+    const status = $("settingsStatus");
+    const saveBtn = $("saveSettings");
+    const showSaved = () => {
+      if (status) status.textContent = "Saved.";
+      if (status) setTimeout(() => { status.textContent = ""; }, 1200);
+    };
+
+    if (saveBtn) {
+      saveBtn.onclick = () => {
+        window.setSettings(window.readUIToSettings());
+        showSaved();
+      };
+    } else {
+      console.warn("Settings: missing #saveSettings");
+    }
+
+    let saveTimer = null;
+    settingsFields.forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          window.setSettings(window.readUIToSettings());
+          showSaved();
+        }, 300);
+      });
+    });
+
+    window.applySettingsToUI();
   }
 
   if(document.readyState === "loading"){
