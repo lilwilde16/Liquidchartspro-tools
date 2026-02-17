@@ -81,6 +81,8 @@
   // ---- Framework bootstrap
   renderShell();
 
+  console.log("hey");
+
   let Framework = null;
   try {
     Framework = new Sway.Framework();
