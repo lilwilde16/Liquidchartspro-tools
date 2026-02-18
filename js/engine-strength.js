@@ -121,13 +121,13 @@
     const slopeNorm = slope / Math.max(atrPct, ATR_PCT_FLOOR);
 
     // RSI spread (per pair as proxy)
+    // TODO: Current implementation uses pair RSI as a simplified proxy for base-quote currency
+    // strength difference. A more accurate approach would compute per-currency RSI across all
+    // pairs and calculate the actual base-quote spread. This is a known limitation.
     let rsiSpread = 0;
     if(USE_RSI && window.UTIL?.rsi){
       const rsi7 = window.UTIL.rsi(close, 7);
       const rsiVal = rsi7[i];
-      // Proxy: use pair's RSI as base-quote spread indicator
-      // For a proper implementation, we'd compute RSI per currency across all pairs
-      // For now, this is a simplified approach
       if(Number.isFinite(rsiVal)){
         rsiSpread = (rsiVal - 50) / 50; // normalize to [-1, 1]
       }
@@ -148,6 +148,15 @@
   }
 
   function compositeTFScore(tfMetrics, pairMetrics){
+    // Composite score weights for blended mode: RSI 35%, trend 35%, return 30%
+    const WEIGHT_RSI = 0.35;
+    const WEIGHT_TREND_BLENDED = 0.35;
+    const WEIGHT_RETURN_BLENDED = 0.30;
+    // Non-RSI mode weights: slope 40%, trend 30%, return 30%
+    const WEIGHT_SLOPE = 0.40;
+    const WEIGHT_TREND_SIMPLE = 0.30;
+    const WEIGHT_RETURN_SIMPLE = 0.30;
+
     // Cross-pair z-normalization for this TF
     const slopeNorms = pairMetrics.map((m)=>m.slopeNorm);
     const weightedReturns = pairMetrics.map((m)=>m.weightedReturn);
@@ -160,9 +169,9 @@
     return pairMetrics.map((m, idx)=>{
       let composite;
       if(USE_RSI && COMPOSITE_MODE === "blended"){
-        composite = 0.35 * rsiSpreadZ[idx] + 0.35 * m.trendRatio + 0.30 * weightedReturnZ[idx];
+        composite = WEIGHT_RSI * rsiSpreadZ[idx] + WEIGHT_TREND_BLENDED * m.trendRatio + WEIGHT_RETURN_BLENDED * weightedReturnZ[idx];
       } else {
-        composite = 0.4 * slopeZ[idx] + 0.3 * m.trendRatio + 0.3 * weightedReturnZ[idx];
+        composite = WEIGHT_SLOPE * slopeZ[idx] + WEIGHT_TREND_SIMPLE * m.trendRatio + WEIGHT_RETURN_SIMPLE * weightedReturnZ[idx];
       }
       return {
         ...m,

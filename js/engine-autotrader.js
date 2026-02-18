@@ -279,6 +279,12 @@
     };
   }
 
+  // Spread thresholds
+  const JPY_FALLBACK_SPREAD = 0.03;       // Fallback spread for JPY pairs when market data unavailable
+  const STANDARD_FALLBACK_SPREAD = 0.0003; // Fallback spread for standard pairs
+  const JPY_SPREAD_THRESHOLD = 0.04;       // Max acceptable spread for JPY pairs
+  const STANDARD_SPREAD_THRESHOLD = 0.0004; // Max acceptable spread for standard pairs
+
   function getSpread(pair){
     try{
       const market = window.LC?.Framework?.Instruments?.getOrBlank?.(pair);
@@ -287,9 +293,17 @@
       }
     }catch(_){}
     // Fallback pip caps by pair type
-    if(pair.includes("JPY")) return 0.03;
-    return 0.0003;
+    if(pair.includes("JPY")) return JPY_FALLBACK_SPREAD;
+    return STANDARD_FALLBACK_SPREAD;
   }
+
+  // Confidence formula weights
+  const CONF_WEIGHT_VOL = 0.25;       // Volatility score weight
+  const CONF_WEIGHT_SHARP = 0.25;     // Sharpness/trend ratio weight
+  const CONF_WEIGHT_STRENGTH = 0.25;  // Currency strength weight
+  const CONF_WEIGHT_REGIME = 0.12;    // H1 trend confirmation weight
+  const CONF_WEIGHT_SPREAD_PEN = 0.10; // Spread penalty weight
+  const CONF_WEIGHT_LEARNING = 0.23;  // Learning/hit rate weight
 
   function scoreCandidate(m, c){
     if(m.dir === 0) return { confidence: 0, reason: "no zone rejection" };
@@ -341,8 +355,7 @@
 
     // Spread filtering
     const spreadNow = getSpread(m.pair);
-    // Simple check: if spread unusually high, skip (would need median tracking for proper implementation)
-    const spreadThreshold = m.pair.includes("JPY") ? 0.04 : 0.0004;
+    const spreadThreshold = m.pair.includes("JPY") ? JPY_SPREAD_THRESHOLD : STANDARD_SPREAD_THRESHOLD;
     if(spreadNow > spreadThreshold) return { confidence: 0, reason: "spread too high" };
 
     const learn = pairLearningScore(m.pair, c);
@@ -353,14 +366,14 @@
     // Spread penalty (normalized spread cost)
     const spreadPenalty = Math.min(0.2, spreadNow / 0.001);
 
-    // Confidence formula
+    // Confidence formula with documented weights
     const confidence =
-      (0.25 * m.volScore) +
-      (0.25 * m.sharpScore) +
-      (0.25 * Math.min(1, Math.max(0, Math.abs(sb.score)))) +
-      (0.12 * regimeConfirm) -
-      (0.10 * spreadPenalty) +
-      (0.23 * learn);
+      (CONF_WEIGHT_VOL * m.volScore) +
+      (CONF_WEIGHT_SHARP * m.sharpScore) +
+      (CONF_WEIGHT_STRENGTH * Math.min(1, Math.max(0, Math.abs(sb.score)))) +
+      (CONF_WEIGHT_REGIME * regimeConfirm) -
+      (CONF_WEIGHT_SPREAD_PEN * spreadPenalty) +
+      (CONF_WEIGHT_LEARNING * learn);
 
     return {
       confidence: Math.max(0, Math.min(1, confidence)),
@@ -400,9 +413,12 @@
 
     window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} | conf=${candidate.confidence.toFixed(2)} | TP=${tpDistance.toFixed(5)} SL=${slDistance.toFixed(5)}`);
     
-    // TODO: Implement partial TP and trailing stop via order monitoring
-    // This would require tracking open orders and modifying them based on price movement
-    // For now, the basic order is placed with initial TP/SL
+    // TODO: Implement partial TP and trailing stops via order monitoring
+    // This requires tracking open orders and modifying them based on price movement:
+    // - Close 50% at 1R profit
+    // - Trail remaining 50% with ATR 0.9×
+    // - Move SL to breakeven at 0.8R using LC.api.changeOrderTPSL if available
+    // Issue: https://github.com/lilwilde16/Liquidchartspro-tools/issues/XXX
   }
 
   function updateLearningFromOpenTrades(){
@@ -490,7 +506,6 @@
       // Filter pairs that have hit max 2 trades today
       const pairTradeCount = {};
       const eligibleFinal = eligible.filter((cand)=>{
-        const st = pairStats(cand.pair);
         const count = pairTradeCount[cand.pair] || 0;
         if(count >= 2) return false;
         pairTradeCount[cand.pair] = count + 1;
