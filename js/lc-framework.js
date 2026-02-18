@@ -4,6 +4,9 @@
   const Framework = new Sway.Framework();
   window.LC = window.LC || {};
   window.LC.Framework = Framework;
+  
+  // Constants
+  const AUTOTRADER_RESUME_DELAY_MS = 1000;
 
   function ts(){
     const d=new Date(), pad=n=>(n<10?"0":"")+n;
@@ -109,7 +112,7 @@
     log(`↩️ result=${safeJson(res)}`);
   }
 
-  async function sendWithTPSL(pair, isBuy, lotSize, tpDistancePts, slDistancePts){
+  async function sendWithTPSL(pair, isBuy, lotSize, tpPrice, slPrice){
     if(!toolArmed()){
       log("🛡️ ARM OFF → ticket only");
       openTicket(pair);
@@ -121,21 +124,23 @@
     if(!Number.isFinite(bid) || !Number.isFinite(ask)) throw new Error("No live bid/ask yet for selected market.");
 
     const action = isBuy ? actionConst("BUY", 1) : actionConst("SELL", 2);
-    const base = isBuy ? ask : bid;
-    const tpPrice = isBuy ? (base + tpDistancePts) : (base - tpDistancePts);
-    const slPrice = isBuy ? (base - slDistancePts) : (base + slDistancePts);
+    
+    // Accept absolute prices directly
+    const finalTpPrice = Number(tpPrice);
+    const finalSlPrice = Number(slPrice);
 
     const payload = {
       instrumentId: pair,
       tradingAction: action,
       volume: { lots: lotSize },
-      takeProfit: { price: tpPrice },
-      stopLoss: { price: slPrice }
+      takeProfit: { price: finalTpPrice },
+      stopLoss: { price: finalSlPrice }
     };
 
     log(`🟦 ENTRY payload=${safeJson(payload)}`);
     const res = await sendOrderAsync(payload);
     log(`↩️ ENTRY result=${safeJson(res)}`);
+    return res;
   }
 
   async function changeOrderTPSL(orderId, tpAbsPrice, slAbsPrice){
@@ -288,6 +293,55 @@
     refreshPx();
   }
 
+  async function safeRefreshMarket(){
+    log("🔄 Soft refresh started...");
+    
+    // Pause AutoTrader if running
+    const atWasRunning = window.ENG?.AutoTrader?.isRunning?.();
+    if(atWasRunning && window.ENG?.AutoTrader?.stop){
+      window.ENG.AutoTrader.stop();
+      log("⏸️ AutoTrader paused for refresh");
+    }
+    
+    try{
+      // Refresh market list
+      refreshToolMarkets();
+      
+      // Collect all pairs
+      const pairs = collectPairs();
+      
+      // Request fresh prices for all pairs
+      if(pairs.length > 0){
+        requestPrices(pairs);
+        log(`✅ Requested prices for ${pairs.length} pairs`);
+      }
+      
+      // Refresh strength meter if available
+      if(window.ENG?.Strength?.run){
+        await window.ENG.Strength.run();
+        log("✅ Strength meter refreshed");
+      }
+      
+      // Update current pair prices
+      refreshPx();
+      
+      log("✅ Soft refresh completed");
+      setStatus("Market refreshed", "ok");
+      
+    }catch(e){
+      log(`❌ Soft refresh error: ${e?.message || e}`);
+      setStatus("Refresh failed", "bad");
+    }finally{
+      // Resume AutoTrader if it was running
+      if(atWasRunning && window.ENG?.AutoTrader?.start){
+        setTimeout(()=>{
+          window.ENG.AutoTrader.start();
+          log("▶️ AutoTrader resumed");
+        }, AUTOTRADER_RESUME_DELAY_MS);
+      }
+    }
+  }
+
   async function runDiagnostics(){
     const pair = selectedPair();
     const diagTf = $("btTf")?.value || "M15";
@@ -362,8 +416,38 @@
     $("btnTicket").onclick = ()=>openTicket(selectedPair());
     $("btnBuyMarket").onclick = async ()=>{ try{ await sendMarket(selectedPair(), true, lots()); setStatus("BUY sent", "ok"); }catch(e){ setStatus("BUY failed", "bad"); log(`❌ BUY failed: ${e?.message || e}`);} };
     $("btnSellMarket").onclick = async ()=>{ try{ await sendMarket(selectedPair(), false, lots()); setStatus("SELL sent", "ok"); }catch(e){ setStatus("SELL failed", "bad"); log(`❌ SELL failed: ${e?.message || e}`);} };
-    $("btnBuyTPSL").onclick = async ()=>{ try{ await sendWithTPSL(selectedPair(), true, lots(), tpPts(), slPts()); setStatus("BUY TP/SL sent", "ok"); }catch(e){ setStatus("BUY TP/SL failed", "bad"); log(`❌ BUY TP/SL failed: ${e?.message || e}`);} };
-    $("btnSellTPSL").onclick = async ()=>{ try{ await sendWithTPSL(selectedPair(), false, lots(), tpPts(), slPts()); setStatus("SELL TP/SL sent", "ok"); }catch(e){ setStatus("SELL TP/SL failed", "bad"); log(`❌ SELL TP/SL failed: ${e?.message || e}`);} };
+    $("btnBuyTPSL").onclick = async ()=>{ 
+      try{ 
+        const m = getMarket(selectedPair());
+        const ask = Number(m.ask);
+        if(!Number.isFinite(ask)) throw new Error("No valid ask price");
+        const tpDist = tpPts();
+        const slDist = slPts();
+        const tpPrice = ask + tpDist;
+        const slPrice = ask - slDist;
+        await sendWithTPSL(selectedPair(), true, lots(), tpPrice, slPrice); 
+        setStatus("BUY TP/SL sent", "ok"); 
+      }catch(e){ 
+        setStatus("BUY TP/SL failed", "bad"); 
+        log(`❌ BUY TP/SL failed: ${e?.message || e}`);
+      } 
+    };
+    $("btnSellTPSL").onclick = async ()=>{ 
+      try{ 
+        const m = getMarket(selectedPair());
+        const bid = Number(m.bid);
+        if(!Number.isFinite(bid)) throw new Error("No valid bid price");
+        const tpDist = tpPts();
+        const slDist = slPts();
+        const tpPrice = bid - tpDist;
+        const slPrice = bid + slDist;
+        await sendWithTPSL(selectedPair(), false, lots(), tpPrice, slPrice); 
+        setStatus("SELL TP/SL sent", "ok"); 
+      }catch(e){ 
+        setStatus("SELL TP/SL failed", "bad"); 
+        log(`❌ SELL TP/SL failed: ${e?.message || e}`);
+      } 
+    };
     $("btnChangeTPSL").onclick = async ()=>{
       const oid = ($("toolOrderId")?.value || "").trim();
       if(!oid){ log("❌ Enter orderId first"); return; }
@@ -375,7 +459,7 @@
     $("btnDumpTrades").onclick = dumpOpenTrades;
     $("btnCloseAll").onclick = async ()=>{ try{ await closeAllForInstrument(selectedPair()); setStatus("Close sent", "ok"); }catch(e){ setStatus("Close failed", "bad"); log(`❌ Close failed: ${e?.message || e}`);} };
 
-    $("btnRefreshTool").onclick = ()=>{ log("Manual refresh requested."); window.location.reload(); };
+    $("btnRefreshTool").onclick = async ()=>{ await safeRefreshMarket(); };
     $("btnClearLog").onclick = ()=>{ $("log").textContent=""; };
 
     try{
@@ -412,7 +496,7 @@
     requestPrices,
     openDealTicket: openTicket,
     sendMarketOrder: (instrumentId, isBuy, lotSize)=>sendMarket(instrumentId, !!isBuy, Number(lotSize || 0.01)),
-    sendMarketOrderWithTPSL: (instrumentId, isBuy, lotSize, tpAbsDistance, slAbsDistance)=>sendWithTPSL(instrumentId, !!isBuy, Number(lotSize || 0.01), Number(tpAbsDistance || 0), Number(slAbsDistance || 0)),
+    sendMarketOrderWithTPSL: (instrumentId, isBuy, lotSize, tpAbsPrice, slAbsPrice)=>sendWithTPSL(instrumentId, !!isBuy, Number(lotSize || 0.01), Number(tpAbsPrice || 0), Number(slAbsPrice || 0)),
     dumpOpenTradeSources: dumpOpenTrades,
     changeOrderTPSL,
     closeAllPositions,
