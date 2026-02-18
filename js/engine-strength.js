@@ -145,10 +145,16 @@
       if(!Number.isFinite(slope)) slope = 0;
     }
     
+    // ATR percentage floor: 0.0006 = 0.06% = 6 pips on 4-digit pairs
+    // This represents minimum expected volatility for liquid forex pairs
+    // Below this, market is likely too quiet for reliable strength signals
     const atrPctFloor = Math.max(atrPct, 0.0006);
     const slopeNorm = slope / atrPctFloor;
 
-    // Quality filter
+    // Quality filter thresholds:
+    // - atrPct < 0.0006 (0.06%): Too low volatility, likely quiet/ranging market
+    // - trendRatio < 0.25: SMA spread less than 25% of ATR, too choppy/consolidating
+    // These filters exclude pairs with unreliable trend signals
     const isWeak = (atrPct < 0.0006) || (trendRatio < 0.25);
 
     return {
@@ -203,7 +209,10 @@
         const slopeNormZ = zScore(m.slopeNorm, slopeNorms);
         const wReturnZ = zScore(m.returnPct / m.atrPctFloor, wReturns);
         
-        // Composite score for this TF
+        // Composite score weights:
+        // - 40% slopeNorm: Primary trend direction (momentum via regression)
+        // - 30% trendRatio: Trend strength (SMA separation relative to volatility)
+        // - 30% wReturnZ: Recent return normalized by volatility
         const compositeTF = (0.4 * slopeNormZ) + (0.3 * m.trendRatio) + (0.3 * wReturnZ);
         
         tfResults.push({

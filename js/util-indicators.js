@@ -38,6 +38,8 @@
          return out;
    }
 
+   // Linear regression slope over a window
+   // Returns slope of best-fit line for each position
    function linregSlope(values, len){
          const n = values.length;
          const out = new Array(n).fill(null);

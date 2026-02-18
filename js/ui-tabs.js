@@ -6,7 +6,9 @@
         const btn = document.getElementById(tabId);
         if(btn) btn.classList.add("active");
         
-        const pageId = tabId.replace("tab", "page");
+        // Convert tabId to pageId: tabHome -> pageHome, tabSettings -> pageSettings
+        // Only replace 'tab' if it's at the start of the ID
+        const pageId = tabId.startsWith("tab") ? "page" + tabId.slice(3) : tabId;
         const page = document.getElementById(pageId);
         if(page) page.classList.remove("hidden");
     }
