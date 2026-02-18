@@ -127,8 +127,15 @@
     const q = Number(map[parts.quote] || 0);
     const spread = b - q;
 
+    // Dynamic scaling based on actual score range
+    const scores = ranked.map((x)=>x.avgScore);
+    const minScore = Math.min(...scores);
+    const maxScore = Math.max(...scores);
+    const scale = Math.max(0.001, maxScore - minScore);
+    const normalized = spread / scale;
+
     return {
-      score: Math.max(-1, Math.min(1, spread / 2.5)),
+      score: Math.max(-1, Math.min(1, normalized)),
       side: spread >= 0 ? 1 : -1,
       spread
     };

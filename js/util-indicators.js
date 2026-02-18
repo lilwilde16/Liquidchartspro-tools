@@ -38,8 +38,29 @@
          return out;
    }
 
+   function linregSlope(values, len){
+         const n = values.length;
+         const out = new Array(n).fill(null);
+         for(let i = len - 1; i < n; i++){
+               let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+               for(let j = 0; j < len; j++){
+                     const x = j;
+                     const y = values[i - len + 1 + j];
+                     if(!Number.isFinite(y)) continue;
+                     sumX += x;
+                     sumY += y;
+                     sumXY += x * y;
+                     sumX2 += x * x;
+               }
+               const slope = (len * sumXY - sumX * sumY) / (len * sumX2 - sumX * sumX);
+               out[i] = Number.isFinite(slope) ? slope : null;
+         }
+         return out;
+   }
+
    window.UTIL = window.UTIL || {};
     window.UTIL.toChron = toChron;
     window.UTIL.sma = sma;
     window.UTIL.atr = atr;
+    window.UTIL.linregSlope = linregSlope;
 })();

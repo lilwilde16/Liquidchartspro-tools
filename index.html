@@ -3,35 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>LiquidChartsPro Tools</title>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div>
-        <button id="tabHome">Home</button>
-        <button id="tabSettings">Settings</button>
-        <button id="tabStrength">Strength</button>
-        <button id="tabBacktest">Backtest</button>
-        <button id="tabTools">Tools</button>
+    <div id="app">
+        <div class="tabs">
+            <button id="tabHome" class="tabBtn active">Home</button>
+            <button id="tabSettings" class="tabBtn">Settings</button>
+            <button id="tabStrength" class="tabBtn">Strength</button>
+            <button id="tabBacktest" class="tabBtn">Backtest</button>
+            <button id="tabTools" class="tabBtn">Tools</button>
+        </div>
+
+        <section id="pageHome" class="page">
+            <div class="card">
+                <div class="title">Currency Strength Meter</div>
+                <div class="row">
+                    <div class="field">
+                        <label>Status</label>
+                        <div class="pill warn" id="statusPill">Not connected</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="title">Log</div>
+                <pre id="log" class="small"></pre>
+            </div>
+        </section>
+
+        <section id="pageSettings" class="page hidden">
+            <div class="card">
+                <div class="title">Pairs Configuration</div>
+                <div class="field">
+                    <label>Trading Pairs (one per line, e.g., EUR/USD or EURUSD)</label>
+                    <textarea id="pairs" rows="12" placeholder="EUR/USD&#10;GBP/USD&#10;USD/JPY&#10;AUD/USD&#10;NZD/USD&#10;USD/CAD&#10;EUR/GBP&#10;EUR/JPY"></textarea>
+                </div>
+                <div class="field">
+                    <button id="saveSettings" class="btn primary">Save Settings</button>
+                    <span id="settingsStatus" class="status-msg"></span>
+                </div>
+            </div>
+        </section>
+
+        <section id="pageStrength" class="page hidden">
+            <div class="card">
+                <div class="title">Currency Strength Meter</div>
+                <div class="field">
+                    <label>Auto Refresh Interval (seconds)</label>
+                    <input type="number" id="strengthAutoSec" value="60" min="10" max="900">
+                </div>
+                <div class="row">
+                    <button id="btnStrengthRun" class="btn primary">Run Once</button>
+                    <button id="btnStrengthAuto" class="btn">Start Auto</button>
+                    <button id="btnStrengthStop" class="btn">Stop Auto</button>
+                </div>
+                <div class="field">
+                    <div id="strengthStatus" class="status-msg">Ready to scan.</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="title">Currency Rankings</div>
+                <div id="strengthTable"></div>
+            </div>
+
+            <div class="card">
+                <div class="title">Best Trading Pairs</div>
+                <div id="strengthBestPairs">No data yet.</div>
+            </div>
+        </section>
+
+        <section id="pageBacktest" class="page hidden">
+            <h1>Backtest</h1>
+            <p>Backtest functionality placeholder.</p>
+        </section>
+
+        <section id="pageTools" class="page hidden">
+            <h1>Tools</h1>
+            <p>Tools functionality placeholder.</p>
+        </section>
     </div>
-    <section id="pageHome">
-        <h1>Home</h1>
-        <p>Welcome to the Home page.</p>
-    </section>
-    <section id="pageSettings">
-        <h1>Settings</h1>
-        <p>Modify your settings here.</p>
-    </section>
-    <section id="pageStrength">
-        <h1>Strength</h1>
-        <p>View your strength metrics.</p>
-    </section>
-    <section id="pageBacktest">
-        <h1>Backtest</h1>
-        <p>Conduct backtests on your strategies.</p>
-    </section>
-    <section id="pageTools">
-        <h1>Tools</h1>
-        <p>Access the tools you need.</p>
-    </section>
+
+    <script src="js/util-indicators.js"></script>
+    <script src="js/engine-strength.js"></script>
+    <script src="js/engine-autotrader.js"></script>
+    <script src="js/ui-tabs.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
