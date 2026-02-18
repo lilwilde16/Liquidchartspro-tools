@@ -7,7 +7,7 @@
   function collectMarkets(){
     const defaults = [
       "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "NZD/USD",
-      "USD/CAD", "EUR/GBP", "EUR/JPY", "GBP/JPY", "AUD/JPY", "NAS100", "US30"
+      "USD/CAD", "EUR/GBP", "EUR/JPY", "GBP/JPY", "AUD/JPY", "NAS100", "US30", "SPX500"
     ];
 
     const set = new Set(defaults);
