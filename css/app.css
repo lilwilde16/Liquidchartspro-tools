@@ -1,37 +1,330 @@
-.body {
-    background: linear-gradient(135deg, #d4af37, #5b4b8a);
-    color: #ffffff;
+/* === Base Styles === */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-h1, h2, h3, h4 {
-    color: #d4af37;
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  background: #f5f5f5;
+  color: #333;
 }
 
-.tab {
-    background: linear-gradient(135deg, #5b4b8a, #d4af37);
-    border: 1px solid #d4af37;
+#app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
-.button {
-    background-color: #d4af37;
-    color: #5b4b8a;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
+.hidden {
+  display: none !important;
 }
 
-.button:hover {
-    background-color: #5b4b8a;
-    color: #ffffff;
+/* === Tabs === */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #ddd;
+  padding-bottom: 0;
 }
 
+.tabBtn {
+  padding: 12px 24px;
+  border: none;
+  background: #fff;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid #ddd;
+  border-bottom: none;
+  transition: all 0.2s;
+  position: relative;
+  top: 2px;
+}
+
+.tabBtn:hover {
+  background: #f8f8f8;
+  color: #333;
+}
+
+.tabBtn.active {
+  background: linear-gradient(135deg, #5b4b8a, #7a6ba8);
+  color: #fff;
+  border-color: #5b4b8a;
+}
+
+/* === Page Sections === */
+.page {
+  display: block;
+}
+
+.page.hidden {
+  display: none;
+}
+
+/* === Cards === */
 .card {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid #5b4b8a;
-    border-radius: 8px;
-    padding: 20px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
-.card h3 {
-    color: #d4af37;
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #5b4b8a;
+}
+
+.card .title {
+  font-size: 20px;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+
+/* === Fields & Inputs === */
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+}
+
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.field input,
+.field select,
+.field textarea {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: #5b4b8a;
+  box-shadow: 0 0 0 3px rgba(91, 75, 138, 0.1);
+}
+
+.field input:read-only {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 100px;
+  font-family: "Monaco", "Courier New", monospace;
+  font-size: 13px;
+}
+
+.field small {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #999;
+}
+
+/* === Buttons === */
+.btnRow {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+button {
+  padding: 10px 18px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  color: #555;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+button:hover:not(:disabled) {
+  background: #f8f8f8;
+  border-color: #bbb;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: linear-gradient(135deg, #d4af37, #f0d270);
+  color: #fff;
+  border-color: #d4af37;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c49f2f, #e0c260);
+  box-shadow: 0 2px 6px rgba(212, 175, 55, 0.3);
+}
+
+/* === Status Pills === */
+.pill {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f0f0f0;
+  color: #666;
+}
+
+.pill.ok {
+  background: #d4edda;
+  color: #155724;
+}
+
+.pill.warn {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.pill.bad {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status {
+  display: inline-block;
+  font-size: 13px;
+  color: #666;
+  margin-left: 10px;
+}
+
+/* === Log === */
+.log {
+  background: #2d2d2d;
+  color: #f0f0f0;
+  padding: 16px;
+  border-radius: 4px;
+  font-family: "Monaco", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* === Strength Table === */
+.tableContainer {
+  margin-top: 20px;
+  overflow-x: auto;
+}
+
+.tableContainer table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+
+.tableContainer thead {
+  background: #f8f8f8;
+}
+
+.tableContainer th {
+  padding: 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: #555;
+  border-bottom: 2px solid #ddd;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tableContainer td {
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+}
+
+.tableContainer tbody tr:hover {
+  background: #f9f9f9;
+}
+
+.str-up {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.str-down {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+/* === Best Pairs === */
+.bestPairs {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.pairIdea {
+  padding: 14px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  border-left: 4px solid #d4af37;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.pairIdea strong {
+  color: #5b4b8a;
+  font-size: 16px;
+}
+
+/* === Responsive === */
+@media (max-width: 768px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+  
+  .tabs {
+    overflow-x: auto;
+  }
+  
+  .tabBtn {
+    white-space: nowrap;
+  }
 }

@@ -4,7 +4,7 @@
           document.querySelectorAll(".page").forEach(p=>p.classList.add("hidden"));
 
       document.querySelector(`.tabBtn[data-tab="${tab}"]`).classList.add("active");
-          document.getElementById(`page-${tab}`).classList.remove("hidden");
+          document.getElementById(`page${tab}`).classList.remove("hidden");
     }
 
    document.addEventListener("click", (e)=>{
