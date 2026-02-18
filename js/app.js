@@ -107,6 +107,7 @@
       if($("btnRunBt")) $("btnRunBt").onclick = ()=>window.ENG.Backtest.run();
       if($("btnStopBt")) $("btnStopBt").onclick = ()=>window.ENG.Backtest.stop();
       if($("btnClearBt")) $("btnClearBt").onclick = ()=>window.ENG.Backtest.clear();
+      if($("btnExportBt")) $("btnExportBt").onclick = ()=>window.ENG.Backtest.exportResults();
       window.ENG.Backtest.syncLossRate();
     }
 
