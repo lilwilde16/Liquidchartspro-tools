@@ -413,6 +413,7 @@
     }
 
     const data = { ...cfg, ...result };
+    lastResults = data;
     renderSummary(data);
     renderTrades(data.rows.slice(0, MAX_ROWS));
 
@@ -423,6 +424,7 @@
     window.LC.log(`✅ Backtest complete using ${result.source}`);
     $("btnRunBt").disabled = false;
     $("btnStopBt").disabled = true;
+    $("btnExportBt").disabled = false;
   }
 
   function stop(){
@@ -436,6 +438,25 @@
     window.LC.log("Backtest output cleared.");
   }
 
+  function exportResults(){
+    if(!lastResults || !lastResults.rows || lastResults.rows.length === 0){
+      window.LC.log("⚠ No backtest results to export.");
+      return;
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
+    const filename = `backtest_${lastResults.instrument}_${lastResults.timeframe}_${timestamp}`;
+
+    if(window.UTIL?.Export){
+      window.UTIL.Export.exportBacktestResults(lastResults.rows, lastResults, filename);
+      window.LC.log(`✅ Exported backtest results: ${filename}`);
+    }else{
+      window.LC.log("❌ Export utilities unavailable.");
+    }
+  }
+
+  let lastResults = null;
+
   window.ENG = window.ENG || {};
-  window.ENG.Backtest = { run, stop, clear, syncLossRate };
+  window.ENG.Backtest = { run, stop, clear, exportResults, syncLossRate };
 })();
