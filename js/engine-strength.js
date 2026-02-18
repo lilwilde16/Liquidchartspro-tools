@@ -110,12 +110,13 @@
   }
 
   // === DATA FETCHING ===
-  async function fetchPairCandles(pair, timeframe, count){
+  async function fetchPairCandles(pair, timeframe, count, apiOverride = null){
+    const api = apiOverride || window.LC;
     const cacheKey = `${pair}_${timeframe}_${count}`;
     if(runCache[cacheKey]) return runCache[cacheKey];
     
     try{
-      const raw = await window.LC.requestCandles(pair, timeframe, count);
+      const raw = await api.requestCandles(pair, timeframe, count);
       const candles = normalizeCandles(raw);
       runCache[cacheKey] = candles;
       return candles;
@@ -124,11 +125,11 @@
     }
   }
 
-  async function fetchMultiTFData(pair, count){
+  async function fetchMultiTFData(pair, count, apiOverride = null){
     const timeframes = Object.keys(TF_WEIGHTS).map(Number);
     const results = await Promise.allSettled(
       timeframes.map(async (tf)=>{
-        const candles = await fetchPairCandles(pair, tf, count);
+        const candles = await fetchPairCandles(pair, tf, count, apiOverride);
         return { tf, candles };
       })
     );
@@ -340,9 +341,13 @@
   }
 
   // === MAIN SCAN ===
-  async function run(){
-    // Concurrency guard: skip if already running
-    if(inFlight){
+  async function run(options = {}){
+    // Options: { apiOverride, simulatedNow, pairs, timeframe, count }
+    const apiOverride = options.apiOverride || null;
+    const simulatedNow = options.simulatedNow || null;
+    
+    // Concurrency guard: skip if already running (only for live mode)
+    if(!apiOverride && inFlight){
       consecutiveSkips++;
       window.LC.log(`⏭ Strength scan skipped (already in flight). Consecutive skips: ${consecutiveSkips}`);
       
@@ -356,35 +361,45 @@
       return;
     }
     
-    inFlight = true;
-    runCache = {}; // Clear cache for fresh run
+    if(!apiOverride){
+      inFlight = true;
+      runCache = {}; // Clear cache for fresh run
+    }
 
-    const timeframe = Number($("strengthTf")?.value || 900);
-    const count = Number($("strengthCount")?.value || 500);
-    const pairs = parsePairs();
+    const timeframe = options.timeframe || Number($("strengthTf")?.value || 900);
+    const count = options.count || Number($("strengthCount")?.value || 500);
+    const pairs = options.pairs || parsePairs();
 
     try{
-      if(!window.LC?.requestCandles){
-        window.LC.setStatus("Strength error", "bad");
-        window.LC.log("❌ Strength scan failed: Candles API unavailable.");
-        if($("strengthStatus")) $("strengthStatus").textContent = "Candles API unavailable.";
-        return;
+      const api = apiOverride || window.LC;
+      
+      if(!api?.requestCandles){
+        if(!apiOverride){
+          window.LC.setStatus("Strength error", "bad");
+          window.LC.log("❌ Strength scan failed: Candles API unavailable.");
+          if($("strengthStatus")) $("strengthStatus").textContent = "Candles API unavailable.";
+        }
+        return { error: "Candles API unavailable" };
       }
 
       if(pairs.length === 0){
-        window.LC.setStatus("Strength error", "bad");
-        window.LC.log("❌ Strength scan failed: no valid pairs in settings.");
-        if($("strengthStatus")) $("strengthStatus").textContent = "No valid pairs configured.";
-        return;
+        if(!apiOverride){
+          window.LC.setStatus("Strength error", "bad");
+          window.LC.log("❌ Strength scan failed: no valid pairs in settings.");
+          if($("strengthStatus")) $("strengthStatus").textContent = "No valid pairs configured.";
+        }
+        return { error: "No valid pairs" };
       }
 
-      window.LC.setStatus("Scanning strength…", "warn");
-      window.LC.log(`▶ Strength scan started (${pairs.length} pairs, multi-TF: ${Object.keys(TF_WEIGHTS).join(",")}, candles=${count}).`);
+      if(!apiOverride){
+        window.LC.setStatus("Scanning strength…", "warn");
+        window.LC.log(`▶ Strength scan started (${pairs.length} pairs, multi-TF: ${Object.keys(TF_WEIGHTS).join(",")}, candles=${count}).`);
+      }
 
       // Fetch multi-timeframe data for all pairs
       const settled = await Promise.allSettled(
         pairs.map(async (pair)=>{
-          const tfData = await fetchMultiTFData(pair, count);
+          const tfData = await fetchMultiTFData(pair, count, apiOverride);
           return calculatePairStrength(pair, tfData, count);
         })
       );
@@ -393,51 +408,68 @@
       const bad = settled.filter((r)=>r.status === "rejected");
 
       if(ok.length === 0){
-        window.LC.setStatus("Strength error", "bad");
-        window.LC.log("❌ Strength scan failed: no pair data returned.");
-        if($("strengthStatus")) $("strengthStatus").textContent = "No data returned for selected pairs/timeframe.";
-        $("strengthTable").innerHTML = "";
-        $("strengthBestPairs").textContent = "No ideas available.";
-        return;
+        if(!apiOverride){
+          window.LC.setStatus("Strength error", "bad");
+          window.LC.log("❌ Strength scan failed: no pair data returned.");
+          if($("strengthStatus")) $("strengthStatus").textContent = "No data returned for selected pairs/timeframe.";
+          $("strengthTable").innerHTML = "";
+          $("strengthBestPairs").textContent = "No ideas available.";
+        }
+        return { error: "No data returned" };
       }
 
       const ranked = scoreCurrencies(ok);
       lastRanked = ranked;
       lastPairs = ok.map((x)=>x.pair);
       
-      renderTable(ranked);
-      renderBestPairs(ranked);
+      // Only render if this is a live run (not backtest)
+      if(!apiOverride){
+        renderTable(ranked);
+        renderBestPairs(ranked);
 
-      const strongest = ranked[0]?.ccy || "n/a";
-      const weakest = ranked[ranked.length - 1]?.ccy || "n/a";
+        const strongest = ranked[0]?.ccy || "n/a";
+        const weakest = ranked[ranked.length - 1]?.ccy || "n/a";
 
-      const autoTag = autoIntervalSec ? ` · auto ${autoIntervalSec}s` : "";
-      if($("strengthStatus")){
-        $("strengthStatus").textContent = `Updated: ${new Date().toLocaleString()} · strongest ${strongest}, weakest ${weakest} · pairs ok ${ok.length}/${pairs.length}${autoTag}`;
+        const autoTag = autoIntervalSec ? ` · auto ${autoIntervalSec}s` : "";
+        if($("strengthStatus")){
+          $("strengthStatus").textContent = `Updated: ${new Date().toLocaleString()} · strongest ${strongest}, weakest ${weakest} · pairs ok ${ok.length}/${pairs.length}${autoTag}`;
+        }
+        
+        if(bad.length > 0){
+          window.LC.log(`⚠ Strength scan partial data: ${bad.length} pair(s) failed.`);
+        }
+        
+        window.LC.log(`✅ Strength scan done. Strongest: ${strongest}, weakest: ${weakest}.`);
+        window.LC.setStatus(bad.length ? "Strength done (partial)" : "Strength done", bad.length ? "warn" : "ok");
+        
+        // Reset skip counter and backoff on successful run
+        consecutiveSkips = 0;
+        if(backoffActive && autoTimer && autoIntervalSec){
+          backoffActive = false;
+          clearInterval(autoTimer);
+          autoTimer = setInterval(()=>{ run(); }, autoIntervalSec * 1000);
+          window.LC.log(`✅ Strength: Backoff cleared, returning to ${autoIntervalSec}s interval.`);
+        }
       }
       
-      if(bad.length > 0){
-        window.LC.log(`⚠ Strength scan partial data: ${bad.length} pair(s) failed.`);
-      }
-      
-      window.LC.log(`✅ Strength scan done. Strongest: ${strongest}, weakest: ${weakest}.`);
-      window.LC.setStatus(bad.length ? "Strength done (partial)" : "Strength done", bad.length ? "warn" : "ok");
-      
-      // Reset skip counter and backoff on successful run
-      consecutiveSkips = 0;
-      if(backoffActive && autoTimer && autoIntervalSec){
-        backoffActive = false;
-        clearInterval(autoTimer);
-        autoTimer = setInterval(()=>{ run(); }, autoIntervalSec * 1000);
-        window.LC.log(`✅ Strength: Backoff cleared, returning to ${autoIntervalSec}s interval.`);
-      }
+      // Return snapshot for backtest mode
+      return {
+        ranked,
+        pairs: ok,
+        updatedAt: simulatedNow || Date.now()
+      };
       
     }catch(e){
-      window.LC.setStatus("Strength error", "bad");
-      window.LC.log(`❌ Strength scan failed: ${e?.message || e}`);
-      if($("strengthStatus")) $("strengthStatus").textContent = `Error: ${e?.message || "Unknown error"}`;
+      if(!apiOverride){
+        window.LC.setStatus("Strength error", "bad");
+        window.LC.log(`❌ Strength scan failed: ${e?.message || e}`);
+        if($("strengthStatus")) $("strengthStatus").textContent = `Error: ${e?.message || "Unknown error"}`;
+      }
+      return { error: e?.message || "Strength scan failed" };
     }finally{
-      inFlight = false;
+      if(!apiOverride){
+        inFlight = false;
+      }
     }
   }
 
