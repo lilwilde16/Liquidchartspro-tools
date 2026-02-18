@@ -119,14 +119,14 @@
     const returnPct = ((px / close[0]) - 1) * 100;
 
     // Compute slopeNorm: linear regression slope of ln(close) over last 60 bars
-    const K = 60;
-    const startIdx = Math.max(0, i - K + 1);
+    const SLOPE_LOOKBACK_BARS = 60;
+    const startIdx = Math.max(0, i - SLOPE_LOOKBACK_BARS + 1);
     const recentCloses = close.slice(startIdx, i + 1);
     const lnCloses = recentCloses.map(Math.log);
     
     let slope = 0;
     if(window.UTIL?.linregSlope){
-      const slopes = window.UTIL.linregSlope(lnCloses, Math.min(K, lnCloses.length));
+      const slopes = window.UTIL.linregSlope(lnCloses, Math.min(SLOPE_LOOKBACK_BARS, lnCloses.length));
       slope = slopes[slopes.length - 1] || 0;
     } else {
       // Inline fallback for linear regression slope
@@ -148,8 +148,8 @@
     // ATR percentage floor: 0.0006 = 0.06% = 6 pips on 4-digit pairs
     // This represents minimum expected volatility for liquid forex pairs
     // Below this, market is likely too quiet for reliable strength signals
-    const atrPctFloor = Math.max(atrPct, 0.0006);
-    const slopeNorm = slope / atrPctFloor;
+    const effectiveAtrPct = Math.max(atrPct, 0.0006);
+    const slopeNorm = slope / effectiveAtrPct;
 
     // Quality filter thresholds:
     // - atrPct < 0.0006 (0.06%): Too low volatility, likely quiet/ranging market
@@ -167,7 +167,7 @@
       returnPct,
       slopeNorm,
       isWeak,
-      atrPctFloor
+      effectiveAtrPct
     };
   }
 
@@ -203,11 +203,11 @@
 
       // Z-normalize slopeNorm and returnPct across pairs for this TF
       const slopeNorms = validMetrics.map((m)=>m.slopeNorm);
-      const wReturns = validMetrics.map((m)=>m.returnPct / m.atrPctFloor);
+      const wReturns = validMetrics.map((m)=>m.returnPct / m.effectiveAtrPct);
       
       for(const m of validMetrics){
         const slopeNormZ = zScore(m.slopeNorm, slopeNorms);
-        const wReturnZ = zScore(m.returnPct / m.atrPctFloor, wReturns);
+        const wReturnZ = zScore(m.returnPct / m.effectiveAtrPct, wReturns);
         
         // Composite score weights:
         // - 40% slopeNorm: Primary trend direction (momentum via regression)
@@ -219,7 +219,7 @@
           pair: m.pair,
           compositeTF,
           returnPct: m.returnPct,
-          atrPctFloor: m.atrPctFloor
+          effectiveAtrPct: m.effectiveAtrPct
         });
       }
       
@@ -245,7 +245,7 @@
         
         pairComposites[item.pair].weightedSum += item.compositeTF * weight;
         pairComposites[item.pair].totalWeight += weight;
-        pairComposites[item.pair].absMove += Math.abs(item.returnPct / item.atrPctFloor);
+        pairComposites[item.pair].absMove += Math.abs(item.returnPct / item.effectiveAtrPct);
         pairComposites[item.pair].absSamples += 1;
       }
     }
