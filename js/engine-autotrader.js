@@ -120,7 +120,7 @@
     return {
       tf: $("atTf")?.value || "M15",
       candles: Math.max(200, Math.min(3000, Math.floor(toNum($("atCandles")?.value, 500)))),
-      intervalSec: Math.max(30, Math.min(3600, Math.floor(toNum($("atPollSec")?.value, 120)))),
+      intervalSec: Math.max(1, Math.min(3600, Math.floor(toNum($("atPollSec")?.value, 120)))),
       riskMode: $("atRiskMode")?.value || "conservative",
       lots: toNum($("atLots")?.value, 0.01),
       rr: toNum($("atRr")?.value, DEFAULT_RR),

@@ -152,6 +152,14 @@
         }
         if (s[id] !== undefined) el.value = s[id];
       });
+      
+      // Seed default pairs if empty
+      const pairsEl = $("pairs");
+      if(pairsEl && (!s.pairs || s.pairs.trim() === "")){
+        const defaultPairs = "EUR/USD\nGBP/USD\nUSD/JPY\nAUD/USD\nNZD/USD\nUSD/CAD\nUSD/CHF\nEUR/GBP\nEUR/JPY\nGBP/JPY";
+        pairsEl.value = defaultPairs;
+        window.setSettings({ pairs: defaultPairs });
+      }
     };
 
     window.readUIToSettings = () => {

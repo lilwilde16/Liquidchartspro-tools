@@ -310,10 +310,12 @@
   // === AUTO REFRESH ===
   function startAuto(){
     const requested = Number($("strengthAutoSec")?.value || 60);
-    const sec = Math.max(10, Math.min(900, Number.isFinite(requested) ? requested : 60));
+    const sec = Math.max(1, Math.min(900, Number.isFinite(requested) ? requested : 60));
     if(autoTimer) clearInterval(autoTimer);
     autoIntervalSec = sec;
-    autoTimer = setInterval(()=>{ run(); }, sec * 1000);
+    autoTimer = setInterval(()=>{ 
+      if(!isRunning) run(); 
+    }, sec * 1000);
     window.LC.log(`🔄 Strength auto refresh ON (${sec}s).`);
     if($("strengthStatus")) $("strengthStatus").textContent = `Auto refresh enabled (${sec}s).`;
     run();
