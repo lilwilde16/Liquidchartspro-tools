@@ -1,6 +1,7 @@
 (function(){
   const $ = (id)=>document.getElementById(id);
   const MEM_KEY = "lc.autoTrader.memory.v2";
+  const MIN_SCORE_SCALE = 0.001; // Minimum scale to prevent division issues
 
   const state = {
     timer: null,
@@ -131,7 +132,7 @@
     const scores = ranked.map((x)=>x.avgScore);
     const minScore = Math.min(...scores);
     const maxScore = Math.max(...scores);
-    const scale = Math.max(0.001, maxScore - minScore);
+    const scale = Math.max(MIN_SCORE_SCALE, maxScore - minScore);
     
     const normalized = spread / scale;
     const score = Math.max(-1, Math.min(1, normalized));

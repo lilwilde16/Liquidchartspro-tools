@@ -12,6 +12,9 @@
     3600: {count: 200, name: "H1"}
   };
   const SLOPE_LOOKBACK = 60;
+  const COMPOSITE_SLOPE_WEIGHT = 0.4;
+  const COMPOSITE_TREND_WEIGHT = 0.3;
+  const COMPOSITE_RETURN_WEIGHT = 0.3;
 
   let autoTimer = null;
   let autoIntervalSec = null;
@@ -201,7 +204,8 @@
     }
     const out = new Array(n).fill(null);
     let sum = 0;
-    for(let i = 1; i <= len; i++) sum += (tr[i] ?? 0);
+    // Start from index 1 since tr[0] is null (first bar has no previous close)
+    for(let i = 1; i <= Math.min(len, n - 1); i++) sum += (tr[i] ?? 0);
     let prev = sum / len;
     out[len] = prev;
     for(let i = len + 1; i < n; i++){
@@ -282,7 +286,7 @@
         for(let i = 0; i < tfMetrics.length; i++){
           tfMetrics[i].slopeNormZ = slopeNormZ[i];
           tfMetrics[i].weightedReturnZ = weightedReturnZ[i];
-          tfMetrics[i].compositeTF = (0.4 * slopeNormZ[i]) + (0.3 * tfMetrics[i].trendRatio) + (0.3 * weightedReturnZ[i]);
+          tfMetrics[i].compositeTF = (COMPOSITE_SLOPE_WEIGHT * slopeNormZ[i]) + (COMPOSITE_TREND_WEIGHT * tfMetrics[i].trendRatio) + (COMPOSITE_RETURN_WEIGHT * weightedReturnZ[i]);
         }
       }
       
@@ -413,7 +417,7 @@
       ideas.push({ pair: `${base}/${quote}`, bias: "Buy bias", spread: strongest[i].avgScore - weakest[i].avgScore });
     }
 
-    host.innerHTML = `<h3>Best Pair Ideas</h3>` + ideas.map((x)=>`<div style="padding:5px;"><strong>${x.pair}</strong> · <span style="color:green;">${x.bias}</span> · spread ${x.spread.toFixed(3)}</div>`).join("");
+    host.innerHTML = `<h3>Best Pair Ideas</h3>` + ideas.map((x)=>`<div class="pairIdea"><strong>${x.pair}</strong> · <span class="str-up">${x.bias}</span> · spread ${x.spread.toFixed(3)}</div>`).join("");
   }
 
   function startAuto(){
