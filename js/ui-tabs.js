@@ -4,7 +4,15 @@
           document.querySelectorAll(".page").forEach(p=>p.classList.add("hidden"));
 
       document.querySelector(`.tabBtn[data-tab="${tab}"]`).classList.add("active");
-          document.getElementById(`page${tab}`).classList.remove("hidden");
+          const targetPage = document.getElementById(`page${tab}`);
+          targetPage.classList.remove("hidden");
+          
+          // Reset horizontal scroll position on tab change
+          targetPage.scrollLeft = 0;
+          
+          // Ensure body and html keep overflow-y hidden
+          document.documentElement.style.overflowY = "hidden";
+          document.body.style.overflowY = "hidden";
     }
 
    document.addEventListener("click", (e)=>{

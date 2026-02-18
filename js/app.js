@@ -150,7 +150,14 @@
           console.warn(`Settings: missing element #${id}`);
           return;
         }
-        if (s[id] !== undefined) el.value = s[id];
+        // Seed pairs with majors on first run if localStorage is empty
+        if (id === "pairs" && s[id] === undefined) {
+          const defaultPairs = "EUR/USD\nGBP/USD\nUSD/JPY\nAUD/USD\nNZD/USD\nUSD/CAD\nUSD/CHF\nEUR/GBP\nEUR/JPY\nGBP/JPY";
+          el.value = defaultPairs;
+          window.setSettings({ pairs: defaultPairs });
+        } else if (s[id] !== undefined) {
+          el.value = s[id];
+        }
       });
     };
 

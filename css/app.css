@@ -5,6 +5,12 @@
   padding: 0;
 }
 
+html, body {
+  overflow-y: hidden;
+  overflow-x: hidden;
+  height: 100vh;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
@@ -14,9 +20,12 @@ body {
 }
 
 #app {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 20px;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .hidden {
@@ -27,9 +36,11 @@ body {
 .tabs {
   display: flex;
   gap: 4px;
-  margin-bottom: 20px;
+  margin-bottom: 0;
   border-bottom: 2px solid #ddd;
   padding-bottom: 0;
+  flex-shrink: 0;
+  padding: 0 20px;
 }
 
 .tabBtn {
@@ -62,10 +73,34 @@ body {
 /* === Page Sections === */
 .page {
   display: block;
+  height: calc(100vh - 56px);
+  overflow-y: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+  scroll-snap-type: x proximity;
 }
 
 .page.hidden {
   display: none;
+}
+
+.tab-scroll {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 16px;
+  width: auto;
+  min-height: 100%;
+  padding: 20px;
+  white-space: normal;
+}
+
+.tab-scroll > .card {
+  flex: 0 0 auto;
+  width: 500px;
+  max-width: 90vw;
+  scroll-snap-align: start;
+  white-space: normal;
 }
 
 /* === Cards === */

@@ -42,6 +42,8 @@
   let autoTimer = null;
   let autoIntervalSec = null;
   let isRunning = false;
+  let inFlight = false;
+  let skipCount = 0;
   let lastRanked = [];
   let lastPairs = [];
   let runCache = {}; // In-run cache for candle data
@@ -309,11 +311,34 @@
 
   // === AUTO REFRESH ===
   function startAuto(){
-    const requested = Number($("strengthAutoSec")?.value || 60);
-    const sec = Math.max(10, Math.min(900, Number.isFinite(requested) ? requested : 60));
+    const requested = Number($("strengthAutoSec")?.value || 1);
+    const sec = Math.max(1, Math.min(900, Number.isFinite(requested) ? requested : 1));
     if(autoTimer) clearInterval(autoTimer);
     autoIntervalSec = sec;
-    autoTimer = setInterval(()=>{ run(); }, sec * 1000);
+    skipCount = 0;
+    autoTimer = setInterval(()=>{ 
+      // Skip if a run is still in flight
+      if(inFlight){
+        skipCount++;
+        window.LC.log(`⏭ Strength scan skipped (in flight). Skips: ${skipCount}`);
+        
+        // Defensive backoff: if 3 consecutive skips, auto-increase interval
+        if(skipCount >= 3){
+          const newSec = Math.min(sec * 2, 900);
+          if(newSec !== sec){
+            window.LC.log(`⚠ Strength auto-refresh backing off to ${newSec}s due to consecutive skips.`);
+            clearInterval(autoTimer);
+            autoIntervalSec = newSec;
+            $("strengthAutoSec").value = String(newSec);
+            autoTimer = setInterval(()=>{ run(); }, newSec * 1000);
+            skipCount = 0;
+          }
+        }
+        return;
+      }
+      skipCount = 0;
+      run(); 
+    }, sec * 1000);
     window.LC.log(`🔄 Strength auto refresh ON (${sec}s).`);
     if($("strengthStatus")) $("strengthStatus").textContent = `Auto refresh enabled (${sec}s).`;
     run();
@@ -331,8 +356,9 @@
 
   // === MAIN SCAN ===
   async function run(){
-    if(isRunning) return;
+    if(isRunning || inFlight) return;
     isRunning = true;
+    inFlight = true;
     runCache = {}; // Clear cache for fresh run
 
     const timeframe = Number($("strengthTf")?.value || 900);
@@ -405,6 +431,7 @@
       if($("strengthStatus")) $("strengthStatus").textContent = `Error: ${e?.message || "Unknown error"}`;
     }finally{
       isRunning = false;
+      inFlight = false;
     }
   }
 

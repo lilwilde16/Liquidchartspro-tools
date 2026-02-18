@@ -22,6 +22,7 @@
     </div>
 
     <section class="page" id="pageHome">
+      <div class="tab-scroll">
       <div class="card">
         <h1 class="title">LiquidChartsPro Tools</h1>
         <div class="subtitle">Consolidated currency strength meter + automated trading + backtest tools</div>
@@ -54,24 +55,37 @@
         </div>
         <div id="log" class="log"></div>
       </div>
+      </div>
     </section>
 
     <section class="page hidden" id="pageSettings">
+      <div class="tab-scroll">
       <div class="card">
         <h2 class="title">Settings</h2>
         <div class="field">
           <label>Trading Pairs (one per line)</label>
-          <textarea id="pairs" rows="12" placeholder="EUR/USD&#10;GBP/USD&#10;USD/JPY&#10;AUD/USD&#10;NZD/USD&#10;USD/CAD&#10;EUR/GBP&#10;EUR/JPY&#10;GBP/JPY&#10;AUD/JPY"></textarea>
-          <small>Enter pairs in XXX/YYY format (also accepts XXXYYY)</small>
+          <textarea id="pairs" rows="12">EUR/USD
+GBP/USD
+USD/JPY
+AUD/USD
+NZD/USD
+USD/CAD
+USD/CHF
+EUR/GBP
+EUR/JPY
+GBP/JPY</textarea>
+          <small>Enter one pair per line</small>
         </div>
         <div class="btnRow">
           <button id="saveSettings" class="primary">Save Settings</button>
           <span id="settingsStatus" class="status"></span>
         </div>
       </div>
+      </div>
     </section>
 
     <section class="page hidden" id="pageStrength">
+      <div class="tab-scroll">
       <div class="card">
         <h2 class="title">Currency Strength Meter</h2>
         <div class="subtitle">Multi-timeframe composite strength with ATR normalization and RSI spread analysis</div>
@@ -91,7 +105,7 @@
           </div>
           <div class="field">
             <label>Auto-refresh (sec)</label>
-            <input id="strengthAutoSec" type="number" value="60" min="10" max="900" step="10" />
+            <input id="strengthAutoSec" type="number" value="1" min="1" max="900" step="1" />
           </div>
         </div>
         <div class="btnRow">
@@ -104,9 +118,11 @@
         <h3>Best Trading Pairs</h3>
         <div id="strengthBestPairs" class="bestPairs"></div>
       </div>
+      </div>
     </section>
 
     <section class="page hidden" id="pageBacktest">
+      <div class="tab-scroll">
       <div class="card">
         <h2 class="title">Backtest</h2>
         <div class="row">
@@ -202,9 +218,11 @@
           <button id="btnClearBt" disabled>Clear Results</button>
         </div>
       </div>
+      </div>
     </section>
 
     <section class="page hidden" id="pageTools">
+      <div class="tab-scroll">
       <div class="card">
         <h2 class="title">AutoTrader</h2>
         <div class="subtitle">Session-aware automated trading with dynamic confidence scoring</div>
@@ -224,7 +242,7 @@
           </div>
           <div class="field">
             <label>Scan interval (sec)</label>
-            <input id="atPollSec" type="number" value="120" min="30" max="3600" step="10" />
+            <input id="atPollSec" type="number" value="1" min="1" max="3600" step="1" />
           </div>
           <div class="field">
             <label>Risk Mode</label>
@@ -355,6 +373,7 @@
           <button id="btnDumpTrades" disabled>Dump Trades</button>
           <button id="btnCloseAll" disabled>Close All (selected pair)</button>
         </div>
+      </div>
       </div>
     </section>
   </div>
