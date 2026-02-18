@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strength Meter Test</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>Currency Strength Meter - Standalone Test</h1>
+        
+        <div class="card">
+            <div class="title">Test Controls</div>
+            <div class="field">
+                <label>Pairs (one per line)</label>
+                <textarea id="pairs" rows="8">EUR/USD
+GBP/USD
+USD/JPY
+AUD/USD
+NZD/USD
+USD/CAD
+EUR/GBP
+EUR/JPY</textarea>
+            </div>
+            <div class="field">
+                <button id="btnStrengthRun" class="btn primary">Run Strength Test</button>
+                <button id="btnStrengthAuto" class="btn">Start Auto</button>
+                <button id="btnStrengthStop" class="btn">Stop Auto</button>
+            </div>
+            <div class="field">
+                <input type="number" id="strengthAutoSec" value="60" min="10" max="900" style="width: 100px;">
+                <span>Auto refresh interval (seconds)</span>
+            </div>
+            <div id="strengthStatus" class="status-msg">Ready</div>
+        </div>
+
+        <div class="card">
+            <div class="title">Currency Rankings</div>
+            <div id="strengthTable">No data yet</div>
+        </div>
+
+        <div class="card">
+            <div class="title">Best Trading Pairs</div>
+            <div id="strengthBestPairs">No data yet</div>
+        </div>
+
+        <div class="card">
+            <div class="title">Status</div>
+            <div class="pill warn" id="statusPill">Testing Mode</div>
+        </div>
+
+        <div class="card">
+            <div class="title">Log</div>
+            <pre id="log" style="max-height: 200px; overflow-y: auto; background: #f5f5f5; padding: 10px;"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Mock LC Framework for testing
+        window.LC = {
+            log: function(msg) {
+                const logEl = document.getElementById('log');
+                const timestamp = new Date().toLocaleTimeString();
+                logEl.textContent = `[${timestamp}] ${msg}\n` + logEl.textContent;
+                console.log(msg);
+            },
+            setStatus: function(text, kind) {
+                const pill = document.getElementById('statusPill');
+                if(pill) {
+                    pill.textContent = text;
+                    pill.className = 'pill ' + (kind || '');
+                }
+            },
+            requestCandles: async function(pair, timeframe, count) {
+                // Mock candle data generator
+                window.LC.log(`📊 Requesting ${count} candles for ${pair} @ ${timeframe}s`);
+                
+                const candles = [];
+                let price = 1.1000 + Math.random() * 0.05;
+                const volatility = 0.0001 + Math.random() * 0.0003;
+                
+                for(let i = 0; i < count; i++) {
+                    const change = (Math.random() - 0.5) * volatility;
+                    price = price + change;
+                    const high = price + Math.abs(change) * Math.random();
+                    const low = price - Math.abs(change) * Math.random();
+                    
+                    candles.push({
+                        o: price - change,
+                        h: high,
+                        l: low,
+                        c: price,
+                        close: price,
+                        high: high,
+                        low: low,
+                        open: price - change
+                    });
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200));
+                
+                return { candles: candles, data: candles };
+            }
+        };
+
+        window.Sway = {
+            Framework: function() {
+                this.pRequestCandles = window.LC.requestCandles;
+            }
+        };
+    </script>
+
+    <script src="../js/util-indicators.js"></script>
+    <script src="../js/engine-strength.js"></script>
+    
+    <script>
+        window.addEventListener('load', function() {
+            window.LC.log('✅ Test environment loaded');
+            window.LC.log('ℹ️ Click "Run Strength Test" to test the algorithm');
+            
+            if(window.ENG && window.ENG.Strength) {
+                window.ENG.Strength.init();
+                window.LC.log('✅ Strength engine initialized');
+            } else {
+                window.LC.log('❌ Strength engine not found');
+            }
+        });
+    </script>
+</body>
+</html>
