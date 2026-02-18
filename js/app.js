@@ -1,10 +1,15 @@
 (function(){
   const $ = (id)=>document.getElementById(id);
+  
+  // Default major currency pairs
+  const DEFAULT_PAIRS = [
+    "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "NZD/USD",
+    "USD/CAD", "USD/CHF", "EUR/GBP", "EUR/JPY", "GBP/JPY"
+  ];
 
   function collectMarkets(){
     const defaults = [
-      "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "NZD/USD",
-      "USD/CAD", "EUR/GBP", "EUR/JPY", "GBP/JPY", "AUD/JPY", "NAS100", "US30"
+      ...DEFAULT_PAIRS, "AUD/JPY", "NAS100", "US30"
     ];
 
     const set = new Set(defaults);
@@ -156,7 +161,7 @@
       // Seed default pairs if empty
       const pairsEl = $("pairs");
       if(pairsEl && (!s.pairs || s.pairs.trim() === "")){
-        const defaultPairs = "EUR/USD\nGBP/USD\nUSD/JPY\nAUD/USD\nNZD/USD\nUSD/CAD\nUSD/CHF\nEUR/GBP\nEUR/JPY\nGBP/JPY";
+        const defaultPairs = DEFAULT_PAIRS.join("\n");
         pairsEl.value = defaultPairs;
         window.setSettings({ pairs: defaultPairs });
       }
