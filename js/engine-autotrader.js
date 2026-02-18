@@ -499,15 +499,13 @@
   }
 
   // === CORRELATED INSTRUMENT ANALYSIS ===
-  async function fetchCorrelatedStrength(instrument){
-    // For NAS100, fetch correlated instruments to gauge market sentiment
+  function getCorrelatedStrength(instrument){
+    // For NAS100, get USD strength from cached strength snapshot
+    // This is a simplified correlation metric - in production, you would
+    // fetch actual US30 and SPX500 data and analyze cross-instrument momentum
     if(!instrument.includes("NAS100")) return null;
     
     try{
-      // Fetch strength data for correlated instruments
-      const correlatedPairs = ["USD/JPY", "EUR/USD"]; // USD proxy pairs
-      const indices = ["US30", "SPX500"]; // Correlated indices
-      
       const strengthSnapshot = window.ENG?.Strength?.getSnapshot?.();
       if(!strengthSnapshot || !strengthSnapshot.ranked) return null;
       
@@ -515,11 +513,11 @@
       const usdRanking = strengthSnapshot.ranked.find(r => r.ccy === "USD");
       const usdScore = usdRanking ? usdRanking.avgScore : 0;
       
-      // For indices, we'll use a simplified correlation check
-      // In production, you'd fetch actual US30 and SPX500 data
+      // Return simplified correlation metric
+      // TODO: Enhance with actual US30 and SPX500 data analysis
       return {
         usdStrength: usdScore,
-        correlationScore: Math.abs(usdScore) // Simplified correlation metric
+        correlationScore: Math.abs(usdScore)
       };
     }catch(e){
       return null;
@@ -575,11 +573,6 @@
     }
     
     return { pattern: null, direction: 0 };
-  }
-
-  function shouldUseNAS100ScalperLogic(pair, strategyId){
-    // Check if we should use NAS100 scalper logic
-    return strategyId === "nas100_scalper" || pair.includes("NAS100");
   }
 
   // === PAIR SCANNING ===

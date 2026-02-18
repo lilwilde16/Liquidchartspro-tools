@@ -200,20 +200,24 @@
         const curr = candles[i];
         const prev = candles[i - 1];
         
+        const currBody = Math.abs(curr.c - curr.o);
+        const prevBody = Math.abs(prev.c - prev.o);
+        
         // Bullish engulfing pattern
         if(prev.c < prev.o && curr.c > curr.o && 
-           curr.o <= prev.c && curr.c >= prev.o){
+           curr.o <= prev.c && curr.c >= prev.o &&
+           currBody > prevBody){
           return 1;
         }
         
         // Bearish engulfing pattern
         if(prev.c > prev.o && curr.c < curr.o && 
-           curr.o >= prev.c && curr.c <= prev.o){
+           curr.o >= prev.c && curr.c <= prev.o &&
+           currBody > prevBody){
           return allowShort ? -1 : 0;
         }
         
         // Breakout patterns
-        const currBody = Math.abs(curr.c - curr.o);
         const currRange = curr.h - curr.l;
         if(currBody > currRange * 0.7){
           if(curr.c > curr.o && curr.c > prev.h) return 1;

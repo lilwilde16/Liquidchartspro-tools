@@ -40,7 +40,7 @@
       "High-precision NAS100 scalper leveraging correlated movements.",
       "Entry: Monitors USD, US30, and SPX500 for predictive signals.",
       "Confirms with NAS100 candlestick patterns (engulfing, breakouts).",
-      "Risk: 2-3% per trade, SL=3x pip, TP=5x pip (index-specific).",
+      "Risk: 2-3% position size, RR=1.67 (TP:SL ratio of 5:3 in pips).",
       "Timeframes: M1 and M5 for high-frequency intraday trades.",
       "Signal threshold: Strength spread ≥ 5, trend confirmation required."
     ].join("\n"),
