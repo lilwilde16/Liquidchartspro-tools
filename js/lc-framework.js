@@ -4,6 +4,9 @@
   const Framework = new Sway.Framework();
   window.LC = window.LC || {};
   window.LC.Framework = Framework;
+  
+  // Constants
+  const AUTOTRADER_RESUME_DELAY_MS = 1000;
 
   function ts(){
     const d=new Date(), pad=n=>(n<10?"0":"")+n;
@@ -334,7 +337,7 @@
         setTimeout(()=>{
           window.ENG.AutoTrader.start();
           log("▶️ AutoTrader resumed");
-        }, 1000);
+        }, AUTOTRADER_RESUME_DELAY_MS);
       }
     }
   }
