@@ -41,8 +41,7 @@
   const $ = (id)=>document.getElementById(id);
   let autoTimer = null;
   let autoIntervalSec = null;
-  let isRunning = false;
-  let inFlight = false;
+  let inFlight = false; // Concurrency guard: prevents overlapping runs
   let consecutiveSkips = 0;
   let lastRanked = [];
   let lastPairs = [];
@@ -349,8 +348,6 @@
       return;
     }
     
-    if(isRunning) return;
-    isRunning = true;
     inFlight = true;
     consecutiveSkips = 0;
     runCache = {}; // Clear cache for fresh run
@@ -424,7 +421,6 @@
       window.LC.log(`❌ Strength scan failed: ${e?.message || e}`);
       if($("strengthStatus")) $("strengthStatus").textContent = `Error: ${e?.message || "Unknown error"}`;
     }finally{
-      isRunning = false;
       inFlight = false;
     }
   }
