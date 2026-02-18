@@ -42,6 +42,8 @@
   let autoTimer = null;
   let autoIntervalSec = null;
   let isRunning = false;
+  let inFlight = false;
+  let consecutiveSkips = 0;
   let lastRanked = [];
   let lastPairs = [];
   let runCache = {}; // In-run cache for candle data
@@ -309,10 +311,11 @@
 
   // === AUTO REFRESH ===
   function startAuto(){
-    const requested = Number($("strengthAutoSec")?.value || 60);
-    const sec = Math.max(10, Math.min(900, Number.isFinite(requested) ? requested : 60));
+    const requested = Number($("strengthAutoSec")?.value || 1);
+    const sec = Math.max(1, Math.min(900, Number.isFinite(requested) ? requested : 1));
     if(autoTimer) clearInterval(autoTimer);
     autoIntervalSec = sec;
+    consecutiveSkips = 0;
     autoTimer = setInterval(()=>{ run(); }, sec * 1000);
     window.LC.log(`🔄 Strength auto refresh ON (${sec}s).`);
     if($("strengthStatus")) $("strengthStatus").textContent = `Auto refresh enabled (${sec}s).`;
@@ -331,8 +334,25 @@
 
   // === MAIN SCAN ===
   async function run(){
+    // Concurrency guard: skip if already running
+    if(inFlight) {
+      consecutiveSkips += 1;
+      if(consecutiveSkips >= 3 && autoIntervalSec && autoIntervalSec < 2) {
+        // Backoff: increase interval to 2s if 3 consecutive skips
+        window.LC.log(`⚠ Strength scan backoff: increasing interval to 2s due to ${consecutiveSkips} skips.`);
+        if(autoTimer) clearInterval(autoTimer);
+        autoIntervalSec = 2;
+        autoTimer = setInterval(()=>{ run(); }, 2000);
+        if($("strengthAutoSec")) $("strengthAutoSec").value = "2";
+        consecutiveSkips = 0;
+      }
+      return;
+    }
+    
     if(isRunning) return;
     isRunning = true;
+    inFlight = true;
+    consecutiveSkips = 0;
     runCache = {}; // Clear cache for fresh run
 
     const timeframe = Number($("strengthTf")?.value || 900);
@@ -405,6 +425,7 @@
       if($("strengthStatus")) $("strengthStatus").textContent = `Error: ${e?.message || "Unknown error"}`;
     }finally{
       isRunning = false;
+      inFlight = false;
     }
   }
 

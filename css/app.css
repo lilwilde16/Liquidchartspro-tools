@@ -24,15 +24,21 @@ body {
 }
 
 /* === Tabs === */
-.tabs {
+.tabs-bar {
   display: flex;
-  gap: 4px;
+  gap: 12px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
   margin-bottom: 20px;
   border-bottom: 2px solid #ddd;
   padding-bottom: 0;
 }
 
-.tabBtn {
+.tab-btn {
   padding: 12px 24px;
   border: none;
   background: #fff;
@@ -46,25 +52,31 @@ body {
   transition: all 0.2s;
   position: relative;
   top: 2px;
+  scroll-snap-align: start;
+  flex: 0 0 auto;
 }
 
-.tabBtn:hover {
+.tab-btn:hover {
   background: #f8f8f8;
   color: #333;
 }
 
-.tabBtn.active {
+.tab-btn.active {
   background: linear-gradient(135deg, #5b4b8a, #7a6ba8);
   color: #fff;
   border-color: #5b4b8a;
 }
 
 /* === Page Sections === */
-.page {
+.tab-pane {
   display: block;
+  height: calc(100vh - 110px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
 }
 
-.page.hidden {
+.tab-pane.hidden {
   display: none;
 }
 
@@ -318,13 +330,5 @@ button.primary:hover:not(:disabled) {
 @media (max-width: 768px) {
   .row {
     grid-template-columns: 1fr;
-  }
-  
-  .tabs {
-    overflow-x: auto;
-  }
-  
-  .tabBtn {
-    white-space: nowrap;
   }
 }

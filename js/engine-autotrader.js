@@ -58,6 +58,7 @@
     timer: null,
     running: false,
     cycling: false,
+    inFlight: false,
     lastTradeAt: 0,
     dayKey: "",
     tradesToday: 0,
@@ -120,7 +121,7 @@
     return {
       tf: $("atTf")?.value || "M15",
       candles: Math.max(200, Math.min(3000, Math.floor(toNum($("atCandles")?.value, 500)))),
-      intervalSec: Math.max(30, Math.min(3600, Math.floor(toNum($("atPollSec")?.value, 120)))),
+      intervalSec: Math.max(1, Math.min(3600, Math.floor(toNum($("atPollSec")?.value, 1)))),
       riskMode: $("atRiskMode")?.value || "conservative",
       lots: toNum($("atLots")?.value, 0.01),
       rr: toNum($("atRr")?.value, DEFAULT_RR),
@@ -533,8 +534,14 @@
 
   // === MAIN CYCLE ===
   async function runCycle(){
+    // Concurrency guard: skip if already running
+    if(state.inFlight) {
+      return;
+    }
+    
     if(!state.running || state.cycling) return;
     state.cycling = true;
+    state.inFlight = true;
     const c = cfg();
 
     try{
@@ -620,6 +627,7 @@
       if($("atStatus")) $("atStatus").textContent = "Cycle failed. Check log.";
     } finally {
       state.cycling = false;
+      state.inFlight = false;
     }
   }
 
