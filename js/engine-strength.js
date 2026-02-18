@@ -181,24 +181,21 @@
       const lookback = Math.min(20, close.length - 1);
       const weightedReturn = (currentClose - close[i - lookback]) / close[i - lookback];
 
-      // Slope z-score
-      const slopeValue = slope ? guardNaN(slope[i], 0) : 0;
-
-      // RSI spread (strong currencies have diverging RSI from neutrals)
-      let rsiSpread = 0;
-      if(rsi && USE_RSI){
-        const currentRSI = guardNaN(rsi[i], 50);
-        rsiSpread = (currentRSI - 50) / 50; // Normalize to [-1, 1]
-      }
-
       // Calculate composite score
       let compositeScore;
       if(USE_RSI && rsi){
+        // RSI spread (strong currencies have diverging RSI from neutrals)
+        const currentRSI = guardNaN(rsi[i], 50);
+        const rsiSpread = (currentRSI - 50) / 50; // Normalize to [-1, 1]
+        
         compositeScore = 
           WEIGHTS_WITH_RSI.rsiSpread * rsiSpread +
           WEIGHTS_WITH_RSI.trendRatio * (trendRatio / MIN_TREND_RATIO) +
           WEIGHTS_WITH_RSI.weightedReturn * weightedReturn * 100;
       }else{
+        // Slope z-score fallback
+        const slopeValue = slope ? guardNaN(slope[i], 0) : 0;
+        
         compositeScore = 
           WEIGHTS_WITHOUT_RSI.slopeZ * slopeValue +
           WEIGHTS_WITHOUT_RSI.trendRatio * (trendRatio / MIN_TREND_RATIO) +

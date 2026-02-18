@@ -108,7 +108,7 @@ const CONF_WEIGHTS = {
   learning: 0.23    // Machine learning component
 };
 ```
-Total positive weights: 1.10; spread is negative penalty.
+Weights sum to 1.00 (positive weights 1.10 minus spread penalty 0.10).
 
 ### Session-Based Confidence Thresholds
 ```javascript

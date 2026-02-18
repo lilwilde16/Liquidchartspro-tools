@@ -204,7 +204,8 @@
     saveMemory();
   }
 
-  function getAdaptiveConfidenceBoost(){
+  function getAdaptiveConfidenceAdjustment(){
+    // After 2+ consecutive losses, increase the minimum confidence threshold
     const losses = state.memory.consecutiveLosses || 0;
     if(losses >= 2) return LOSS_CONFIDENCE_PENALTY;
     return 0;
@@ -596,14 +597,14 @@
 
       const best = scored[0];
       
-      // Apply adaptive confidence boost after consecutive losses
+      // Apply adaptive confidence adjustment after consecutive losses
       const sessionMinConf = getSessionMinConfidence();
-      const adaptiveBoost = getAdaptiveConfidenceBoost();
-      const finalMinConf = Math.min(0.9, sessionMinConf + adaptiveBoost);
+      const adaptiveAdjustment = getAdaptiveConfidenceAdjustment();
+      const finalMinConf = Math.min(0.9, sessionMinConf + adaptiveAdjustment);
 
       if(best.confidence < finalMinConf){
         if($("atStatus")){
-          $("atStatus").textContent = `Watching ${best.pair}: conf ${best.confidence.toFixed(2)} < ${finalMinConf.toFixed(2)} (session=${getCurrentSession()}, boost=${adaptiveBoost.toFixed(2)})`;
+          $("atStatus").textContent = `Watching ${best.pair}: conf ${best.confidence.toFixed(2)} < ${finalMinConf.toFixed(2)} (session=${getCurrentSession()}, adj=${adaptiveAdjustment.toFixed(2)})`;
         }
         return;
       }
