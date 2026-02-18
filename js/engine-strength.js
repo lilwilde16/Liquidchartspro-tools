@@ -42,6 +42,9 @@
   let autoTimer = null;
   let autoIntervalSec = null;
   let isRunning = false;
+  let inFlight = false;
+  let consecutiveSkips = 0;
+  let backoffActive = false;
   let lastRanked = [];
   let lastPairs = [];
   let runCache = {}; // In-run cache for candle data
@@ -309,10 +312,12 @@
 
   // === AUTO REFRESH ===
   function startAuto(){
-    const requested = Number($("strengthAutoSec")?.value || 60);
-    const sec = Math.max(10, Math.min(900, Number.isFinite(requested) ? requested : 60));
+    const requested = Number($("strengthAutoSec")?.value || 1);
+    const sec = Math.max(1, Math.min(900, Number.isFinite(requested) ? requested : 1));
     if(autoTimer) clearInterval(autoTimer);
     autoIntervalSec = sec;
+    consecutiveSkips = 0;
+    backoffActive = false;
     autoTimer = setInterval(()=>{ run(); }, sec * 1000);
     window.LC.log(`🔄 Strength auto refresh ON (${sec}s).`);
     if($("strengthStatus")) $("strengthStatus").textContent = `Auto refresh enabled (${sec}s).`;
@@ -324,6 +329,8 @@
       clearInterval(autoTimer);
       autoTimer = null;
       autoIntervalSec = null;
+      consecutiveSkips = 0;
+      backoffActive = false;
       window.LC.log("⏹ Strength auto refresh OFF.");
       if($("strengthStatus")) $("strengthStatus").textContent = "Auto refresh stopped.";
     }
@@ -331,7 +338,38 @@
 
   // === MAIN SCAN ===
   async function run(){
-    if(isRunning) return;
+    // Concurrency guard: skip if already running
+    if(inFlight){
+      consecutiveSkips++;
+      window.LC.log(`⏭ Strength scan skipped (already in flight). Consecutive skips: ${consecutiveSkips}`);
+      
+      // Defensive backoff: after 3 consecutive skips, temporarily increase interval
+      if(consecutiveSkips >= 3 && !backoffActive && autoTimer && autoIntervalSec){
+        backoffActive = true;
+        const backoffInterval = 2000;
+        window.LC.log(`⚠ Strength: Applying defensive backoff (${backoffInterval}ms) after ${consecutiveSkips} skips.`);
+        clearInterval(autoTimer);
+        autoTimer = setInterval(()=>{ run(); }, backoffInterval);
+      }
+      return;
+    }
+    
+    inFlight = true;
+    
+    // Reset backoff if we successfully start a run
+    if(backoffActive && autoTimer && autoIntervalSec){
+      backoffActive = false;
+      consecutiveSkips = 0;
+      clearInterval(autoTimer);
+      autoTimer = setInterval(()=>{ run(); }, autoIntervalSec * 1000);
+      window.LC.log(`✅ Strength: Backoff cleared, returning to ${autoIntervalSec}s interval.`);
+    }
+    
+    if(isRunning){
+      inFlight = false;
+      return;
+    }
+    
     isRunning = true;
     runCache = {}; // Clear cache for fresh run
 
@@ -399,12 +437,16 @@
       window.LC.log(`✅ Strength scan done. Strongest: ${strongest}, weakest: ${weakest}.`);
       window.LC.setStatus(bad.length ? "Strength done (partial)" : "Strength done", bad.length ? "warn" : "ok");
       
+      // Reset consecutive skips on successful run
+      consecutiveSkips = 0;
+      
     }catch(e){
       window.LC.setStatus("Strength error", "bad");
       window.LC.log(`❌ Strength scan failed: ${e?.message || e}`);
       if($("strengthStatus")) $("strengthStatus").textContent = `Error: ${e?.message || "Unknown error"}`;
     }finally{
       isRunning = false;
+      inFlight = false;
     }
   }
 
