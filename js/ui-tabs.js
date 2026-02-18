@@ -3,8 +3,15 @@
           document.querySelectorAll(".tabBtn").forEach(b=>b.classList.remove("active"));
           document.querySelectorAll(".page").forEach(p=>p.classList.add("hidden"));
 
-      document.querySelector(`.tabBtn[data-tab="${tab}"]`).classList.add("active");
-          document.getElementById(`page${tab}`).classList.remove("hidden");
+      const activeBtn = document.querySelector(`.tabBtn[data-tab="${tab}"]`);
+      const activePage = document.getElementById(`page${tab}`);
+      
+      if(activeBtn) activeBtn.classList.add("active");
+      if(activePage){
+        activePage.classList.remove("hidden");
+        // Reset content pane scroll position on tab change
+        activePage.scrollTop = 0;
+      }
     }
 
    document.addEventListener("click", (e)=>{

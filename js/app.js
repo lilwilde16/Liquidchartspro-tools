@@ -1,5 +1,8 @@
 (function(){
   const $ = (id)=>document.getElementById(id);
+  
+  // Default major currency pairs for first-time users
+  const DEFAULT_PAIRS = "EUR/USD\nGBP/USD\nUSD/JPY\nAUD/USD\nNZD/USD\nUSD/CAD\nUSD/CHF\nEUR/GBP\nEUR/JPY\nGBP/JPY";
 
   function collectMarkets(){
     const defaults = [
@@ -152,6 +155,14 @@
         }
         if (s[id] !== undefined) el.value = s[id];
       });
+      
+      // Prefill pairs with defaults if empty on first load
+      const pairsEl = $("pairs");
+      if(pairsEl && (!s.pairs || s.pairs.trim() === "")){
+        pairsEl.value = DEFAULT_PAIRS;
+        // Save the default pairs to localStorage
+        window.setSettings({ pairs: DEFAULT_PAIRS });
+      }
     };
 
     window.readUIToSettings = () => {

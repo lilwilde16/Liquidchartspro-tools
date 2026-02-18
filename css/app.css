@@ -1,4 +1,8 @@
 /* === Base Styles === */
+:root {
+  --tabs-height: 56px;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -30,6 +34,10 @@ body {
   margin-bottom: 20px;
   border-bottom: 2px solid #ddd;
   padding-bottom: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tabBtn {
@@ -46,6 +54,8 @@ body {
   transition: all 0.2s;
   position: relative;
   top: 2px;
+  scroll-snap-align: start;
+  flex-shrink: 0;
 }
 
 .tabBtn:hover {
@@ -62,6 +72,10 @@ body {
 /* === Page Sections === */
 .page {
   display: block;
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: calc(100vh - var(--tabs-height));
+  padding: 12px;
 }
 
 .page.hidden {
