@@ -69,6 +69,8 @@
   };
 
   // === UTILITY FUNCTIONS ===
+  const SUPPORTED_INDICES = ["NAS100", "US30", "SPX500", "DJ30", "DAX", "FTSE", "NIKKEI"];
+
   function toNum(v, fallback){
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
@@ -92,9 +94,8 @@
   }
 
   function isIndex(instrument){
-    // Check if instrument is an index (NAS100, US30, SPX500, etc.)
-    const indices = ["NAS100", "US30", "SPX500", "DJ30", "DAX", "FTSE", "NIKKEI"];
-    return indices.some(idx => instrument.includes(idx));
+    // Check if instrument is an index
+    return SUPPORTED_INDICES.some(idx => instrument.includes(idx));
   }
 
   function calculatePipSize(instrument){
@@ -361,14 +362,15 @@
     // Candlestick pattern detection
     const pattern = detectCandlestickPattern(m5Candles, m5i);
 
-    // Determine direction
+    // Determine direction - pattern takes priority when detected
     let dir = 0;
-    if(nearDemand && bullishRejection) dir = 1;
-    else if(nearSupply && bearishRejection) dir = -1;
-    
-    // Override with pattern detection if pattern is strong
-    if(pattern.direction !== 0 && Math.abs(pattern.direction) > Math.abs(dir)){
+    if(pattern.direction !== 0){
+      // Pattern detected - use it as primary signal
       dir = pattern.direction;
+    }else{
+      // No pattern - fall back to zone-based signals
+      if(nearDemand && bullishRejection) dir = 1;
+      else if(nearSupply && bearishRejection) dir = -1;
     }
 
     // Momentum & scores
