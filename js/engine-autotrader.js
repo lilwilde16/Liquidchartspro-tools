@@ -474,17 +474,80 @@
   async function placeTrade(candidate, c){
     const side = candidate.dir === 1 ? "BUY" : "SELL";
     const riskMult = c.riskMode === "conservative" ? 0.9 : 1.05;
-    const slDistance = candidate.atrNow * c.slAtr * riskMult;
-    const tpDistance = slDistance * c.rr;
+    
+    // Calculate pip size for the instrument
+    const pipSize = isJPYPair(candidate.pair) ? 0.01 : 0.0001;
+    
+    // Calculate SL and TP in pips (ATR is in price units, convert to pips)
+    const slPips = (candidate.atrNow / pipSize) * c.slAtr * riskMult;
+    const tpPips = slPips * c.rr;
+    
+    // Get current market price
+    const market = window.LC?.api?.market(candidate.pair);
+    const bid = Number(market?.bid || 0);
+    const ask = Number(market?.ask || 0);
+    
+    if(!Number.isFinite(bid) || !Number.isFinite(ask)){
+      throw new Error("No valid bid/ask price available");
+    }
+    
+    // Determine entry price based on direction
+    const entryPrice = candidate.dir === 1 ? ask : bid;
+    
+    // Calculate absolute TP/SL prices based on direction
+    let tpPrice, slPrice;
+    if(candidate.dir === 1){
+      // Long: TP above, SL below
+      tpPrice = entryPrice + (tpPips * pipSize);
+      slPrice = entryPrice - (slPips * pipSize);
+    }else{
+      // Short: TP below, SL above
+      tpPrice = entryPrice - (tpPips * pipSize);
+      slPrice = entryPrice + (slPips * pipSize);
+    }
+    
+    // Round to appropriate precision
+    const precision = isJPYPair(candidate.pair) ? 3 : 5;
+    tpPrice = Number(tpPrice.toFixed(precision));
+    slPrice = Number(slPrice.toFixed(precision));
 
     try{
-      await window.LC.api.sendMarketOrderWithTPSL(
-        candidate.pair,
-        candidate.dir === 1,
-        c.lots,
-        tpDistance,
-        slDistance
-      );
+      // Try to place order with TP/SL attached
+      let orderId = null;
+      try{
+        const result = await window.LC.api.sendMarketOrderWithTPSL(
+          candidate.pair,
+          candidate.dir === 1,
+          c.lots,
+          tpPrice,
+          slPrice
+        );
+        orderId = result?.orderId || result?.id || null;
+        
+        window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} | conf=${candidate.confidence.toFixed(2)} | entry=${entryPrice.toFixed(precision)} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)} | session=${getCurrentSession()}`);
+      }catch(attachError){
+        // Fallback: place market order without TP/SL, then modify
+        window.LC.log(`⚠️ TP/SL attachment failed: ${attachError?.message || attachError}`);
+        window.LC.log(`🔄 Attempting fallback: place order then modify...`);
+        
+        const orderResult = await window.LC.api.sendMarketOrder(
+          candidate.pair,
+          candidate.dir === 1,
+          c.lots
+        );
+        orderId = orderResult?.orderId || orderResult?.id || null;
+        
+        if(orderId){
+          try{
+            await window.LC.api.changeOrderTPSL(orderId, tpPrice, slPrice);
+            window.LC.log(`✅ Fallback successful: TP/SL attached via modify | order=${orderId} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)}`);
+          }catch(modifyError){
+            window.LC.log(`❌ Fallback modify failed: ${modifyError?.message || modifyError}`);
+          }
+        }
+        
+        window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} (fallback) | conf=${candidate.confidence.toFixed(2)} | entry=${entryPrice.toFixed(precision)} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)} | session=${getCurrentSession()}`);
+      }
 
       state.lastTradeAt = Date.now();
       state.tradesToday += 1;
@@ -492,12 +555,6 @@
       state.pairTradeCounts[candidate.pair] = (state.pairTradeCounts[candidate.pair] || 0) + 1;
       state.memory.totalSignals += 1;
       saveMemory();
-
-      window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} | conf=${candidate.confidence.toFixed(2)} | TP=${tpDistance.toFixed(5)} SL=${slDistance.toFixed(5)} | session=${getCurrentSession()}`);
-      
-      // TODO: Implement partial TP, BE move, ATR trail when API supports order modification
-      // For now, just log the intent
-      window.LC.log(`   → Plan: 50% TP at ${(slDistance * 1.0).toFixed(5)}, BE at ${(slDistance * BE_MOVE_AT_R).toFixed(5)}, Trail ${ATR_TRAIL_MULT}×ATR`);
       
     }catch(e){
       window.LC.log(`❌ AutoTrader order failed: ${e?.message || e}`);
@@ -655,5 +712,11 @@
 
   // === PUBLIC API ===
   window.ENG = window.ENG || {};
-  window.ENG.AutoTrader = { start, stop, init, runCycle };
+  window.ENG.AutoTrader = { 
+    start, 
+    stop, 
+    init, 
+    runCycle,
+    isRunning: ()=>state.running
+  };
 })();
