@@ -98,7 +98,7 @@
 
   // Export full backtest results (trades + summary)
   function exportBacktestResults(trades, summary, baseFilename){
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
+    const timestamp = new Date().toISOString().replace(/:/g, "-").split(".")[0];
     const base = baseFilename || `backtest_${timestamp}`;
     
     if(trades && trades.length > 0){

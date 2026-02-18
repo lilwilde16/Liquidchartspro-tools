@@ -382,11 +382,21 @@
     log("=== DIAGNOSTICS END ===");
   }
 
+  // === FRAMEWORK CALLBACKS ===
   Framework.OnLoad = function(){
     setStatus("Framework responding", "ok");
     log("✅ Framework loaded.");
 
-    ["btnPing","btnReqPrices","btnHealth","btnDiagRun","btnPrices","btnTicket","btnBuyMarket","btnSellMarket","btnBuyTPSL","btnSellTPSL","btnChangeTPSL","btnDumpTrades","btnCloseAll","btnClearLog","btnStrengthRun","btnStrengthAuto","btnStrengthStop","btnRunBt","btnClearBt","btnAutoStart","btnAutoStop"].forEach((id)=>{
+    // Enable buttons when framework is ready
+    const buttonsToEnable = [
+      "btnPing", "btnReqPrices", "btnHealth", "btnDiagRun",
+      "btnPrices", "btnTicket", "btnBuyMarket", "btnSellMarket",
+      "btnBuyTPSL", "btnSellTPSL", "btnChangeTPSL", "btnDumpTrades",
+      "btnCloseAll", "btnClearLog", "btnStrengthRun", "btnStrengthAuto",
+      "btnStrengthStop", "btnRunBt", "btnClearBt", "btnAutoStart", "btnAutoStop"
+    ];
+    
+    buttonsToEnable.forEach((id)=>{
       if($(id)) $(id).disabled = false;
     });
 

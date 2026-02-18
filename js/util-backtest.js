@@ -123,8 +123,10 @@
     const riskAmount = balance * (riskPercent / 100);
     const ps = pipSize(pair);
     
-    // Standard lot value per pip (approximate for forex)
-    const pipValue = 10; // $10 per pip for 1 standard lot on most pairs
+    // Standard lot value per pip (simplified approximation)
+    // NOTE: This is a simplified calculation. Actual pip values vary by pair and account currency.
+    // For accurate position sizing, use broker-specific pip value calculations.
+    const pipValue = 10; // Approximate: $10 per pip for 1 standard lot on major pairs
     const lotSize = riskAmount / (slPips * pipValue);
     
     // Round to 0.01 lot increments

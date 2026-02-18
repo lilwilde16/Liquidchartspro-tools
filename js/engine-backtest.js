@@ -2,6 +2,7 @@
   const $ = (id)=>document.getElementById(id);
   const MAX_ROWS = 300;
   let stopFlag = false;
+  let lastResults = null;
 
   function toNum(v, fallback = 0){
     const n = Number(v);
@@ -454,8 +455,6 @@
       window.LC.log("❌ Export utilities unavailable.");
     }
   }
-
-  let lastResults = null;
 
   window.ENG = window.ENG || {};
   window.ENG.Backtest = { run, stop, clear, exportResults, syncLossRate };
