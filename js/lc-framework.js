@@ -503,4 +503,187 @@
     dumpOrderTypes,
     pRequestCandles: requestCandles
   };
+
+  // === BACKTEST API ===
+  // LCBacktestAPI provides historical data slices for backtesting
+  // It implements the same interface as live LC API but returns data truncated at simulated "now"
+  class LCBacktestAPI {
+    constructor(){
+      this.historicalData = {}; // { pair: { tf: candles[] } }
+      this.simulatedNow = null;
+      this.instrumentMetadata = this._initInstrumentMetadata();
+    }
+
+    _initInstrumentMetadata(){
+      // Instrument metadata: pip size, typical spread, commission per lot
+      const metadata = {};
+      
+      // Major pairs (non-JPY)
+      ["EUR/USD", "GBP/USD", "AUD/USD", "NZD/USD", "EUR/GBP"].forEach((pair)=>{
+        metadata[pair] = { pipSize: 0.0001, typicalSpread: 0.00015, commission: 0 };
+      });
+      
+      // JPY pairs
+      ["USD/JPY", "EUR/JPY", "GBP/JPY", "AUD/JPY", "NZD/JPY", "CAD/JPY", "CHF/JPY"].forEach((pair)=>{
+        metadata[pair] = { pipSize: 0.01, typicalSpread: 0.015, commission: 0 };
+      });
+      
+      // CHF and CAD pairs
+      ["USD/CAD", "USD/CHF", "EUR/CAD", "EUR/CHF", "GBP/CAD", "GBP/CHF"].forEach((pair)=>{
+        metadata[pair] = { pipSize: 0.0001, typicalSpread: 0.0002, commission: 0 };
+      });
+      
+      // Crosses
+      ["AUD/NZD", "AUD/CAD", "NZD/CAD", "EUR/AUD", "EUR/NZD", "GBP/AUD", "GBP/NZD"].forEach((pair)=>{
+        metadata[pair] = { pipSize: 0.0001, typicalSpread: 0.0003, commission: 0 };
+      });
+      
+      // Indices (points-based, not pips)
+      ["NAS100", "US30", "SPX500", "GER40", "UK100", "JPN225"].forEach((pair)=>{
+        metadata[pair] = { pipSize: 1, typicalSpread: 2, commission: 0 };
+      });
+      
+      return metadata;
+    }
+
+    // Load historical data for a pair and timeframe
+    async loadHistoricalData(pair, timeframe, candles){
+      if(!this.historicalData[pair]) this.historicalData[pair] = {};
+      this.historicalData[pair][timeframe] = candles || [];
+    }
+
+    // Set simulated current time
+    setSimulatedNow(timestamp){
+      this.simulatedNow = timestamp;
+    }
+
+    // Request candles truncated at simulated "now"
+    async requestCandles(pair, timeframe, count){
+      const tfSec = this._tfToSeconds(timeframe);
+      const allCandles = this.historicalData[pair]?.[tfSec] || [];
+      
+      if(allCandles.length === 0) return { candles: [] };
+      
+      // Filter candles up to simulated "now"
+      let filtered = allCandles;
+      if(this.simulatedNow !== null){
+        filtered = allCandles.filter((c)=>{
+          const t = this._candleTime(c);
+          return t <= this.simulatedNow;
+        });
+      }
+      
+      // Return last 'count' candles
+      const start = Math.max(0, filtered.length - count);
+      const slice = filtered.slice(start);
+      
+      return { candles: slice };
+    }
+
+    // Request prices (simulated bid/ask from last candle close)
+    async requestPrices(pairs){
+      const prices = {};
+      
+      for(const pair of pairs){
+        const meta = this.instrumentMetadata[pair] || { pipSize: 0.0001, typicalSpread: 0.00015 };
+        
+        // Get last available candle close as mid price
+        let mid = null;
+        const pairData = this.historicalData[pair];
+        
+        if(pairData){
+          // Use smallest available timeframe for most recent price
+          const tfs = Object.keys(pairData).map(Number).sort((a, b)=>a - b);
+          for(const tf of tfs){
+            const candles = pairData[tf] || [];
+            const filtered = this.simulatedNow !== null 
+              ? candles.filter((c)=>this._candleTime(c) <= this.simulatedNow)
+              : candles;
+            
+            if(filtered.length > 0){
+              mid = filtered[filtered.length - 1].c;
+              break;
+            }
+          }
+        }
+        
+        if(mid === null || !Number.isFinite(mid)){
+          prices[pair] = { bid: 0, ask: 0, mid: 0 };
+          continue;
+        }
+        
+        const halfSpread = meta.typicalSpread / 2;
+        prices[pair] = {
+          bid: mid - halfSpread,
+          ask: mid + halfSpread,
+          mid
+        };
+      }
+      
+      return prices;
+    }
+
+    // Get market data for a pair (simulated)
+    market(pair){
+      // Synchronous version - get last known price
+      const meta = this.instrumentMetadata[pair] || { pipSize: 0.0001, typicalSpread: 0.00015 };
+      
+      let mid = null;
+      const pairData = this.historicalData[pair];
+      
+      if(pairData){
+        const tfs = Object.keys(pairData).map(Number).sort((a, b)=>a - b);
+        for(const tf of tfs){
+          const candles = pairData[tf] || [];
+          const filtered = this.simulatedNow !== null 
+            ? candles.filter((c)=>this._candleTime(c) <= this.simulatedNow)
+            : candles;
+          
+          if(filtered.length > 0){
+            mid = filtered[filtered.length - 1].c;
+            break;
+          }
+        }
+      }
+      
+      if(mid === null || !Number.isFinite(mid)){
+        return { bid: 0, ask: 0, mid: 0 };
+      }
+      
+      const halfSpread = meta.typicalSpread / 2;
+      return {
+        bid: mid - halfSpread,
+        ask: mid + halfSpread,
+        mid
+      };
+    }
+
+    // Get instrument metadata
+    getMetadata(pair){
+      return this.instrumentMetadata[pair] || { pipSize: 0.0001, typicalSpread: 0.00015, commission: 0 };
+    }
+
+    // Convert timeframe string to seconds
+    _tfToSeconds(tf){
+      if(typeof tf === "number") return tf;
+      const str = String(tf).toUpperCase();
+      if(str === "M1") return 60;
+      if(str === "M5") return 300;
+      if(str === "M15") return 900;
+      if(str === "M30") return 1800;
+      if(str === "H1") return 3600;
+      if(str === "H4") return 14400;
+      if(str === "D1") return 86400;
+      return 900; // Default M15
+    }
+
+    // Get candle timestamp
+    _candleTime(candle){
+      const t = candle.t || candle.time || candle.Time || candle.timestamp || candle.Timestamp || 0;
+      // Convert to milliseconds if needed
+      return t < 1e12 ? t * 1000 : t;
+    }
+  }
+
+  window.LC.LCBacktestAPI = LCBacktestAPI;
 })();
