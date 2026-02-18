@@ -1,37 +1,372 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>LiquidChartsPro Tools</title>
+
+  <!-- LiquidCharts widget must load first -->
+  <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
+  <link rel="stylesheet" href="https://pro.liquidcharts.com/scripts/widget-css">
+  <link rel="stylesheet" href="./css/app.css">
 </head>
-<body>
-    <div>
-        <button id="tabHome">Home</button>
-        <button id="tabSettings">Settings</button>
-        <button id="tabStrength">Strength</button>
-        <button id="tabBacktest">Backtest</button>
-        <button id="tabTools">Tools</button>
+
+<body class="Widget">
+  <div id="app">
+    <div class="tabs">
+      <button class="tabBtn active" data-tab="home" id="tabHome">Home</button>
+      <button class="tabBtn" data-tab="settings" id="tabSettings">Settings</button>
+      <button class="tabBtn" data-tab="strength" id="tabStrength">Strength</button>
+      <button class="tabBtn" data-tab="backtest" id="tabBacktest">Backtest</button>
+      <button class="tabBtn" data-tab="tools" id="tabTools">Tools</button>
     </div>
-    <section id="pageHome">
-        <h1>Home</h1>
-        <p>Welcome to the Home page.</p>
+
+    <section class="page" id="page-home" id="pageHome">
+      <div class="card">
+        <h1 class="title">LiquidChartsPro Tools</h1>
+        <div class="subtitle">Consolidated currency strength meter + automated trading + backtest tools</div>
+        <div class="row">
+          <div class="field">
+            <label>Status</label>
+            <div class="pill" id="statusPill">Loading framework…</div>
+          </div>
+          <div class="field">
+            <label>Instrument (chart)</label>
+            <input id="ctxInstrument" value="Unknown" readonly />
+          </div>
+          <div class="field">
+            <label>Timeframe (chart)</label>
+            <input id="ctxTf" value="Unknown" readonly />
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnPing" class="primary" disabled>Ping Framework</button>
+          <button id="btnReqPrices" disabled>RequestPrices (test)</button>
+          <button id="btnHealth" disabled>Health Check</button>
+          <button id="btnDiagRun" disabled>Run Diagnostics</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="title">Activity Log</h2>
+        <div class="btnRow">
+          <button id="btnClearLog">Clear Log</button>
+        </div>
+        <div id="log" class="log"></div>
+      </div>
     </section>
-    <section id="pageSettings">
-        <h1>Settings</h1>
-        <p>Modify your settings here.</p>
+
+    <section class="page hidden" id="page-settings" id="pageSettings">
+      <div class="card">
+        <h2 class="title">Settings</h2>
+        <div class="field">
+          <label>Trading Pairs (one per line)</label>
+          <textarea id="pairs" rows="12" placeholder="EUR/USD&#10;GBP/USD&#10;USD/JPY&#10;AUD/USD&#10;NZD/USD&#10;USD/CAD&#10;EUR/GBP&#10;EUR/JPY&#10;GBP/JPY&#10;AUD/JPY"></textarea>
+          <small>Enter pairs in XXX/YYY format (also accepts XXXYYY)</small>
+        </div>
+        <div class="btnRow">
+          <button id="saveSettings" class="primary">Save Settings</button>
+          <span id="settingsStatus" class="status"></span>
+        </div>
+      </div>
     </section>
-    <section id="pageStrength">
-        <h1>Strength</h1>
-        <p>View your strength metrics.</p>
+
+    <section class="page hidden" id="page-strength" id="pageStrength">
+      <div class="card">
+        <h2 class="title">Currency Strength Meter</h2>
+        <div class="subtitle">Multi-timeframe composite strength with ATR normalization and RSI spread analysis</div>
+        <div class="row">
+          <div class="field">
+            <label>Timeframe</label>
+            <select id="strengthTf">
+              <option value="300">M5</option>
+              <option value="900" selected>M15</option>
+              <option value="1800">M30</option>
+              <option value="3600">H1</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Candles</label>
+            <input id="strengthCount" type="number" value="500" min="100" max="2000" step="50" />
+          </div>
+          <div class="field">
+            <label>Auto-refresh (sec)</label>
+            <input id="strengthAutoSec" type="number" value="60" min="10" max="900" step="10" />
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnStrengthRun" class="primary" disabled>Run Strength Scan</button>
+          <button id="btnStrengthAuto" disabled>Start Auto Refresh</button>
+          <button id="btnStrengthStop" disabled>Stop Auto</button>
+        </div>
+        <div id="strengthStatus" class="status"></div>
+        <div id="strengthTable" class="tableContainer"></div>
+        <h3>Best Trading Pairs</h3>
+        <div id="strengthBestPairs" class="bestPairs"></div>
+      </div>
     </section>
-    <section id="pageBacktest">
-        <h1>Backtest</h1>
-        <p>Conduct backtests on your strategies.</p>
+
+    <section class="page hidden" id="page-backtest" id="pageBacktest">
+      <div class="card">
+        <h2 class="title">Backtest</h2>
+        <div class="row">
+          <div class="field">
+            <label>Instrument</label>
+            <select id="btInstrument"><option>EUR/USD</option></select>
+          </div>
+          <div class="field">
+            <label>Timeframe</label>
+            <select id="btTf">
+              <option value="M5">M5</option>
+              <option value="M15" selected>M15</option>
+              <option value="M30">M30</option>
+              <option value="H1">H1</option>
+              <option value="H4">H4</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Strategy</label>
+            <input id="btStrategy" value="(auto)" readonly />
+          </div>
+          <div class="field">
+            <label>Preset</label>
+            <select id="btStrategyPreset"><option value="default">Default</option></select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Start Date</label>
+            <input id="btStartDate" type="date" />
+          </div>
+          <div class="field">
+            <label>End Date</label>
+            <input id="btEndDate" type="date" />
+          </div>
+          <div class="field">
+            <label>Fast MA</label>
+            <input id="btFastMa" type="number" value="20" min="5" max="200" />
+          </div>
+          <div class="field">
+            <label>Slow MA</label>
+            <input id="btSlowMa" type="number" value="100" min="20" max="500" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>ATR Length</label>
+            <input id="btAtrLen" type="number" value="14" min="7" max="50" />
+          </div>
+          <div class="field">
+            <label>Risk:Reward</label>
+            <input id="btRr" type="number" value="1.5" min="1" max="4" step="0.1" />
+          </div>
+          <div class="field">
+            <label>SL ATR multiple</label>
+            <input id="btSlAtr" type="number" value="1.1" min="0.5" max="4" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Allow Short</label>
+            <select id="btAllowShort">
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+              <option value="only" selected>Long Only</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Session</label>
+            <select id="btSession">
+              <option value="all">All day</option>
+              <option value="london">London (7-16 UTC)</option>
+              <option value="newyork">New York (12-21 UTC)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Start Hour (UTC)</label>
+            <input id="btStartHour" type="number" value="0" min="0" max="23" readonly />
+          </div>
+          <div class="field">
+            <label>End Hour (UTC)</label>
+            <input id="btEndHour" type="number" value="23" min="0" max="23" readonly />
+          </div>
+          <div class="field">
+            <label>Candles</label>
+            <input id="btCount" type="number" value="2000" min="500" max="10000" step="100" />
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnRunBt" disabled>Run Backtest</button>
+          <button id="btnStopBt" disabled>Stop</button>
+          <button id="btnClearBt" disabled>Clear Results</button>
+        </div>
+      </div>
     </section>
-    <section id="pageTools">
-        <h1>Tools</h1>
-        <p>Access the tools you need.</p>
+
+    <section class="page hidden" id="page-tools" id="pageTools">
+      <div class="card">
+        <h2 class="title">AutoTrader</h2>
+        <div class="subtitle">Session-aware automated trading with dynamic confidence scoring</div>
+        <div class="row">
+          <div class="field">
+            <label>Timeframe</label>
+            <select id="atTf">
+              <option value="M5">M5</option>
+              <option value="M15" selected>M15</option>
+              <option value="M30">M30</option>
+              <option value="H1">H1</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Candles per scan</label>
+            <input id="atCandles" type="number" value="500" min="200" max="3000" step="50" />
+          </div>
+          <div class="field">
+            <label>Scan interval (sec)</label>
+            <input id="atPollSec" type="number" value="120" min="30" max="3600" step="10" />
+          </div>
+          <div class="field">
+            <label>Risk Mode</label>
+            <select id="atRiskMode">
+              <option value="conservative" selected>Conservative</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Lots</label>
+            <input id="atLots" type="number" value="0.01" min="0.01" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Risk:Reward</label>
+            <input id="atRr" type="number" value="1.5" min="1" max="4" step="0.1" />
+          </div>
+          <div class="field">
+            <label>SL ATR multiple</label>
+            <input id="atSlAtr" type="number" value="1.1" min="0.5" max="4" step="0.1" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Use Schedule</label>
+            <select id="atUseSchedule">
+              <option value="yes" selected>Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Start Hour (UTC)</label>
+            <input id="atStartHour" type="number" value="6" min="0" max="23" />
+          </div>
+          <div class="field">
+            <label>End Hour (UTC)</label>
+            <input id="atEndHour" type="number" value="20" min="0" max="23" />
+          </div>
+          <div class="field">
+            <label>Volatile Start (UTC)</label>
+            <input id="atVolStart" type="number" value="12" min="0" max="23" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Volatile End (UTC)</label>
+            <input id="atVolEnd" type="number" value="16" min="0" max="23" />
+          </div>
+          <div class="field">
+            <label>Max Trades/Day</label>
+            <input id="atMaxTradesDay" type="number" value="4" min="1" max="20" />
+          </div>
+          <div class="field">
+            <label>Cooldown (min)</label>
+            <input id="atCooldownMin" type="number" value="45" min="1" max="240" />
+          </div>
+          <div class="field">
+            <label>Learning</label>
+            <select id="atLearning">
+              <option value="on" selected>On</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Min Confidence</label>
+            <input id="atMinConfidence" type="number" value="0.58" min="0.4" max="0.9" step="0.01" />
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnAutoStart" class="primary" disabled>Start AutoTrader</button>
+          <button id="btnAutoStop" disabled>Stop AutoTrader</button>
+        </div>
+        <div id="atStatus" class="status"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="title">Manual Trading Controls</h2>
+        <div class="row">
+          <div class="field">
+            <label>ARM</label>
+            <select id="toolArm">
+              <option value="off" selected>OFF (safe)</option>
+              <option value="on">ON (live)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Pair</label>
+            <select id="toolPair"><option>EUR/USD</option></select>
+          </div>
+          <div class="field">
+            <label>Lot Size</label>
+            <input id="toolQty" type="number" value="0.01" min="0.01" step="0.01" />
+          </div>
+          <div class="field">
+            <label id="toolPx">bid/ask: … / …</label>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>TP (points)</label>
+            <input id="toolTpPips" type="number" value="55" step="5" />
+          </div>
+          <div class="field">
+            <label>SL (points)</label>
+            <input id="toolSlPips" type="number" value="55" step="5" />
+          </div>
+          <div class="field">
+            <label>Order ID (for modify)</label>
+            <input id="toolOrderId" placeholder="order ID" />
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnPrices" disabled>Request Prices</button>
+          <button id="btnTicket" disabled>Open Deal Ticket</button>
+          <button id="btnRefreshTool">Refresh Markets</button>
+        </div>
+        <div class="btnRow">
+          <button id="btnBuyMarket" disabled>BUY Market</button>
+          <button id="btnSellMarket" disabled>SELL Market</button>
+          <button id="btnBuyTPSL" disabled>BUY with TP/SL</button>
+          <button id="btnSellTPSL" disabled>SELL with TP/SL</button>
+        </div>
+        <div class="btnRow">
+          <button id="btnChangeTPSL" disabled>Change TP/SL</button>
+          <button id="btnDumpTrades" disabled>Dump Trades</button>
+          <button id="btnCloseAll" disabled>Close All (selected pair)</button>
+        </div>
+      </div>
     </section>
+  </div>
+
+  <!-- Script load order: util-indicators → lc-framework → engine-strength → engine-autotrader → app -->
+  <script src="./js/util-indicators.js"></script>
+  <script src="./js/lc-framework.js"></script>
+  <script src="./js/strategy-registry.js"></script>
+  <script src="./js/engine-backtest.js"></script>
+  <script src="./js/engine-strength.js"></script>
+  <script src="./js/engine-autotrader.js"></script>
+  <script src="./js/ui-tabs.js"></script>
+  <script src="./js/app.js"></script>
 </body>
 </html>
