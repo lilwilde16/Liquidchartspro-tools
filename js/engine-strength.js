@@ -1,16 +1,31 @@
 (function(){
   const $ = (id)=>document.getElementById(id);
   const CCYS = ["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF"];
+  
+  // Configuration constants
+  const ATR_PCT_FLOOR = 0.0008;
+  const MIN_TREND_RATIO = 0.40;
+  const REG_WINDOW = 60;
+  const TF_WEIGHTS = {300: 0.3, 900: 0.5, 3600: 0.2};
+  const TF_COUNTS = {300: 300, 900: 300, 3600: 200};
+  const USE_RSI = true;
+  const COMPOSITE_MODE = "blended";
 
   let autoTimer = null;
   let autoIntervalSec = null;
   let isRunning = false;
   let lastRanked = [];
   let lastPairs = [];
+  let candleCache = {};
 
   function parsePairs(){
     const raw = ($("pairs")?.value || "").split(/\r?\n/).map((s)=>s.trim()).filter(Boolean);
-    return raw.filter((p)=>/^[A-Z]{3}\/[A-Z]{3}$/.test(p.toUpperCase())).map((p)=>p.toUpperCase());
+    return raw.map((p)=>{
+      const cleaned = p.replace(/[^A-Z\/]/gi, '').toUpperCase();
+      if(/^[A-Z]{6}$/.test(cleaned)) return `${cleaned.slice(0,3)}/${cleaned.slice(3)}`;
+      if(/^[A-Z]{3}\/[A-Z]{3}$/.test(cleaned)) return cleaned;
+      return null;
+    }).filter(Boolean);
   }
 
   function parsePair(pair){
@@ -19,44 +34,196 @@
     return { base: m[1], quote: m[2] };
   }
 
-  function normalizeCloses(raw){
+  function normalizeCandles(raw){
     if(!raw) return [];
     const src = Array.isArray(raw) ? raw : (raw.candles || raw.Candles || raw.data || raw.Data || null);
-    if(Array.isArray(src)) return src.map((c)=>Number(c?.close ?? c?.Close ?? c?.c ?? c?.C ?? c)).filter(Number.isFinite);
-
+    if(Array.isArray(src)){
+      return src.map((c)=>({
+        o: Number(c?.open ?? c?.Open ?? c?.o ?? c?.O ?? NaN),
+        h: Number(c?.high ?? c?.High ?? c?.h ?? c?.H ?? NaN),
+        l: Number(c?.low ?? c?.Low ?? c?.l ?? c?.L ?? NaN),
+        c: Number(c?.close ?? c?.Close ?? c?.c ?? c?.C ?? NaN)
+      })).filter((x)=>Number.isFinite(x.o) && Number.isFinite(x.h) && Number.isFinite(x.l) && Number.isFinite(x.c));
+    }
     const close = raw.close || raw.Close || raw.c || raw.C || raw.closes;
-    if(Array.isArray(close)) return close.map(Number).filter(Number.isFinite);
+    if(Array.isArray(close)){
+      return close.map((c)=>({o:Number(c),h:Number(c),l:Number(c),c:Number(c)})).filter((x)=>Number.isFinite(x.c));
+    }
     return [];
   }
 
-  async function fetchPairReturn(pair, timeframe, count){
-    const candles = await window.LC.requestCandles(pair, timeframe, count);
-    const closes = normalizeCloses(candles);
-    if(closes.length < 5) throw new Error("not enough candles");
-
-    const first = closes[0];
-    const last = closes[closes.length - 1];
-    if(!Number.isFinite(first) || !Number.isFinite(last) || first === 0) throw new Error("invalid close series");
-
-    const changePct = ((last - first) / first) * 100;
-    return { pair, changePct, candles: closes.length };
+  function linReg(arr, window){
+    const n = arr.length;
+    if(n < window) return NaN;
+    const slice = arr.slice(n - window, n);
+    const xMean = (window - 1) / 2;
+    const yMean = slice.reduce((s,v)=>s+v,0) / window;
+    let num = 0, denom = 0;
+    for(let i=0; i<window; i++){
+      const dx = i - xMean;
+      num += dx * (slice[i] - yMean);
+      denom += dx * dx;
+    }
+    return denom === 0 ? 0 : num / denom;
   }
 
-  function scoreCurrencies(pairReturns){
+  function zNormalize(arr){
+    if(!Array.isArray(arr) || arr.length === 0) return arr.map(()=>0);
+    const vals = arr.filter(Number.isFinite);
+    if(vals.length === 0) return arr.map(()=>0);
+    const mean = vals.reduce((s,v)=>s+v,0) / vals.length;
+    const variance = vals.reduce((s,v)=>s+(v-mean)*(v-mean),0) / vals.length;
+    const std = Math.sqrt(variance);
+    if(std < 1e-9) return arr.map(()=>0);
+    return arr.map((v)=>Number.isFinite(v) ? (v - mean) / std : 0);
+  }
+
+  async function fetchCandles(pair, tf, count){
+    const key = `${pair}_${tf}_${count}`;
+    if(candleCache[key]) return candleCache[key];
+    const raw = await window.LC.requestCandles(pair, tf, count);
+    const candles = normalizeCandles(raw);
+    candleCache[key] = candles;
+    return candles;
+  }
+
+  async function computeTFMetrics(pair, tf, count){
+    const candles = await fetchCandles(pair, tf, count);
+    if(candles.length < 120) throw new Error("not enough candles");
+
+    const close = candles.map((x)=>x.c);
+    const high = candles.map((x)=>x.h);
+    const low = candles.map((x)=>x.l);
+
+    if(!window.UTIL?.sma || !window.UTIL?.atr) throw new Error("indicator utils missing");
+
+    const sma20 = window.UTIL.sma(close, 20);
+    const sma100 = window.UTIL.sma(close, 100);
+    const atr = window.UTIL.atr(high, low, close, 14);
+
+    const i = close.length - 1;
+    const px = close[i];
+    const atrNow = Number(atr[i]);
+    if(!Number.isFinite(atrNow) || atrNow <= 0) throw new Error("atr unavailable");
+
+    const atrPct = atrNow / px;
+    const trendRatio = Math.abs(sma20[i] - sma100[i]) / atrNow;
+    const returnPct = ((px / close[0]) - 1) * 100;
+
+    // Quality filter
+    if(atrPct < ATR_PCT_FLOOR || trendRatio < MIN_TREND_RATIO){
+      return null;
+    }
+
+    // Slope normalization
+    const lnClose = close.map((c)=>Math.log(c));
+    const slope = linReg(lnClose, Math.min(REG_WINDOW, lnClose.length));
+    const slopeNorm = slope / Math.max(atrPct, ATR_PCT_FLOOR);
+
+    // RSI spread (per pair as proxy)
+    let rsiSpread = 0;
+    if(USE_RSI && window.UTIL?.rsi){
+      const rsi7 = window.UTIL.rsi(close, 7);
+      const rsiVal = rsi7[i];
+      // Proxy: use pair's RSI as base-quote spread indicator
+      // For a proper implementation, we'd compute RSI per currency across all pairs
+      // For now, this is a simplified approach
+      if(Number.isFinite(rsiVal)){
+        rsiSpread = (rsiVal - 50) / 50; // normalize to [-1, 1]
+      }
+    }
+
+    return {
+      pair,
+      tf,
+      px,
+      atrNow,
+      atrPct,
+      trendRatio,
+      returnPct,
+      slopeNorm,
+      rsiSpread,
+      weightedReturn: returnPct / Math.max(atrPct, ATR_PCT_FLOOR)
+    };
+  }
+
+  function compositeTFScore(tfMetrics, pairMetrics){
+    // Cross-pair z-normalization for this TF
+    const slopeNorms = pairMetrics.map((m)=>m.slopeNorm);
+    const weightedReturns = pairMetrics.map((m)=>m.weightedReturn);
+    const rsiSpreads = pairMetrics.map((m)=>m.rsiSpread);
+
+    const slopeZ = zNormalize(slopeNorms);
+    const weightedReturnZ = zNormalize(weightedReturns);
+    const rsiSpreadZ = zNormalize(rsiSpreads);
+
+    return pairMetrics.map((m, idx)=>{
+      let composite;
+      if(USE_RSI && COMPOSITE_MODE === "blended"){
+        composite = 0.35 * rsiSpreadZ[idx] + 0.35 * m.trendRatio + 0.30 * weightedReturnZ[idx];
+      } else {
+        composite = 0.4 * slopeZ[idx] + 0.3 * m.trendRatio + 0.3 * weightedReturnZ[idx];
+      }
+      return {
+        ...m,
+        slopeZ: slopeZ[idx],
+        weightedReturnZ: weightedReturnZ[idx],
+        rsiSpreadZ: rsiSpreadZ[idx],
+        compositeTF: composite
+      };
+    });
+  }
+
+  function blendMultiTF(pairTFMap){
+    const result = {};
+    
+    for(const [pair, tfData] of Object.entries(pairTFMap)){
+      const availableTFs = Object.keys(tfData).map(Number);
+      if(availableTFs.length === 0) continue;
+
+      // Reweight available TFs
+      let totalWeight = 0;
+      const weights = {};
+      for(const tf of availableTFs){
+        weights[tf] = TF_WEIGHTS[tf] || 0;
+        totalWeight += weights[tf];
+      }
+      if(totalWeight === 0) continue;
+
+      for(const tf of availableTFs){
+        weights[tf] /= totalWeight;
+      }
+
+      // Blend
+      let compositeBlend = 0;
+      let avgAbsMove = 0;
+      for(const tf of availableTFs){
+        const data = tfData[tf];
+        compositeBlend += weights[tf] * data.compositeTF;
+        avgAbsMove += weights[tf] * Math.abs(data.weightedReturn);
+      }
+
+      result[pair] = { compositeBlend, avgAbsMove };
+    }
+
+    return result;
+  }
+
+  function scoreCurrencies(pairBlends){
     const scores = {};
     CCYS.forEach((c)=>{ scores[c] = { ccy: c, score: 0, samples: 0, absMove: 0 }; });
 
-    for(const r of pairReturns){
-      const parsed = parsePair(r.pair);
+    for(const [pair, data] of Object.entries(pairBlends)){
+      const parsed = parsePair(pair);
       if(!parsed) continue;
 
-      scores[parsed.base].score += r.changePct;
+      scores[parsed.base].score += data.compositeBlend;
       scores[parsed.base].samples += 1;
-      scores[parsed.base].absMove += Math.abs(r.changePct);
+      scores[parsed.base].absMove += data.avgAbsMove;
 
-      scores[parsed.quote].score -= r.changePct;
+      scores[parsed.quote].score -= data.compositeBlend;
       scores[parsed.quote].samples += 1;
-      scores[parsed.quote].absMove += Math.abs(r.changePct);
+      scores[parsed.quote].absMove += data.avgAbsMove;
     }
 
     return Object.values(scores)
@@ -72,8 +239,8 @@
       <tr>
         <td>${i + 1}</td>
         <td><strong>${r.ccy}</strong></td>
-        <td class="${cls}">${r.avgScore.toFixed(3)}%</td>
-        <td>${r.avgAbsMove.toFixed(3)}%</td>
+        <td class="${cls}">${r.avgScore.toFixed(3)}</td>
+        <td>${r.avgAbsMove.toFixed(3)}</td>
         <td>${r.samples}</td>
       </tr>`;
     }).join("");
@@ -107,10 +274,12 @@
     for(let i = 0; i < Math.min(strongest.length, weakest.length); i++){
       const base = strongest[i].ccy;
       const quote = weakest[i].ccy;
-      ideas.push({ pair: `${base}/${quote}`, bias: "Buy bias", spread: strongest[i].avgScore - weakest[i].avgScore });
+      const spread = strongest[i].avgScore - weakest[i].avgScore;
+      ideas.push({ pair: `${base}/${quote}`, bias: "Buy bias", spread });
     }
 
-    host.innerHTML = ideas.map((x)=>`<div class="pairIdea"><strong>${x.pair}</strong> · <span class="str-up">${x.bias}</span> · spread ${x.spread.toFixed(3)}</div>`).join("");
+    host.innerHTML = `<h3>Best Pairs (Top 3 vs Bottom 3):</h3>` + 
+      ideas.map((x)=>`<div class="pairIdea"><strong>${x.pair}</strong> · <span class="str-up">${x.bias}</span> · spread ${x.spread.toFixed(3)}</div>`).join("");
   }
 
   function startAuto(){
@@ -137,10 +306,7 @@
   async function run(){
     if(isRunning) return;
     isRunning = true;
-
-    const timeframe = Number($("strengthTf")?.value || 900);
-    const count = Number($("strengthCount")?.value || 500);
-    const pairs = parsePairs();
+    candleCache = {}; // Clear cache on each run
 
     try{
       if(!window.LC?.requestCandles){
@@ -150,6 +316,7 @@
         return;
       }
 
+      const pairs = parsePairs();
       if(pairs.length === 0){
         window.LC.setStatus("Strength error", "bad");
         window.LC.log("❌ Strength scan failed: no valid pairs in settings.");
@@ -157,25 +324,60 @@
         return;
       }
 
-      window.LC.setStatus("Scanning strength…", "warn");
-      window.LC.log(`▶ Strength scan started (${pairs.length} pairs, tf=${timeframe}, candles=${count}).`);
+      window.LC.setStatus("Scanning strength (multi-TF)…", "warn");
+      window.LC.log(`▶ Strength scan started (${pairs.length} pairs, multi-TF).`);
 
-      const settled = await Promise.allSettled(pairs.map((p)=>fetchPairReturn(p, timeframe, count)));
-      const ok = settled.filter((r)=>r.status === "fulfilled").map((r)=>r.value);
-      const bad = settled.filter((r)=>r.status === "rejected");
+      // Fetch all TF metrics for all pairs
+      const TFs = [300, 900, 3600];
+      const pairTFMap = {};
 
-      if(ok.length === 0){
+      for(const pair of pairs){
+        pairTFMap[pair] = {};
+        for(const tf of TFs){
+          try{
+            const metrics = await computeTFMetrics(pair, tf, TF_COUNTS[tf]);
+            if(metrics){
+              pairTFMap[pair][tf] = metrics;
+            }
+          }catch(e){
+            // TF failed for this pair, skip
+          }
+        }
+      }
+
+      // Compute composite scores per TF
+      for(const tf of TFs){
+        const tfPairs = [];
+        for(const pair of pairs){
+          if(pairTFMap[pair][tf]){
+            tfPairs.push(pairTFMap[pair][tf]);
+          }
+        }
+        if(tfPairs.length > 0){
+          const scored = compositeTFScore(null, tfPairs);
+          scored.forEach((s)=>{
+            if(pairTFMap[s.pair][s.tf]){
+              pairTFMap[s.pair][s.tf] = s;
+            }
+          });
+        }
+      }
+
+      // Blend multi-TF
+      const pairBlends = blendMultiTF(pairTFMap);
+      if(Object.keys(pairBlends).length === 0){
         window.LC.setStatus("Strength error", "bad");
-        window.LC.log("❌ Strength scan failed: no pair data returned.");
-        $("strengthStatus").textContent = "No data returned for selected pairs/timeframe.";
+        window.LC.log("❌ Strength scan failed: no valid data after quality filters.");
+        $("strengthStatus").textContent = "No data after quality filters.";
         $("strengthTable").innerHTML = "";
         $("strengthBestPairs").textContent = "No ideas available.";
         return;
       }
 
-      const ranked = scoreCurrencies(ok);
+      // Score currencies
+      const ranked = scoreCurrencies(pairBlends);
       lastRanked = ranked;
-      lastPairs = ok.map((x)=>x.pair);
+      lastPairs = Object.keys(pairBlends);
       renderTable(ranked);
       renderBestPairs(ranked);
 
@@ -183,10 +385,9 @@
       const weakest = ranked[ranked.length - 1]?.ccy || "n/a";
 
       const autoTag = autoIntervalSec ? ` · auto ${autoIntervalSec}s` : "";
-      $("strengthStatus").textContent = `Updated: ${new Date().toLocaleString()} · strongest ${strongest}, weakest ${weakest} · pairs ok ${ok.length}/${pairs.length}${autoTag}`;
-      if(bad.length > 0) window.LC.log(`⚠ Strength scan partial data: ${bad.length} pair(s) failed.`);
+      $("strengthStatus").textContent = `Updated: ${new Date().toLocaleString()} · strongest ${strongest}, weakest ${weakest} · pairs ${lastPairs.length}${autoTag}`;
       window.LC.log(`✅ Strength scan done. Strongest: ${strongest}, weakest: ${weakest}.`);
-      window.LC.setStatus(bad.length ? "Strength done (partial)" : "Strength done", bad.length ? "warn" : "ok");
+      window.LC.setStatus("Strength done", "ok");
     } finally {
       isRunning = false;
     }

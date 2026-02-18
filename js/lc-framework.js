@@ -332,7 +332,7 @@
     setStatus("Framework responding", "ok");
     log("✅ Framework loaded.");
 
-    ["btnPing","btnReqPrices","btnHealth","btnDiagRun","btnPrices","btnTicket","btnBuyMarket","btnSellMarket","btnBuyTPSL","btnSellTPSL","btnChangeTPSL","btnDumpTrades","btnCloseAll","btnClearLog","btnStrengthRun","btnStrengthAuto","btnStrengthStop","btnRunBt","btnAutoStart","btnAutoStop"].forEach((id)=>{
+    ["btnPing","btnReqPrices","btnHealth","btnDiagRun","btnPrices","btnTicket","btnBuyMarket","btnSellMarket","btnBuyTPSL","btnSellTPSL","btnChangeTPSL","btnDumpTrades","btnCloseAll","btnClearLog","btnStrengthRun","btnStrengthAuto","btnStrengthStop","btnRunBt","btnAutoStart","btnAutoStop","btnStopBt","btnClearBt","saveSettings","btnRefreshTool"].forEach((id)=>{
       if($(id)) $(id).disabled = false;
     });
 

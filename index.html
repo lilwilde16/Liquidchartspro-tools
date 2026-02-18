@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>LiquidCharts Pro Tools</title>
+    <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-    <div>
+    <div class="tabs">
         <button id="tabHome">Home</button>
         <button id="tabSettings">Settings</button>
         <button id="tabStrength">Strength</button>
@@ -15,23 +16,190 @@
     </div>
     <section id="pageHome">
         <h1>Home</h1>
-        <p>Welcome to the Home page.</p>
+        <p>Welcome to LiquidCharts Pro Tools.</p>
+        <div id="statusPill" class="pill">Starting...</div>
+        <div id="log" style="font-family: monospace; white-space: pre-wrap; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; margin-top: 10px;"></div>
     </section>
     <section id="pageSettings">
         <h1>Settings</h1>
-        <p>Modify your settings here.</p>
+        <label for="pairs">Currency Pairs:</label>
+        <textarea id="pairs" rows="8" spellcheck="false">EUR/USD
+GBP/USD
+USD/JPY
+AUD/USD</textarea>
+        <p style="color: #666; font-size: 0.9em;">Enter one pair per line (e.g., EUR/USD).</p>
+        <button id="saveSettings">Save Settings</button>
+        <span id="settingsStatus" style="margin-left: 10px; color: green;"></span>
     </section>
     <section id="pageStrength">
-        <h1>Strength</h1>
-        <p>View your strength metrics.</p>
+        <h1>Currency Strength Meter</h1>
+        <div class="controls">
+            <label>Timeframe:
+                <select id="strengthTf">
+                    <option value="300">M5 (300)</option>
+                    <option value="900" selected>M15 (900)</option>
+                    <option value="3600">H1 (3600)</option>
+                </select>
+            </label>
+            <label>Candles:
+                <input id="strengthCount" type="number" value="500" min="100">
+            </label>
+            <label>Auto Refresh (sec):
+                <input id="strengthAutoSec" type="number" value="60" min="10">
+            </label>
+        </div>
+        <div class="controls">
+            <button id="btnStrengthRun" disabled="">Refresh Now</button>
+            <button id="btnStrengthAuto" disabled="">Start Auto Refresh</button>
+            <button id="btnStrengthStop" disabled="">Stop</button>
+        </div>
+        <div id="strengthStatus" style="margin: 10px 0; font-style: italic;"></div>
+        <div id="strengthBestPairs" style="margin: 15px 0;"></div>
+        <div id="strengthTable"></div>
     </section>
     <section id="pageBacktest">
         <h1>Backtest</h1>
-        <p>Conduct backtests on your strategies.</p>
+        <div class="controls">
+            <label>Strategy Preset:
+                <select id="btStrategyPreset"></select>
+            </label>
+            <label>Instrument:
+                <select id="btInstrument"></select>
+            </label>
+            <label>Timeframe:
+                <select id="btTf">
+                    <option value="M5">M5</option>
+                    <option value="M15" selected>M15</option>
+                    <option value="H1">H1</option>
+                    <option value="H4">H4</option>
+                    <option value="D1">D1</option>
+                </select>
+            </label>
+        </div>
+        <div class="controls">
+            <label>Start Date: <input id="btStartDate" type="date"></label>
+            <label>End Date: <input id="btEndDate" type="date"></label>
+            <label>Candles: <input id="btCount" type="number" value="1000" min="100"></label>
+        </div>
+        <div class="controls">
+            <label>Session:
+                <select id="btSession">
+                    <option value="all">All</option>
+                    <option value="london">London</option>
+                    <option value="newyork">New York</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </label>
+            <label>Start Hour: <input id="btStartHour" type="number" value="0" min="0" max="23"></label>
+            <label>End Hour: <input id="btEndHour" type="number" value="23" min="0" max="23"></label>
+        </div>
+        <div class="controls">
+            <label>Fast MA: <input id="btFastMa" type="number" value="20" min="1"></label>
+            <label>Slow MA: <input id="btSlowMa" type="number" value="100" min="1"></label>
+            <label>ATR Length: <input id="btAtrLen" type="number" value="14" min="1"></label>
+            <label>RR Ratio: <input id="btRr" type="number" value="1.5" min="0.1" step="0.1"></label>
+            <label>SL ATR: <input id="btSlAtr" type="number" value="1.1" min="0.1" step="0.1"></label>
+        </div>
+        <div class="controls">
+            <button id="btnRunBt" disabled="">Run Backtest</button>
+            <button id="btnStopBt">Stop</button>
+            <button id="btnClearBt">Clear Results</button>
+        </div>
+        <div id="btStatus" style="margin: 10px 0;"></div>
+        <div id="btResults"></div>
     </section>
     <section id="pageTools">
-        <h1>Tools</h1>
-        <p>Access the tools you need.</p>
+        <h1>Tools & Diagnostics</h1>
+        <h2>AutoTrader</h2>
+        <div class="controls">
+            <label>Timeframe: <select id="atTf"><option value="M15">M15</option><option value="H1">H1</option></select></label>
+            <label>Candles: <input id="atCandles" type="number" value="500" min="200"></label>
+            <label>Poll Interval (sec): <input id="atPollSec" type="number" value="120" min="30"></label>
+        </div>
+        <div class="controls">
+            <label>Risk Mode: 
+                <select id="atRiskMode">
+                    <option value="conservative">Conservative</option>
+                    <option value="moderate">Moderate</option>
+                </select>
+            </label>
+            <label>Lot Size: <input id="atLots" type="number" value="0.01" min="0.01" step="0.01"></label>
+            <label>RR: <input id="atRr" type="number" value="1.5" min="0.5" step="0.1"></label>
+            <label>SL ATR: <input id="atSlAtr" type="number" value="1.1" min="0.5" step="0.1"></label>
+        </div>
+        <div class="controls">
+            <label>Use Schedule: <select id="atUseSchedule"><option value="yes">Yes</option><option value="no">No</option></select></label>
+            <label>Start Hour (UTC): <input id="atStartHour" type="number" value="6" min="0" max="23"></label>
+            <label>End Hour (UTC): <input id="atEndHour" type="number" value="20" min="0" max="23"></label>
+        </div>
+        <div class="controls">
+            <label>Vol Window Start (UTC): <input id="atVolStart" type="number" value="12" min="0" max="23"></label>
+            <label>Vol Window End (UTC): <input id="atVolEnd" type="number" value="16" min="0" max="23"></label>
+        </div>
+        <div class="controls">
+            <label>Max Trades/Day: <input id="atMaxTradesDay" type="number" value="4" min="1"></label>
+            <label>Cooldown (min): <input id="atCooldownMin" type="number" value="45" min="1"></label>
+            <label>Min Confidence: <input id="atMinConfidence" type="number" value="0.58" min="0" max="1" step="0.01"></label>
+            <label>Learning: <select id="atLearning"><option value="on">On</option><option value="off">Off</option></select></label>
+        </div>
+        <div class="controls">
+            <button id="btnAutoStart" disabled="">Start AutoTrader</button>
+            <button id="btnAutoStop" disabled="">Stop AutoTrader</button>
+        </div>
+        <div id="atStatus" style="margin: 10px 0; font-style: italic;"></div>
+        
+        <h2>Manual Trading Controls</h2>
+        <div class="controls">
+            <label>Context Instrument: <input id="ctxInstrument" type="text" value="Unknown" readonly></label>
+            <label>Context TF: <input id="ctxTf" type="text" value="Unknown" readonly></label>
+        </div>
+        <div class="controls">
+            <label>Selected Pair: <select id="toolPair"></select></label>
+            <label>Arm: <select id="toolArm"><option value="off">Off</option><option value="on">On</option></select></label>
+        </div>
+        <div class="controls">
+            <label>Lot Size: <input id="toolQty" type="number" value="0.01" min="0.01" step="0.01"></label>
+            <label>TP (pips): <input id="toolTpPips" type="number" value="55" min="1"></label>
+            <label>SL (pips): <input id="toolSlPips" type="number" value="55" min="1"></label>
+            <label>Order ID: <input id="toolOrderId" type="text" placeholder="for modify"></label>
+        </div>
+        <div id="toolPx" style="margin: 5px 0; font-family: monospace;"></div>
+        <div class="controls">
+            <button id="btnPing">Ping</button>
+            <button id="btnReqPrices">Request Prices</button>
+            <button id="btnHealth">Health Check</button>
+            <button id="btnDiagRun">Run Diagnostics</button>
+        </div>
+        <div class="controls">
+            <button id="btnPrices">Refresh Prices</button>
+            <button id="btnTicket">Open Ticket</button>
+            <button id="btnBuyMarket">Buy Market</button>
+            <button id="btnSellMarket">Sell Market</button>
+        </div>
+        <div class="controls">
+            <button id="btnBuyTPSL">Buy with TP/SL</button>
+            <button id="btnSellTPSL">Sell with TP/SL</button>
+            <button id="btnChangeTPSL">Change TP/SL</button>
+            <button id="btnDumpTrades">Dump Trades</button>
+            <button id="btnCloseAll">Close All (Pair)</button>
+        </div>
+        <div class="controls">
+            <button id="btnRefreshTool">Reload Page</button>
+            <button id="btnClearLog">Clear Log</button>
+        </div>
     </section>
+    
+    <!-- Load LiquidCharts external widget first -->
+    <script src="https://widgets.liquidcharts.com/sway/v1/framework.js"></script>
+    
+    <!-- Load local scripts in order -->
+    <script src="js/util-indicators.js"></script>
+    <script src="js/lc-framework.js"></script>
+    <script src="js/engine-strength.js"></script>
+    <script src="js/engine-autotrader.js"></script>
+    <script src="js/engine-backtest.js"></script>
+    <script src="js/strategy-registry.js"></script>
+    <script src="js/ui-tabs.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>

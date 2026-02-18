@@ -38,8 +38,38 @@
          return out;
    }
 
+   function rsi(values, len){
+         const n=values.length;
+         const out=new Array(n).fill(null);
+         if(n<len+1) return out;
+         
+         let gainSum=0, lossSum=0;
+         for(let i=1;i<=len;i++){
+               const delta = values[i]-values[i-1];
+               if(delta>0) gainSum += delta;
+               else lossSum += Math.abs(delta);
+         }
+         let avgGain = gainSum/len;
+         let avgLoss = lossSum/len;
+         
+         const rs = avgLoss===0 ? 100 : avgGain/avgLoss;
+         out[len] = 100 - (100/(1+rs));
+         
+         for(let i=len+1;i<n;i++){
+               const delta = values[i]-values[i-1];
+               const gain = delta>0 ? delta : 0;
+               const loss = delta<0 ? Math.abs(delta) : 0;
+               avgGain = ((avgGain*(len-1)) + gain)/len;
+               avgLoss = ((avgLoss*(len-1)) + loss)/len;
+               const rsNow = avgLoss===0 ? 100 : avgGain/avgLoss;
+               out[i] = 100 - (100/(1+rsNow));
+         }
+         return out;
+   }
+
    window.UTIL = window.UTIL || {};
     window.UTIL.toChron = toChron;
     window.UTIL.sma = sma;
     window.UTIL.atr = atr;
+    window.UTIL.rsi = rsi;
 })();

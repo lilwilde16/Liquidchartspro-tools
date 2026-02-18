@@ -9,11 +9,7 @@
     lastTradeAt: 0,
     dayKey: "",
     tradesToday: 0,
-    memory: loadMemory(),
-    pairLastTrade: {},
-    consecutiveLosses: 0,
-    minConfBoost: 0,
-    strengthHistory: []
+    memory: loadMemory()
   };
 
   function toNum(v, fallback){
@@ -86,23 +82,12 @@
     return inHourRange(h, c.volStart, c.volEnd);
   }
 
-  function getSessionConfidence(){
-    const h = new Date().getUTCHours();
-    // London: 7-16 UTC, NY: 12-21 UTC, Overlap: 12-16 UTC
-    if(h >= 12 && h <= 16) return 0.60; // NY overlap
-    if(h >= 7 && h < 12) return 0.62; // London only
-    if(h > 16 && h <= 21) return 0.62; // NY only
-    return 0.66; // Other times
-  }
-
   function refreshDayCounter(){
     const now = new Date();
     const key = `${now.getUTCFullYear()}-${now.getUTCMonth()+1}-${now.getUTCDate()}`;
     if(state.dayKey !== key){
       state.dayKey = key;
       state.tradesToday = 0;
-      state.consecutiveLosses = 0;
-      state.minConfBoost = 0;
     }
   }
 
@@ -120,64 +105,33 @@
   }
 
   function pairStats(pair){
-    if(!state.memory.byPair[pair]) state.memory.byPair[pair] = { wins: 0, losses: 0, skips: 0, lastTradeAt: 0 };
+    if(!state.memory.byPair[pair]) state.memory.byPair[pair] = { wins: 0, losses: 0, skips: 0 };
     return state.memory.byPair[pair];
   }
 
-  function pairLearningScore(pair, c){
-    if(!c.learning) return 0.5;
+  function pairLearningScore(pair){
     const s = pairStats(pair);
-    const alpha = 0.3; // EWMA decay
     const n = s.wins + s.losses;
     if(n === 0) return 0.5;
-    const hitRate = s.wins / n;
-    return hitRate * (1 - alpha) + 0.5 * alpha;
+    return (s.wins + 1) / (n + 2);
   }
 
   function strengthBias(pair){
     const snap = window.ENG?.Strength?.getSnapshot?.();
     const ranked = snap?.ranked || [];
     const parts = parsePair(pair);
-    if(!parts || ranked.length < 2) return { score: 0, side: 0, spread: 0 };
-
-    const scores = ranked.map((x)=>x.avgScore);
-    const minScore = Math.min(...scores);
-    const maxScore = Math.max(...scores);
-    const scale = Math.max(0.001, maxScore - minScore);
+    if(!parts || ranked.length < 2) return { score: 0, side: 0 };
 
     const map = Object.fromEntries(ranked.map((x)=>[x.ccy, x.avgScore]));
     const b = Number(map[parts.base] || 0);
     const q = Number(map[parts.quote] || 0);
     const spread = b - q;
-    const normalized = Math.max(-1, Math.min(1, spread / scale));
 
     return {
-      score: normalized,
+      score: Math.max(-1, Math.min(1, spread / 2.5)),
       side: spread >= 0 ? 1 : -1,
       spread
     };
-  }
-
-  function checkStrengthStability(pair, minStability = 0.40){
-    // Check if strength has been consistent over last N snapshots
-    const history = state.strengthHistory.slice(-2); // Last 2 snapshots
-    if(history.length < 2) return false;
-
-    const parts = parsePair(pair);
-    if(!parts) return false;
-
-    const spreads = history.map((snap)=>{
-      const ranked = snap.ranked || [];
-      const map = Object.fromEntries(ranked.map((x)=>[x.ccy, x.avgScore]));
-      const b = Number(map[parts.base] || 0);
-      const q = Number(map[parts.quote] || 0);
-      return b - q;
-    });
-
-    // Check if all spreads have same sign and magnitude > minStability
-    const allPositive = spreads.every((s)=>s >= minStability);
-    const allNegative = spreads.every((s)=>s <= -minStability);
-    return allPositive || allNegative;
   }
 
   async function pairMetrics(pair, c){
@@ -201,44 +155,6 @@
 
     const trendRatio = Math.abs(fast[i] - slow[i]) / atrNow;
     const atrPct = atrNow / close[i];
-
-    // M5 RSI for entry timing
-    let rsiM5 = null;
-    if(window.UTIL?.rsi){
-      const rsiM5Raw = await window.LC.requestCandles(pair, 300, 100);
-      const candlesM5 = normalizeCandles(rsiM5Raw);
-      if(candlesM5.length >= 20){
-        const closeM5 = candlesM5.map((x)=>x.c);
-        const rsi7M5 = window.UTIL.rsi(closeM5, 7);
-        rsiM5 = rsi7M5[rsi7M5.length - 1];
-      }
-    }
-
-    // H1 trend confirmation
-    let h1TrendRatio = null, rsiH1 = null;
-    try{
-      const rawH1 = await window.LC.requestCandles(pair, 3600, 150);
-      const candlesH1 = normalizeCandles(rawH1);
-      if(candlesH1.length >= 120){
-        const closeH1 = candlesH1.map((x)=>x.c);
-        const highH1 = candlesH1.map((x)=>x.h);
-        const lowH1 = candlesH1.map((x)=>x.l);
-        const fastH1 = window.UTIL.sma(closeH1, 20);
-        const slowH1 = window.UTIL.sma(closeH1, 100);
-        const atrH1 = window.UTIL.atr(highH1, lowH1, closeH1, 14);
-        const iH1 = closeH1.length - 1;
-        const atrH1Now = Number(atrH1[iH1]);
-        if(Number.isFinite(atrH1Now) && atrH1Now > 0){
-          h1TrendRatio = Math.abs(fastH1[iH1] - slowH1[iH1]) / atrH1Now;
-        }
-        if(window.UTIL?.rsi){
-          const rsi7H1 = window.UTIL.rsi(closeH1, 7);
-          rsiH1 = rsi7H1[rsi7H1.length - 1];
-        }
-      }
-    }catch(e){
-      // H1 data unavailable
-    }
 
     const lookback = 30;
     const swingHigh = Math.max(...high.slice(i - lookback, i));
@@ -267,104 +183,33 @@
       atrNow,
       atrPct,
       trendRatio,
-      h1TrendRatio,
       momentum,
       volScore,
       sharpScore,
-      close: close[i],
-      rsiM5,
-      rsiH1,
-      trendUp,
-      trendDown
+      close: close[i]
     };
-  }
-
-  function getSpread(pair){
-    try{
-      const market = window.LC?.Framework?.Instruments?.getOrBlank?.(pair);
-      if(market && Number.isFinite(market.bid) && Number.isFinite(market.ask)){
-        return market.ask - market.bid;
-      }
-    }catch(_){}
-    // Fallback pip caps by pair type
-    if(pair.includes("JPY")) return 0.03;
-    return 0.0003;
   }
 
   function scoreCandidate(m, c){
     if(m.dir === 0) return { confidence: 0, reason: "no zone rejection" };
-    
-    // ATR% entry floor
-    if(m.atrPct < 0.0008) return { confidence: 0, reason: "ATR too low" };
-    
-    // Trend ratio M15 filter
-    if(m.trendRatio < 0.40) return { confidence: 0, reason: "consolidation filter" };
+    if(m.trendRatio < 0.35) return { confidence: 0, reason: "consolidation filter" };
 
     const sb = strengthBias(m.pair);
-    
-    // Strength spread gating
-    const absSpread = Math.abs(sb.spread);
-    if(absSpread < 0.40) return { confidence: 0, reason: "strength spread too low" };
-    
-    // Strength stability check
-    if(!checkStrengthStability(m.pair, 0.40)){
-      return { confidence: 0, reason: "strength unstable" };
-    }
+    if((m.dir === 1 && sb.side < 0) || (m.dir === -1 && sb.side > 0)) return { confidence: 0, reason: "strength mismatch" };
 
-    // Direction match with strength
-    if((m.dir === 1 && sb.side < 0) || (m.dir === -1 && sb.side > 0)){
-      return { confidence: 0, reason: "strength mismatch" };
-    }
+    const learn = c.learning ? pairLearningScore(m.pair) : 0.5;
+    const volaBoost = inVolatileWindow(c) ? 0.08 : -0.04;
 
-    // H1 trend confirmation
-    if(m.h1TrendRatio !== null){
-      if(m.h1TrendRatio < 0.30) return { confidence: 0, reason: "H1 consolidation" };
-      
-      // Forbid entries against H1 trend unless strength spread very strong
-      if(m.dir === 1 && !m.trendUp && absSpread < 0.65){
-        return { confidence: 0, reason: "against H1 trend (weak strength)" };
-      }
-      if(m.dir === -1 && !m.trendDown && absSpread < 0.65){
-        return { confidence: 0, reason: "against H1 trend (weak strength)" };
-      }
-    }
-
-    // RSI filters
-    if(Number.isFinite(m.rsiM5)){
-      if(m.dir === 1 && m.rsiM5 <= 55) return { confidence: 0, reason: "M5 RSI too low for long" };
-      if(m.dir === -1 && m.rsiM5 >= 45) return { confidence: 0, reason: "M5 RSI too high for short" };
-    }
-    if(Number.isFinite(m.rsiH1)){
-      if(m.dir === 1 && m.rsiH1 <= 50) return { confidence: 0, reason: "H1 RSI too low for long" };
-      if(m.dir === -1 && m.rsiH1 >= 50) return { confidence: 0, reason: "H1 RSI too high for short" };
-    }
-
-    // Spread filtering
-    const spreadNow = getSpread(m.pair);
-    // Simple check: if spread unusually high, skip (would need median tracking for proper implementation)
-    const spreadThreshold = m.pair.includes("JPY") ? 0.04 : 0.0004;
-    if(spreadNow > spreadThreshold) return { confidence: 0, reason: "spread too high" };
-
-    const learn = pairLearningScore(m.pair, c);
-    
-    // Regime confirm bonus
-    const regimeConfirm = (m.h1TrendRatio !== null && m.h1TrendRatio >= 0.30) ? 0.15 : 0;
-    
-    // Spread penalty (normalized spread cost)
-    const spreadPenalty = Math.min(0.2, spreadNow / 0.001);
-
-    // Confidence formula
     const confidence =
-      (0.25 * m.volScore) +
-      (0.25 * m.sharpScore) +
-      (0.25 * Math.min(1, Math.max(0, Math.abs(sb.score)))) +
-      (0.12 * regimeConfirm) -
-      (0.10 * spreadPenalty) +
-      (0.23 * learn);
+      (0.30 * m.volScore) +
+      (0.30 * m.sharpScore) +
+      (0.20 * Math.min(1, Math.max(0, Math.abs(sb.score)))) +
+      (0.20 * learn) +
+      volaBoost;
 
     return {
       confidence: Math.max(0, Math.min(1, confidence)),
-      reason: `vol=${m.volScore.toFixed(2)} sharp=${m.sharpScore.toFixed(2)} strength=${Math.abs(sb.score).toFixed(2)} regime=${regimeConfirm.toFixed(2)} learn=${learn.toFixed(2)}`,
+      reason: `vol=${m.volScore.toFixed(2)} sharp=${m.sharpScore.toFixed(2)} strength=${Math.abs(sb.score).toFixed(2)} learn=${learn.toFixed(2)}`,
       strengthSpread: sb.spread || 0
     };
   }
@@ -392,17 +237,10 @@
 
     state.lastTradeAt = Date.now();
     state.tradesToday += 1;
-    const pStats = pairStats(candidate.pair);
-    pStats.lastTradeAt = Date.now();
-    state.pairLastTrade[candidate.pair] = Date.now();
     state.memory.totalSignals += 1;
     saveMemory();
 
     window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} | conf=${candidate.confidence.toFixed(2)} | TP=${tpDistance.toFixed(5)} SL=${slDistance.toFixed(5)}`);
-    
-    // TODO: Implement partial TP and trailing stop via order monitoring
-    // This would require tracking open orders and modifying them based on price movement
-    // For now, the basic order is placed with initial TP/SL
   }
 
   function updateLearningFromOpenTrades(){
@@ -415,19 +253,8 @@
         const st = pairStats(pair);
         const pnl = Number(o.pnl ?? o.profitLoss ?? NaN);
         if(Number.isFinite(pnl)){
-          if(pnl > 0){
-            st.wins += 1;
-            state.memory.totalWins += 1;
-            state.consecutiveLosses = 0;
-          }
-          if(pnl < 0){
-            st.losses += 1;
-            state.memory.totalLosses += 1;
-            state.consecutiveLosses += 1;
-            if(state.consecutiveLosses >= 2){
-              state.minConfBoost = 0.05;
-            }
-          }
+          if(pnl > 0) st.wins += 1;
+          if(pnl < 0) st.losses += 1;
         }
       }
       saveMemory();
@@ -452,9 +279,8 @@
         return;
       }
 
-      // Global cooldown
       if(Date.now() - state.lastTradeAt < (c.cooldownMin * 60000)){
-        if($("atStatus")) $("atStatus").textContent = "Idle: global cooldown active.";
+        if($("atStatus")) $("atStatus").textContent = "Idle: cooldown active.";
         return;
       }
 
@@ -464,14 +290,7 @@
         return;
       }
 
-      // Refresh strength and store snapshot for stability checking
       if(window.ENG?.Strength?.run) await window.ENG.Strength.run();
-      const strengthSnap = window.ENG?.Strength?.getSnapshot?.();
-      if(strengthSnap){
-        state.strengthHistory.push(strengthSnap);
-        if(state.strengthHistory.length > 5) state.strengthHistory.shift();
-      }
-
       updateLearningFromOpenTrades();
 
       const scored = await scanAllPairs(pairs, c);
@@ -480,35 +299,9 @@
         return;
       }
 
-      // Filter out pairs that traded recently (per-pair cooldown 60 min)
-      const pairCooldownMs = 60 * 60000;
-      const eligible = scored.filter((cand)=>{
-        const lastTrade = state.pairLastTrade[cand.pair] || 0;
-        return (Date.now() - lastTrade) >= pairCooldownMs;
-      });
-
-      // Filter pairs that have hit max 2 trades today
-      const pairTradeCount = {};
-      const eligibleFinal = eligible.filter((cand)=>{
-        const st = pairStats(cand.pair);
-        const count = pairTradeCount[cand.pair] || 0;
-        if(count >= 2) return false;
-        pairTradeCount[cand.pair] = count + 1;
-        return true;
-      });
-
-      if(eligibleFinal.length === 0){
-        if($("atStatus")) $("atStatus").textContent = "All pairs in cooldown or max trades reached.";
-        return;
-      }
-
-      const best = eligibleFinal[0];
-      const sessionMinConf = getSessionConfidence();
-      const effectiveMinConf = Math.min(0.9, c.minConfidence + state.minConfBoost);
-      const minConfToUse = Math.max(sessionMinConf, effectiveMinConf);
-
-      if(best.confidence < minConfToUse){
-        if($("atStatus")) $("atStatus").textContent = `Watching ${best.pair}: confidence ${best.confidence.toFixed(2)} below ${minConfToUse.toFixed(2)}.`;
+      const best = scored[0];
+      if(best.confidence < c.minConfidence){
+        if($("atStatus")) $("atStatus").textContent = `Watching ${best.pair}: confidence ${best.confidence.toFixed(2)} below ${c.minConfidence.toFixed(2)}.`;
         return;
       }
 
