@@ -1,4 +1,8 @@
 /* === Base Styles === */
+:root {
+  --tabs-height: 56px;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -70,7 +74,7 @@ body {
   display: block;
   overflow-y: auto;
   overflow-x: hidden;
-  height: calc(100vh - var(--tabs-height, 56px));
+  height: calc(100vh - var(--tabs-height));
   padding: 12px;
 }
 

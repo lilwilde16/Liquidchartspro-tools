@@ -4,6 +4,10 @@
   // === CONFIGURATION CONSTANTS ===
   const CCYS = ["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF"];
   
+  // Backoff configuration
+  const BACKOFF_INTERVAL_MS = 2000;
+  const BACKOFF_THRESHOLD_SKIPS = 3;
+  
   // Multi-timeframe weights
   const TF_WEIGHTS = {
     300: 0.3,   // M5
@@ -41,8 +45,7 @@
   const $ = (id)=>document.getElementById(id);
   let autoTimer = null;
   let autoIntervalSec = null;
-  let isRunning = false;
-  let inFlight = false;
+  let inFlight = false;  // Concurrency guard: prevents overlapping async runs
   let consecutiveSkips = 0;
   let backoffActive = false;
   let lastRanked = [];
@@ -343,34 +346,17 @@
       consecutiveSkips++;
       window.LC.log(`⏭ Strength scan skipped (already in flight). Consecutive skips: ${consecutiveSkips}`);
       
-      // Defensive backoff: after 3 consecutive skips, temporarily increase interval
-      if(consecutiveSkips >= 3 && !backoffActive && autoTimer && autoIntervalSec){
+      // Defensive backoff: after N consecutive skips, temporarily increase interval
+      if(consecutiveSkips >= BACKOFF_THRESHOLD_SKIPS && !backoffActive && autoTimer && autoIntervalSec){
         backoffActive = true;
-        const backoffInterval = 2000;
-        window.LC.log(`⚠ Strength: Applying defensive backoff (${backoffInterval}ms) after ${consecutiveSkips} skips.`);
+        window.LC.log(`⚠ Strength: Applying defensive backoff (${BACKOFF_INTERVAL_MS}ms) after ${consecutiveSkips} skips.`);
         clearInterval(autoTimer);
-        autoTimer = setInterval(()=>{ run(); }, backoffInterval);
+        autoTimer = setInterval(()=>{ run(); }, BACKOFF_INTERVAL_MS);
       }
       return;
     }
     
     inFlight = true;
-    
-    // Reset backoff if we successfully start a run
-    if(backoffActive && autoTimer && autoIntervalSec){
-      backoffActive = false;
-      consecutiveSkips = 0;
-      clearInterval(autoTimer);
-      autoTimer = setInterval(()=>{ run(); }, autoIntervalSec * 1000);
-      window.LC.log(`✅ Strength: Backoff cleared, returning to ${autoIntervalSec}s interval.`);
-    }
-    
-    if(isRunning){
-      inFlight = false;
-      return;
-    }
-    
-    isRunning = true;
     runCache = {}; // Clear cache for fresh run
 
     const timeframe = Number($("strengthTf")?.value || 900);
@@ -437,15 +423,20 @@
       window.LC.log(`✅ Strength scan done. Strongest: ${strongest}, weakest: ${weakest}.`);
       window.LC.setStatus(bad.length ? "Strength done (partial)" : "Strength done", bad.length ? "warn" : "ok");
       
-      // Reset consecutive skips on successful run
+      // Reset skip counter and backoff on successful run
       consecutiveSkips = 0;
+      if(backoffActive && autoTimer && autoIntervalSec){
+        backoffActive = false;
+        clearInterval(autoTimer);
+        autoTimer = setInterval(()=>{ run(); }, autoIntervalSec * 1000);
+        window.LC.log(`✅ Strength: Backoff cleared, returning to ${autoIntervalSec}s interval.`);
+      }
       
     }catch(e){
       window.LC.setStatus("Strength error", "bad");
       window.LC.log(`❌ Strength scan failed: ${e?.message || e}`);
       if($("strengthStatus")) $("strengthStatus").textContent = `Error: ${e?.message || "Unknown error"}`;
     }finally{
-      isRunning = false;
       inFlight = false;
     }
   }
