@@ -1,5 +1,8 @@
 (function(){
   const $ = (id)=>document.getElementById(id);
+  
+  // Default major currency pairs (single source of truth)
+  const DEFAULT_PAIRS = "EUR/USD\nGBP/USD\nUSD/JPY\nAUD/USD\nNZD/USD\nUSD/CAD\nUSD/CHF\nEUR/GBP\nEUR/JPY\nGBP/JPY";
 
   function collectMarkets(){
     const defaults = [
@@ -152,9 +155,8 @@
         }
         // Seed pairs with majors on first run if localStorage is empty
         if (id === "pairs" && s[id] === undefined) {
-          const defaultPairs = "EUR/USD\nGBP/USD\nUSD/JPY\nAUD/USD\nNZD/USD\nUSD/CAD\nUSD/CHF\nEUR/GBP\nEUR/JPY\nGBP/JPY";
-          el.value = defaultPairs;
-          window.setSettings({ pairs: defaultPairs });
+          el.value = DEFAULT_PAIRS;
+          window.setSettings({ pairs: DEFAULT_PAIRS });
         } else if (s[id] !== undefined) {
           el.value = s[id];
         }

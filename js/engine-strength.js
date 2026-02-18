@@ -316,29 +316,35 @@
     if(autoTimer) clearInterval(autoTimer);
     autoIntervalSec = sec;
     skipCount = 0;
-    autoTimer = setInterval(()=>{ 
-      // Skip if a run is still in flight
-      if(inFlight){
-        skipCount++;
-        window.LC.log(`⏭ Strength scan skipped (in flight). Skips: ${skipCount}`);
-        
-        // Defensive backoff: if 3 consecutive skips, auto-increase interval
-        if(skipCount >= 3){
-          const newSec = Math.min(sec * 2, 900);
-          if(newSec !== sec){
-            window.LC.log(`⚠ Strength auto-refresh backing off to ${newSec}s due to consecutive skips.`);
-            clearInterval(autoTimer);
-            autoIntervalSec = newSec;
-            $("strengthAutoSec").value = String(newSec);
-            autoTimer = setInterval(()=>{ run(); }, newSec * 1000);
-            skipCount = 0;
+    
+    const scheduleRun = (intervalSec) => {
+      autoTimer = setInterval(()=>{ 
+        // Skip if a run is still in flight
+        if(inFlight){
+          skipCount++;
+          window.LC.log(`⏭ Strength scan skipped (in flight). Skips: ${skipCount}`);
+          
+          // Defensive backoff: if 3 consecutive skips, auto-increase interval
+          if(skipCount >= 3){
+            const newSec = Math.min(intervalSec * 2, 900);
+            // Only backoff if we can actually increase the interval
+            if(newSec > intervalSec){
+              window.LC.log(`⚠ Strength auto-refresh backing off to ${newSec}s due to consecutive skips.`);
+              clearInterval(autoTimer);
+              autoIntervalSec = newSec;
+              $("strengthAutoSec").value = String(newSec);
+              skipCount = 0;
+              scheduleRun(newSec);
+            }
           }
+          return;
         }
-        return;
-      }
-      skipCount = 0;
-      run(); 
-    }, sec * 1000);
+        skipCount = 0;
+        run(); 
+      }, intervalSec * 1000);
+    };
+    
+    scheduleRun(sec);
     window.LC.log(`🔄 Strength auto refresh ON (${sec}s).`);
     if($("strengthStatus")) $("strengthStatus").textContent = `Auto refresh enabled (${sec}s).`;
     run();

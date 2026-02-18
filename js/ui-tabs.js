@@ -10,7 +10,8 @@
           // Reset horizontal scroll position on tab change
           targetPage.scrollLeft = 0;
           
-          // Ensure body and html keep overflow-y hidden
+          // Ensure body and html keep overflow-y hidden (defensive re-enforcement
+          // in case other scripts modify these styles)
           document.documentElement.style.overflowY = "hidden";
           document.body.style.overflowY = "hidden";
     }
