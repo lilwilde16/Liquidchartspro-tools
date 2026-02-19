@@ -69,6 +69,8 @@
   };
 
   // === UTILITY FUNCTIONS ===
+  const SUPPORTED_INDICES = ["NAS100", "US30", "SPX500", "DJ30", "DAX", "FTSE", "NIKKEI"];
+
   function toNum(v, fallback){
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
@@ -89,6 +91,38 @@
 
   function isJPYPair(pair){
     return pair.includes("JPY");
+  }
+
+  function isIndex(instrument){
+    // Check if instrument is an index
+    return SUPPORTED_INDICES.some(idx => instrument.includes(idx));
+  }
+
+  function calculatePipSize(instrument){
+    // Calculate pip size based on instrument type
+    if(isJPYPair(instrument)){
+      return 0.01; // JPY pairs: 2 decimal places
+    }
+    
+    // Index-specific pip sizes
+    if(instrument.includes("NAS100")){
+      return 1.0; // NAS100: $1 per pip
+    }
+    if(instrument.includes("SPX500")){
+      return 0.1; // SPX500: $0.10 per pip
+    }
+    if(instrument.includes("US30") || instrument.includes("DJ30")){
+      return 1.0; // US30/DJ30: $1 per pip
+    }
+    if(instrument.includes("DAX")){
+      return 1.0; // DAX: €1 per pip
+    }
+    if(instrument.includes("FTSE")){
+      return 1.0; // FTSE: £1 per pip
+    }
+    
+    // Standard forex pairs: 4 decimal places
+    return 0.0001;
   }
 
   function normalizeCandles(raw){
@@ -325,10 +359,19 @@
     const bullishRejection = m5Close[m5i] > m5Open[m5i] && m5Low[m5i] <= swingLow + zoneBuf;
     const bearishRejection = m5Close[m5i] < m5Open[m5i] && m5High[m5i] >= swingHigh - zoneBuf;
 
-    // Determine direction
+    // Candlestick pattern detection
+    const pattern = detectCandlestickPattern(m5Candles, m5i);
+
+    // Determine direction - pattern takes priority when detected
     let dir = 0;
-    if(nearDemand && bullishRejection) dir = 1;
-    else if(nearSupply && bearishRejection) dir = -1;
+    if(pattern.direction !== 0){
+      // Pattern detected - use it as primary signal
+      dir = pattern.direction;
+    }else{
+      // No pattern - fall back to zone-based signals
+      if(nearDemand && bullishRejection) dir = 1;
+      else if(nearSupply && bearishRejection) dir = -1;
+    }
 
     // Momentum & scores
     const momentum = Math.abs(m5Close[m5i] - m5Close[m5i - 8]) / atrNow;
@@ -361,7 +404,8 @@
       close: m5Close[m5i],
       m5RSI: m5RSI[m5i],
       h1RSI: h1RSI[h1i],
-      currentSpread
+      currentSpread,
+      pattern: pattern.pattern
     };
   }
 
@@ -456,6 +500,83 @@
     };
   }
 
+  // === CORRELATED INSTRUMENT ANALYSIS ===
+  function getCorrelatedStrength(instrument){
+    // For NAS100, get USD strength from cached strength snapshot
+    // This is a simplified correlation metric - in production, you would
+    // fetch actual US30 and SPX500 data and analyze cross-instrument momentum
+    if(!instrument.includes("NAS100")) return null;
+    
+    try{
+      const strengthSnapshot = window.ENG?.Strength?.getSnapshot?.();
+      if(!strengthSnapshot || !strengthSnapshot.ranked) return null;
+      
+      // Get USD strength from snapshot
+      const usdRanking = strengthSnapshot.ranked.find(r => r.ccy === "USD");
+      const usdScore = usdRanking ? usdRanking.avgScore : 0;
+      
+      // Return simplified correlation metric
+      // TODO: Enhance with actual US30 and SPX500 data analysis
+      return {
+        usdStrength: usdScore,
+        correlationScore: Math.abs(usdScore)
+      };
+    }catch(e){
+      return null;
+    }
+  }
+
+  function detectCandlestickPattern(candles, index){
+    // Detect common reversal/continuation patterns
+    if(index < 1 || index >= candles.length) return { pattern: null, direction: 0 };
+    
+    const curr = candles[index];
+    const prev = candles[index - 1];
+    
+    if(!curr || !prev) return { pattern: null, direction: 0 };
+    
+    const currBody = Math.abs(curr.c - curr.o);
+    const prevBody = Math.abs(prev.c - prev.o);
+    const currRange = curr.h - curr.l;
+    
+    // Bullish engulfing
+    if(prev.c < prev.o && curr.c > curr.o && 
+       curr.o <= prev.c && curr.c >= prev.o && 
+       currBody > prevBody){
+      return { pattern: "bullish_engulfing", direction: 1 };
+    }
+    
+    // Bearish engulfing
+    if(prev.c > prev.o && curr.c < curr.o && 
+       curr.o >= prev.c && curr.c <= prev.o && 
+       currBody > prevBody){
+      return { pattern: "bearish_engulfing", direction: -1 };
+    }
+    
+    // Bullish reversal bar (hammer-like)
+    const lowerWick = curr.c > curr.o ? curr.o - curr.l : curr.c - curr.l;
+    const upperWick = curr.c > curr.o ? curr.h - curr.c : curr.h - curr.o;
+    if(curr.c > curr.o && lowerWick > currBody * 2 && upperWick < currBody * 0.5){
+      return { pattern: "bullish_reversal", direction: 1 };
+    }
+    
+    // Bearish reversal bar (shooting star-like)
+    if(curr.c < curr.o && upperWick > currBody * 2 && lowerWick < currBody * 0.5){
+      return { pattern: "bearish_reversal", direction: -1 };
+    }
+    
+    // Breakout: strong move in one direction
+    if(curr.c > curr.o && currBody > currRange * 0.7 && curr.c > prev.h){
+      return { pattern: "bullish_breakout", direction: 1 };
+    }
+    
+    if(curr.c < curr.o && currBody > currRange * 0.7 && curr.c < prev.l){
+      return { pattern: "bearish_breakout", direction: -1 };
+    }
+    
+    return { pattern: null, direction: 0 };
+  }
+
   // === PAIR SCANNING ===
   async function scanAllPairs(pairs, c){
     const settled = await Promise.allSettled(pairs.map(async (pair)=>{
@@ -475,8 +596,8 @@
     const side = candidate.dir === 1 ? "BUY" : "SELL";
     const riskMult = c.riskMode === "conservative" ? 0.9 : 1.05;
     
-    // Calculate pip size for the instrument
-    const pipSize = isJPYPair(candidate.pair) ? 0.01 : 0.0001;
+    // Calculate pip size for the instrument (supports both forex and indices)
+    const pipSize = calculatePipSize(candidate.pair);
     
     // Calculate SL and TP in pips (ATR is in price units, convert to pips)
     const slPips = (candidate.atrNow / pipSize) * c.slAtr * riskMult;
@@ -507,7 +628,7 @@
     }
     
     // Round to appropriate precision
-    const precision = isJPYPair(candidate.pair) ? 3 : 5;
+    const precision = isIndex(candidate.pair) ? 2 : (isJPYPair(candidate.pair) ? 3 : 5);
     tpPrice = Number(tpPrice.toFixed(precision));
     slPrice = Number(slPrice.toFixed(precision));
 

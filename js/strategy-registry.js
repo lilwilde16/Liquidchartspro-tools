@@ -33,7 +33,21 @@
     defaults: { fastMa: 20, slowMa: 100, atrLen: 14, rr: 1.5, slAtr: 1.1, allowShort: "yes", timeframe: "M15", session: "london", count: 120 }
   };
 
-  const list = [SMA_CROSSOVER, SMA_LONG_TREND, STRENGTH_SCALP_WEEKLY];
+  const NAS100_SCALPER = {
+    id: "nas100_scalper",
+    name: "NAS100 Scalper (Correlated Indices)",
+    description: [
+      "High-precision NAS100 scalper leveraging correlated movements.",
+      "Entry: Monitors USD strength as correlation proxy (US30/SPX500 analysis planned).",
+      "Confirms with NAS100 candlestick patterns (engulfing, breakouts).",
+      "Risk: 2-3% position size, RR=1.67 (TP:SL ratio of 5:3 in pips).",
+      "Timeframes: M1 and M5 for high-frequency intraday trades.",
+      "Signal threshold: Trend ratio ≥ 0.5, pattern confirmation required."
+    ].join("\n"),
+    defaults: { fastMa: 10, slowMa: 30, atrLen: 14, rr: 1.67, slAtr: 1.0, allowShort: "yes", timeframe: "M5", session: "newyork", count: 200 }
+  };
+
+  const list = [SMA_CROSSOVER, SMA_LONG_TREND, STRENGTH_SCALP_WEEKLY, NAS100_SCALPER];
 
   window.STRATEGIES = {
     list,

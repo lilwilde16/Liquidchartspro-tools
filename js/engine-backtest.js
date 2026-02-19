@@ -161,7 +161,7 @@
     return { netR, pnl, nextBalance: balance + pnl };
   }
 
-  function shouldEnterTrade(strategyId, fast, slow, atr, close, i, allowShort){
+  function shouldEnterTrade(strategyId, fast, slow, atr, close, i, allowShort, candles){
     const crossUp = fast[i - 1] <= slow[i - 1] && fast[i] > slow[i];
     const crossDown = fast[i - 1] >= slow[i - 1] && fast[i] < slow[i];
 
@@ -181,6 +181,51 @@
       const isChoppy = atrPct < 0.0008 || trendRatio < 0.35;
       if(isChoppy) return 0;
 
+      if(crossUp) return 1;
+      if(crossDown && allowShort) return -1;
+    }
+
+    if(strategyId === "nas100_scalper"){
+      const atrNow = atr[i];
+      const px = close[i];
+      if(!Number.isFinite(atrNow) || !Number.isFinite(px) || px <= 0) return 0;
+
+      const trendRatio = Math.abs(fast[i] - slow[i]) / atrNow;
+      
+      // NAS100 scalper requires stronger trend confirmation
+      if(trendRatio < 0.5) return 0;
+
+      // Detect candlestick patterns for entry confirmation
+      if(candles && i > 0){
+        const curr = candles[i];
+        const prev = candles[i - 1];
+        
+        const currBody = Math.abs(curr.c - curr.o);
+        const prevBody = Math.abs(prev.c - prev.o);
+        
+        // Bullish engulfing pattern
+        if(prev.c < prev.o && curr.c > curr.o && 
+           curr.o <= prev.c && curr.c >= prev.o &&
+           currBody > prevBody){
+          return 1;
+        }
+        
+        // Bearish engulfing pattern
+        if(prev.c > prev.o && curr.c < curr.o && 
+           curr.o >= prev.c && curr.c <= prev.o &&
+           currBody > prevBody){
+          return allowShort ? -1 : 0;
+        }
+        
+        // Breakout patterns
+        const currRange = curr.h - curr.l;
+        if(currBody > currRange * 0.7){
+          if(curr.c > curr.o && curr.c > prev.h) return 1;
+          if(curr.c < curr.o && curr.c < prev.l) return allowShort ? -1 : 0;
+        }
+      }
+
+      // Fallback to crossover with strong trend
       if(crossUp) return 1;
       if(crossDown && allowShort) return -1;
     }
@@ -217,7 +262,7 @@
       if(stopFlag) break;
       if(!Number.isFinite(fast[i - 1]) || !Number.isFinite(slow[i - 1]) || !Number.isFinite(fast[i]) || !Number.isFinite(slow[i]) || !Number.isFinite(atr[i]) || atr[i] <= 0) continue;
 
-      const dir = shouldEnterTrade(cfg.strategyId, fast, slow, atr, close, i, cfg.allowShort);
+      const dir = shouldEnterTrade(cfg.strategyId, fast, slow, atr, close, i, cfg.allowShort, candles);
       if(!dir) continue;
 
       const entryIndex = i + 1;
