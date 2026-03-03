@@ -29,7 +29,7 @@ GBP/JPY</textarea>
 
   <div id="app">
     <div class="card">
-      <h1 class="title">ENTRY &rarr; then CHANGE(101) TP/SL (Reliable)</h1>
+      <h1 class="title">Trading Functions &mdash; Entry &rarr; CHANGE(101) TP/SL</h1>
 
       <div class="row">
         <div class="field">
@@ -60,13 +60,19 @@ GBP/JPY</textarea>
             <option value="on">ON (SendOrder)</option>
           </select>
         </div>
+        <div class="field">
+          <label>Order ID (for Change / Close One)</label>
+          <input id="toolOrderId" type="text" placeholder="e.g. 123456" />
+        </div>
       </div>
 
       <div class="btnRow">
         <button id="btnTicket" disabled>Open Ticket</button>
-        <button id="btnBuyTPSL" class="primary" disabled>BUY (ENTRY) then CHANGE TP/SL</button>
-        <button id="btnSellTPSL" disabled>SELL (ENTRY) then CHANGE TP/SL</button>
+        <button id="btnBuyTPSL" class="primary" disabled>BUY Entry &rarr; CHANGE TP/SL</button>
+        <button id="btnSellTPSL" disabled>SELL Entry &rarr; CHANGE TP/SL</button>
         <button id="btnDumpTrades" disabled>Dump Orders</button>
+        <button id="btnCloseAll" disabled>Close All (Instrument)</button>
+        <button id="btnCloseOne" disabled>Close One (by Order ID)</button>
         <button id="btnClearLog">Clear Log</button>
       </div>
 
@@ -76,8 +82,9 @@ GBP/JPY</textarea>
       </div>
 
       <p class="note">
-        This version does NOT send TP/SL at entry.<br>
-        It places the trade first, then applies TP/SL using <strong>CHANGE (101)</strong> as soon as the orderId exists.
+        <strong>BUY / SELL Entry &rarr; CHANGE TP/SL</strong>: places the market order first, then applies TP/SL via <strong>CHANGE (101)</strong>. TP and SL are automatically placed on the correct side based on trade direction.<br>
+        <strong>Close All</strong>: closes all open long and short positions for the selected instrument.<br>
+        <strong>Close One</strong>: closes a single order by its Order ID (enter above). ARM must be ON to execute any live order.
       </p>
     </div>
 
@@ -87,8 +94,9 @@ GBP/JPY</textarea>
     </div>
   </div>
 
-  <!-- Scripts: framework core + settings persistence -->
+  <!-- Scripts: framework core + settings persistence + trading API -->
   <script src="./js/lc-framework.js"></script>
+  <script src="./js/trading-api.js"></script>
   <script src="./js/app.js"></script>
 </body>
 </html>

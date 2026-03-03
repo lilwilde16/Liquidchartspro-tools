@@ -351,6 +351,29 @@
     }
   }
 
+  async function closeOrderById(orderId){
+    if(!toolArmed()) throw new Error("ARM OFF → cannot close.");
+    if(!orderId) throw new Error("Missing orderId.");
+
+    // Try to read direction from Orders dict so we can use the precise close action
+    const order = ordersDict()[String(orderId)];
+    const instrumentId = order ? (order.instrumentId || order.instrument || null) : null;
+    const isSell = order && (order.tradingAction === 2 || order.orderType === 2 || order.direction === "sell");
+
+    // CLOSETRADE (4) targets a single order/ticket by its ID
+    const payload = {
+      tradingAction: actionConst("CLOSETRADE", 4),
+      orderId: String(orderId)
+    };
+    if(instrumentId) payload.instrumentId = instrumentId;
+
+    log(`🧨 closeOrderById id=${orderId}${instrumentId ? " inst="+instrumentId : ""}${order ? " dir="+(isSell?"SELL":"BUY") : ""}`);
+    log(`🧨 closeOrderById payload=${safeJson(payload)}`);
+    const res = await sendOrderAsync(payload);
+    log(`↩️ closeOrderById result=${safeJson(res)}`);
+    return res;
+  }
+
   function dumpOrderTypes(){
     try{
       const keys = Object.keys(window.Liquid?.OrderTypes || {});
@@ -492,7 +515,7 @@
       "btnPing", "btnReqPrices", "btnHealth", "btnDiagRun",
       "btnPrices", "btnTicket", "btnBuyMarket", "btnSellMarket",
       "btnBuyTPSL", "btnSellTPSL", "btnChangeTPSL", "btnDumpTrades",
-      "btnCloseAll", "btnClearLog", "btnStrengthRun", "btnStrengthAuto",
+      "btnCloseAll", "btnCloseOne", "btnClearLog", "btnStrengthRun", "btnStrengthAuto",
       "btnStrengthStop", "btnRunBt", "btnClearBt", "btnAutoStart", "btnAutoStop"
     ];
     
@@ -554,6 +577,12 @@
     };
     if($("btnDumpTrades")) $("btnDumpTrades").onclick = dumpOpenTrades;
     if($("btnCloseAll")) $("btnCloseAll").onclick = async ()=>{ try{ await closeAllForInstrument(selectedPair()); setStatus("Close sent", "ok"); }catch(e){ setStatus("Close failed", "bad"); log(`❌ Close failed: ${e?.message || e}`);} };
+    if($("btnCloseOne")) $("btnCloseOne").onclick = async ()=>{
+      const oid = ($("toolOrderId")?.value || "").trim();
+      if(!oid){ log("❌ Enter Order ID first"); return; }
+      try{ await closeOrderById(oid); setStatus("Close One sent", "ok"); }
+      catch(e){ setStatus("Close One failed", "bad"); log(`❌ Close One failed: ${e?.message || e}`); }
+    };
 
     if($("btnRefreshTool")) $("btnRefreshTool").onclick = async ()=>{ await safeRefreshMarket(); };
     if($("btnClearLog")) $("btnClearLog").onclick = ()=>{ $("log").textContent=""; };
@@ -598,6 +627,7 @@
     attachTPSLViaChange,
     placeMarketThenAttachTPSL,
     closeAllPositions,
+    closeOrderById,
     dumpOrderTypes,
     pRequestCandles: requestCandles
   };
