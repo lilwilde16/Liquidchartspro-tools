@@ -647,26 +647,26 @@
         
         window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} | conf=${candidate.confidence.toFixed(2)} | entry=${entryPrice.toFixed(precision)} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)} | session=${getCurrentSession()}`);
       }catch(attachError){
-        // Fallback: place market order without TP/SL, then modify
+        // Fallback: place market then attach TP/SL via CHANGE (101) using top-level tp/sl fields
         window.LC.log(`⚠️ TP/SL attachment failed: ${attachError?.message || attachError}`);
-        window.LC.log(`🔄 Attempting fallback: place order then modify...`);
-        
-        const orderResult = await window.LC.api.sendMarketOrder(
+        window.LC.log(`🔄 Attempting fallback via placeMarketThenAttachTPSL...`);
+
+        const fallbackResult = await window.LC.api.placeMarketThenAttachTPSL(
           candidate.pair,
           candidate.dir === 1,
-          c.lots
+          c.lots,
+          tpPrice,
+          slPrice,
+          false  // already absolute prices
         );
-        orderId = orderResult?.orderId || orderResult?.id || null;
-        
-        if(orderId){
-          try{
-            await window.LC.api.changeOrderTPSL(orderId, tpPrice, slPrice);
-            window.LC.log(`✅ Fallback successful: TP/SL attached via modify | order=${orderId} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)}`);
-          }catch(modifyError){
-            window.LC.log(`❌ Fallback modify failed: ${modifyError?.message || modifyError}`);
-          }
+        orderId = fallbackResult?.orderId || null;
+
+        if(fallbackResult?.status === "tpsl_attached"){
+          window.LC.log(`✅ Fallback successful: TP/SL attached via CHANGE | order=${orderId} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)}`);
+        }else{
+          window.LC.log(`⚠️ Fallback status: ${fallbackResult?.status} | order=${orderId}`);
         }
-        
+
         window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} (fallback) | conf=${candidate.confidence.toFixed(2)} | entry=${entryPrice.toFixed(precision)} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)} | session=${getCurrentSession()}`);
       }
 

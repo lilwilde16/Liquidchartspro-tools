@@ -175,6 +175,104 @@
     return Framework.Orders && Framework.Orders._dict ? Framework.Orders._dict : {};
   }
 
+  async function attachTPSLViaChange(orderId, instrumentId, isBuy, tpAbs, slAbs){
+    if(!toolArmed()) throw new Error("ARM OFF → cannot CHANGE.");
+    if(!orderId) throw new Error("Missing orderId for attachTPSLViaChange.");
+
+    const payload = {
+      tradingAction: actionConst("CHANGE", 101),
+      orderId: String(orderId),
+      tp: Number(tpAbs),
+      sl: Number(slAbs)
+    };
+
+    log(`🔗 attachTPSLViaChange payload=${safeJson(payload)}`);
+    const res = await sendOrderAsync(payload);
+    log(`↩️ attachTPSLViaChange result=${safeJson(res)}`);
+    return res;
+  }
+
+  async function placeMarketThenAttachTPSL(instrumentId, isBuy, lotSize, tpInput, slInput, tpIsPips, options){
+    if(!toolArmed()){
+      log("🛡️ ARM OFF → ticket only");
+      openTicket(instrumentId);
+      return { orderId: null, entryResponse: null, changeResponse: null, status: "arm_off" };
+    }
+
+    const opts = options || {};
+    const timeoutMs = Number(opts.timeoutMs) || 6000;
+    const delayMs = Number(opts.delayMs) || 500;
+
+    let tpAbs = Number(tpInput);
+    let slAbs = Number(slInput);
+
+    const isJpy = /JPY/.test(String(instrumentId).toUpperCase());
+    const isIdx = ["NAS100","US30","SPX500","DJ30","DAX","FTSE","NIKKEI"].some((i)=>String(instrumentId).toUpperCase() === i || new RegExp("(^|[^A-Z0-9])" + i + "([^A-Z0-9]|$)").test(String(instrumentId).toUpperCase()));
+    const logPrecision = isJpy ? 3 : (isIdx ? 2 : 5);
+
+    if(tpIsPips){
+      const m = getMarket(instrumentId);
+      const bid = Number(m.bid), ask = Number(m.ask);
+      if(!Number.isFinite(bid) || !Number.isFinite(ask)) throw new Error("No live bid/ask for pip conversion.");
+      const entryPrice = isBuy ? ask : bid;
+      const pipSz = isJpy ? 0.01 : (isIdx ? 1.0 : 0.0001);
+      tpAbs = isBuy ? entryPrice + (tpInput * pipSz) : entryPrice - (tpInput * pipSz);
+      slAbs = isBuy ? entryPrice - (slInput * pipSz) : entryPrice + (slInput * pipSz);
+    }
+
+    const action = isBuy ? actionConst("BUY", 1) : actionConst("SELL", 2);
+    const entryPayload = {
+      instrumentId,
+      tradingAction: action,
+      volume: { lots: Number(lotSize) }
+    };
+
+    log(`🚀 placeMarketThenAttachTPSL ${isBuy?"BUY":"SELL"} ${instrumentId} lots=${lotSize} TP=${Number(tpAbs).toFixed(logPrecision)} SL=${Number(slAbs).toFixed(logPrecision)}`);
+    log(`🟦 ENTRY payload=${safeJson(entryPayload)}`);
+    const entryResponse = await sendOrderAsync(entryPayload);
+    log(`↩️ ENTRY result=${safeJson(entryResponse)}`);
+
+    let orderId = (entryResponse?.orderId || entryResponse?.id) ? String(entryResponse.orderId || entryResponse.id) : null;
+
+    if(!orderId){
+      const normalizedId = String(instrumentId).replace(/\s/g, "").toLowerCase();
+      const deadline = Date.now() + timeoutMs;
+      while(!orderId && Date.now() < deadline){
+        await new Promise((r)=>setTimeout(r, delayMs));
+        const dict = ordersDict();
+        for(const k of Object.keys(dict)){
+          const o = dict[k];
+          const oId = String(o.instrumentId || o.instrument || "").replace(/\s/g, "").toLowerCase();
+          if(oId === normalizedId){
+            orderId = k;
+            break;
+          }
+        }
+      }
+      if(orderId) log(`🔍 Found orderId via Orders._dict scan: ${orderId}`);
+      else log(`⚠️ Could not find orderId for ${instrumentId} in Orders._dict after ${timeoutMs}ms`);
+    }
+
+    let changeResponse = null;
+    let status = "entry_placed";
+
+    if(orderId){
+      try{
+        changeResponse = await attachTPSLViaChange(orderId, instrumentId, isBuy, tpAbs, slAbs);
+        status = "tpsl_attached";
+        log(`✅ placeMarketThenAttachTPSL complete: order=${orderId} TP=${Number(tpAbs).toFixed(logPrecision)} SL=${Number(slAbs).toFixed(logPrecision)}`);
+      }catch(changeErr){
+        status = "change_failed";
+        log(`❌ attachTPSLViaChange failed: ${changeErr?.message || changeErr}`);
+      }
+    }else{
+      status = "no_order_id";
+      log(`⚠️ placeMarketThenAttachTPSL: entry placed but could not attach TP/SL (no orderId)`);
+    }
+
+    return { orderId, entryResponse, changeResponse, status };
+  }
+
   function positionsDict(){
     return Framework.Positions && Framework.Positions._dict ? Framework.Positions._dict : {};
   }
@@ -511,6 +609,8 @@
     sendMarketOrderWithTPSL: (instrumentId, isBuy, lotSize, tpAbsPrice, slAbsPrice)=>sendWithTPSL(instrumentId, !!isBuy, Number(lotSize || 0.01), Number(tpAbsPrice || 0), Number(slAbsPrice || 0)),
     dumpOpenTradeSources: dumpOpenTrades,
     changeOrderTPSL,
+    attachTPSLViaChange,
+    placeMarketThenAttachTPSL,
     closeAllPositions,
     dumpOrderTypes,
     pRequestCandles: requestCandles
