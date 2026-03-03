@@ -4,6 +4,40 @@
   // Default major currency pairs for first-time users
   const DEFAULT_PAIRS = "EUR/USD\nGBP/USD\nUSD/JPY\nAUD/USD\nNZD/USD\nUSD/CAD\nUSD/CHF\nEUR/GBP\nEUR/JPY\nGBP/JPY";
 
+  // === GOALS PERSISTENCE ===
+  const GOALS_KEY = "lc_goals_v1";
+
+  function loadGoals(){
+    try{ return JSON.parse(localStorage.getItem(GOALS_KEY) || "{}") || {}; }catch(_){ return {}; }
+  }
+
+  function saveGoals(goals){
+    try{ localStorage.setItem(GOALS_KEY, JSON.stringify(goals)); }catch(_){ }
+  }
+
+  // === HOME TAB DISPLAY ===
+  function updateHomeDisplay(){
+    // Strategy name
+    const preset = $("btStrategyPreset");
+    const nameEl = $("homeStrategyName");
+    if(nameEl){
+      const selected = preset?.options[preset?.selectedIndex]?.text || "";
+      nameEl.textContent = selected || "No strategy selected \u2014 go to Strategy tab to choose one";
+    }
+
+    // Pairs list
+    const pairsEl = $("pairs");
+    const listEl = $("homePairsList");
+    if(listEl && pairsEl){
+      const pairs = pairsEl.value.split(/\r?\n/).map((s)=>s.trim()).filter(Boolean);
+      if(pairs.length === 0){
+        listEl.textContent = "No pairs configured \u2014 add pairs in Strategy tab";
+      }else{
+        listEl.innerHTML = pairs.map((p)=>`<span class="pairTag">${p}</span>`).join(" ");
+      }
+    }
+  }
+
   function collectMarkets(){
     const defaults = [
       "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "NZD/USD",
@@ -46,7 +80,9 @@
     if($("btSession") && d.session) $("btSession").value = d.session;
     if($("btCount") && Number.isFinite(Number(d.count))) $("btCount").value = String(d.count);
     if($("btStrategy")) $("btStrategy").value = strategy.description;
+    if($("btStrategy-display")) $("btStrategy-display").textContent = strategy.description;
     syncSessionInputs();
+    updateHomeDisplay();
   }
 
   function populateStrategyDropdown(){
@@ -59,7 +95,7 @@
     select.value = (prev && registry.byId[prev]) ? prev : registry.list[0].id;
     applyStrategyToForm(registry.byId[select.value]);
 
-    select.onchange = ()=>applyStrategyToForm(registry.byId[select.value]);
+    select.onchange = ()=>{ applyStrategyToForm(registry.byId[select.value]); };
   }
 
   function initBacktestDateDefaults(){
@@ -120,13 +156,121 @@
     initBacktestDateDefaults();
     syncSessionInputs();
 
-    if($("pairs")) $("pairs").addEventListener("change", populateBacktestMarkets);
+    if($("pairs")) $("pairs").addEventListener("change", ()=>{ populateBacktestMarkets(); updateHomeDisplay(); });
     if($("btSession")) $("btSession").addEventListener("change", syncSessionInputs);
 
     window.LC = window.LC || {};
     window.LC.refreshBacktestMarkets = populateBacktestMarkets;
     window.LC.refreshBacktestStrategies = populateStrategyDropdown;
 
+    // === ARM SYNC: homeArm ↔ toolArm ===
+    const homeArmEl = $("homeArm");
+    const toolArmEl = $("toolArm");
+    if(homeArmEl && toolArmEl){
+      homeArmEl.value = toolArmEl.value;
+      homeArmEl.addEventListener("change", ()=>{ toolArmEl.value = homeArmEl.value; });
+      toolArmEl.addEventListener("change", ()=>{ homeArmEl.value = toolArmEl.value; });
+    }
+
+    // === PROFIT GOALS ===
+    const goals = loadGoals();
+    if($("goalDaily") && goals.daily != null) $("goalDaily").value = goals.daily;
+    if($("goalWeekly") && goals.weekly != null) $("goalWeekly").value = goals.weekly;
+
+    if($("btnSaveGoals")){
+      $("btnSaveGoals").onclick = ()=>{
+        saveGoals({
+          daily: Number($("goalDaily")?.value || 0),
+          weekly: Number($("goalWeekly")?.value || 0)
+        });
+        const s = $("goalsStatus");
+        if(s){ s.textContent = "Saved!"; setTimeout(()=>{ s.textContent = ""; }, 1500); }
+      };
+    }
+
+    // === COPY LOG ===
+    if($("btnCopyLog")){
+      $("btnCopyLog").onclick = ()=>{
+        const logEl = $("log");
+        if(!logEl) return;
+        const text = logEl.textContent;
+        if(navigator.clipboard){
+          navigator.clipboard.writeText(text).catch(()=>fallbackCopy(text));
+        }else{
+          fallbackCopy(text);
+        }
+        const btn = $("btnCopyLog");
+        if(btn){ btn.textContent = "\u2714 Copied!"; setTimeout(()=>{ btn.textContent = "\uD83D\uDCCB Copy Log"; }, 2000); }
+      };
+    }
+
+    function fallbackCopy(text){
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      ta.style.pointerEvents = "none";
+      ta.setAttribute("aria-hidden", "true");
+      document.body.appendChild(ta);
+      ta.select();
+      try{ document.execCommand("copy"); }catch(_){}
+      document.body.removeChild(ta);
+    }
+
+    // === LAST 5 SIGNALS (Current Signal Scan) ===
+    if($("btnLastSignals")){
+      $("btnLastSignals").onclick = async ()=>{
+        const btn = $("btnLastSignals");
+        const resultBox = $("lastSignalsResult");
+        if(!resultBox) return;
+
+        btn.disabled = true;
+        btn.textContent = "Scanning\u2026";
+        resultBox.innerHTML = "<p>Running signal scan across all pairs\u2026</p>";
+        resultBox.classList.remove("hidden");
+
+        try{
+          if(!window.ENG?.AutoTrader?.scan){
+            resultBox.innerHTML = "<p>\u274C AutoTrader engine not available. Ensure all scripts are loaded.</p>";
+            return;
+          }
+          const results = await window.ENG.AutoTrader.scan();
+          const withSignal = results.filter((r)=>r.confidence > 0);
+          const top5 = results.slice(0, 5);
+
+          if(top5.length === 0){
+            resultBox.innerHTML = "<p>No pairs returned data. Check that pairs are configured and the platform has live data.</p>";
+            return;
+          }
+
+          resultBox.innerHTML = top5.map((r, i)=>{
+            const dirLabel = r.dir === 1 ? "<span class='sig-buy' aria-label='BUY signal'>\uD83D\uDFE2 BUY</span>" :
+                             r.dir === -1 ? "<span class='sig-sell' aria-label='SELL signal'>\uD83D\uDD34 SELL</span>" :
+                             "<span class='sig-none' aria-label='No signal'>\u26AA WATCHING</span>";
+            const conf = Number.isFinite(r.confidence) ? (r.confidence * 100).toFixed(0) + "%" : "\u2014";
+            const reason = r.reason || r.pattern || "\u2014";
+            return `<div class="signalCard">
+              <span class="sigRank" aria-label="Rank ${i+1}">${i+1}</span>
+              <strong>${r.pair}</strong> ${dirLabel}
+              <span class="sigConf">Confidence: <b>${conf}</b></span>
+              <span class="sigReason">${reason}</span>
+            </div>`;
+          }).join("");
+
+          if(withSignal.length === 0){
+            resultBox.innerHTML += `<p class="note" style="margin-top:8px">No actionable signals right now. The market may be ranging or conditions don&rsquo;t meet the strategy thresholds.</p>`;
+          }
+
+        }catch(e){
+          resultBox.innerHTML = `<p>\u274C Scan failed: ${e?.message || e}</p>`;
+        }finally{
+          btn.disabled = false;
+          btn.textContent = "\uD83D\uDD0D Show Current Signal Scan (Top 5)";
+        }
+      };
+    }
+
+    // === SETTINGS (pairs) ===
     const SETTINGS_KEY = "lc_settings_v1";
     const settingsFields = ["pairs"];
 
@@ -161,7 +305,6 @@
       const pairsEl = $("pairs");
       if(pairsEl && (!s.pairs || s.pairs.trim() === "")){
         pairsEl.value = DEFAULT_PAIRS;
-        // Save the default pairs to localStorage
         window.setSettings({ pairs: DEFAULT_PAIRS });
       }
     };
@@ -190,6 +333,7 @@
       saveBtn.onclick = () => {
         window.setSettings(window.readUIToSettings());
         showSaved();
+        updateHomeDisplay();
       };
     } else {
       console.warn("Settings: missing #saveSettings");
@@ -209,6 +353,7 @@
     });
 
     window.applySettingsToUI();
+    updateHomeDisplay();
   }
 
   if(document.readyState === "loading"){

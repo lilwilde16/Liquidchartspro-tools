@@ -1,6 +1,35 @@
 # LiquidChartsPro Tools
 
-A comprehensive trading toolkit featuring a multi-timeframe currency strength meter and session-aware automated trading system integrated with the LiquidCharts platform.
+A comprehensive trading toolkit with a three-tab interface: **Home** (live controls), **Strategy** (configuration & analysis), and **Tools** (manual testing & diagnostics). Integrates with the LiquidCharts platform for live order execution, automated trading, currency strength analysis, and strategy backtesting.
+
+---
+
+## Tabs Overview
+
+### 🏠 Home Tab
+The main dashboard for live trading operations:
+- **ARM toggle** — switch between Ticket-only (safe) and live `SendOrder` mode
+- **AutoTrader start/stop** — launch or halt the automated trading engine
+- **Profit Goals** — set and save daily/weekly $ targets (persisted in localStorage)
+- **Active Strategy display** — shows the currently selected strategy name
+- **Pairs Being Monitored** — live tag list of all configured pairs
+- **Signal Scan button** — runs the AutoTrader signal detection across all pairs right now and shows the top 5 candidates by confidence score; use this to manually verify the strategy is finding good setups before enabling live trading
+
+### 📊 Strategy Tab
+Configure what the AutoTrader trades and how:
+- **Strategy Preset** — choose from built-in strategies (SMA Crossover, Long-Term Trend, Strength Scalper, NAS100 Scalper); preset description and defaults auto-load
+- **Pairs to Trade** — one pair per line (e.g. `EUR/USD`); used by AutoTrader and Strength Meter
+- **AutoTrader Configuration** — timeframe, candle count, poll interval, risk mode, lot size, RR ratio, SL ATR multiplier, confidence threshold, schedule settings, daily limits, cooldown, and learning mode
+- **Currency Strength Meter** — multi-timeframe composite strength analysis; run before enabling live trading to confirm market conditions
+
+### 🔧 Tools Tab
+Manual testing, backtesting, and diagnostics:
+- **Trading Functions** — manually place BUY/SELL orders with TP/SL via the CHANGE(101) pattern; **Close One** uses a live dropdown populated from open orders (refreshes every 5 s and on ⟳ click)
+- **Backtest Engine** — test the selected strategy against historical platform data with configurable parameters
+- **Diagnostics** — health check, full diagnostics, and AutoTrader start/stop shortcuts
+- **Log** — full timestamped log with **Copy Log** button for easy paste-sharing when debugging
+
+---
 
 ## Features
 
@@ -25,10 +54,12 @@ A comprehensive trading toolkit featuring a multi-timeframe currency strength me
 - **Global cooldown** (45 min) between trades
 
 ### 📊 Additional Tools
-- **Backtest engine** for strategy validation
-- **Manual trading controls** with TP/SL management
+- **Backtest engine** for strategy validation with CSV export
+- **Manual trading controls** with TP/SL management and order dropdown
 - **Framework diagnostics** and health checks
-- **Comprehensive logging** system
+- **Comprehensive logging** system with copy-to-clipboard
+
+---
 
 ## Installation
 
@@ -45,28 +76,30 @@ The application is designed to run as a widget within the LiquidCharts platform 
 - Market data access
 - Order execution capabilities
 
+---
+
 ## Configuration
 
 All configuration constants are documented in [CONFIGURATION.md](./CONFIGURATION.md).
 
 ### Quick Start Settings
 
-**Strength Meter:**
+**Strength Meter (Strategy tab):**
 - Timeframe: M15
 - Candles: 500
 - Auto-refresh: 60 seconds
 
-**AutoTrader:**
+**AutoTrader (Strategy tab):**
 - Signal timeframe: M15
 - Risk mode: Conservative
 - Lots: 0.01
 - Risk:Reward: 1.5
-- Stop loss: 1.1× ATR
+- Stop loss: 1.1x ATR
 - Min confidence: 0.58 (session-adjusted)
 
 ### Trading Pairs
 
-Add pairs to Settings (one per line). Supported formats:
+Add pairs in the **Strategy tab -> Pairs to Trade** (one per line). Supported formats:
 - `EUR/USD` (recommended)
 - `EURUSD` (auto-converted)
 
@@ -78,50 +111,53 @@ USD/JPY
 AUD/USD
 NZD/USD
 USD/CAD
+USD/CHF
 EUR/GBP
 EUR/JPY
 GBP/JPY
-AUD/JPY
 ```
+
+---
 
 ## Usage
 
-### Running a Strength Scan
+### Verifying the Strategy (Home Tab)
+1. Select a strategy in the **Strategy tab**
+2. Configure your pairs
+3. Go to **Home** and click **Show Current Signal Scan (Top 5)**
+4. Review the top 5 pair candidates with their confidence scores and signal direction
+5. If results look reasonable, enable the AutoTrader
 
-1. Navigate to the **Strength** tab
-2. Select timeframe (M5, M15, M30, H1)
-3. Set candle count (100-2000)
-4. Click **Run Strength Scan**
-5. Optional: Enable **Start Auto Refresh** for continuous updates
-
-The strength table shows:
-- Currency ranking
-- Strength scores (positive = strong, negative = weak)
-- Number of pairs analyzed
-
-**Best Trading Pairs** section suggests trades based on strength divergence.
+### Running a Strength Scan (Strategy Tab)
+1. Navigate to the **Strategy** tab
+2. Scroll to **Currency Strength Meter**
+3. Select timeframe (M5, M15, M30, H1)
+4. Set candle count (100-2000)
+5. Click **Run Strength Scan**
+6. Optional: Enable **Start Auto Refresh** for continuous updates
 
 ### Using the AutoTrader
+1. Navigate to the **Strategy** tab and configure parameters
+2. Add trading pairs
+3. Go to the **Home** tab
+4. Set ARM to "ON (live)"
+5. Click **Start** AutoTrader
 
-⚠️ **Important**: AutoTrader executes real trades. Test thoroughly in demo mode first.
-
-1. Navigate to the **Tools** tab
-2. Configure parameters:
-   - Timeframe and candles
-   - Risk mode and lot size
-   - Schedule (Mon-Fri, UTC hours)
-   - Confidence threshold
-3. Ensure trading pairs are configured in Settings
-4. Set ARM to "ON (live)" for real execution
-5. Click **Start AutoTrader**
-
-Monitor the status display and activity log for:
+Monitor the log (Tools tab) for:
 - Scanned pairs and confidence scores
 - Trade execution confirmations
 - Cooldown and limit messages
 - Session changes
 
-### AutoTrader Safety Features
+### Using Close One (Tools Tab)
+1. Navigate to the **Tools** tab
+2. Click the **refresh button** next to the Open Order dropdown to refresh the list
+3. Select the order from the dropdown (shows instrument, direction, and ID)
+4. Click **Close One (by Order ID)**
+
+---
+
+## AutoTrader Safety Features
 
 - **Schedule enforcement**: Only trades Mon-Fri during configured hours
 - **Session-based confidence**: Higher thresholds during less favorable sessions
@@ -129,10 +165,12 @@ Monitor the status display and activity log for:
 - **Cooldown periods**: 60 min per pair, 45 min global
 - **Adaptive learning**: Tracks win/loss ratios, adjusts confidence after losses
 - **Multi-factor gating**:
-  - Strength spread must be ≥0.40
-  - H1 trend ratio must be ≥0.30
+  - Strength spread must be >= 0.40
+  - H1 trend ratio must be >= 0.30
   - RSI filters on M5 and H1
   - Spread must be within acceptable range
+
+---
 
 ## Architecture
 
@@ -143,68 +181,51 @@ The application loads scripts in a specific order to ensure dependencies:
 1. **LiquidCharts Widget** (external)
 2. `util-indicators.js` - Technical indicators (SMA, ATR, RSI, linreg)
 3. `lc-framework.js` - Framework wrapper and API handlers
-4. `strategy-registry.js` - Backtest strategies
-5. `engine-backtest.js` - Backtesting engine
-6. `engine-strength.js` - Currency strength meter
-7. `engine-autotrader.js` - Automated trading engine
-8. `ui-tabs.js` - Tab navigation
-9. `app.js` - Application initialization
+4. `trading-api.js` - Trading API reference
+5. `strategy-registry.js` - Backtest strategies
+6. `engine-backtest.js` - Backtesting engine
+7. `engine-strength.js` - Currency strength meter
+8. `engine-autotrader.js` - Automated trading engine
+9. `ui-tabs.js` - Tab navigation
+10. `app.js` - Application initialization
 
 ### Data Flow
 
 ```
 LiquidCharts Framework
-        ↓
+        |
   lc-framework.js (wraps API)
-        ↓
-┌───────┴────────┐
-↓                ↓
+        |
+  +-----+-----+
+  |           |
 engine-strength  engine-autotrader
-    ↓                ↓
- Strength         Trade
- Rankings        Execution
-    ↓                ↓
- app.js (UI updates)
+  |                |
+Strength         Trade
+Rankings        Execution
+  |                |
+  app.js (UI updates -- all 3 tabs)
 ```
 
-### Strength Calculation
-
-1. Fetch multi-timeframe candle data (M5, M15, H1)
-2. Calculate indicators per timeframe:
-   - ATR for normalization
-   - Moving averages for trend
-   - RSI for momentum
-   - Linear regression for direction
-3. Compute composite score:
-   - With RSI: 0.35×RSI spread + 0.35×trend ratio + 0.30×weighted return
-   - Without RSI: 0.4×slope + 0.3×trend ratio + 0.3×weighted return
-4. Blend timeframes: M5 30%, M15 50%, H1 20%
-5. Score currencies by pair components
-6. Rank and display
-
-### AutoTrader Decision Flow
-
-```
-1. Check schedule → Outside hours? → Idle
-2. Check daily limits → Exceeded? → Idle
-3. Check global cooldown → Active? → Idle
-4. Run strength scan → Update rankings
-5. Scan all pairs:
-   - Fetch M5 + H1 data
-   - Calculate indicators
-   - Check H1 trend confirmation
-   - Check RSI filters
-   - Check strength alignment
-   - Check spread cap
-   - Calculate confidence
-6. Select best candidate
-7. Apply session min confidence + adaptive adjustment
-8. Below threshold? → Idle
-9. Execute trade with TP/SL
-10. Update cooldowns and limits
-```
+---
 
 ## API Reference
+
+### window.ENG.AutoTrader
+
+```javascript
+// Start autotrader
+window.ENG.AutoTrader.start();
+
+// Stop autotrader
+window.ENG.AutoTrader.stop();
+
+// Run single cycle (for testing)
+await window.ENG.AutoTrader.runCycle();
+
+// Scan all configured pairs for signals (powers Home tab signal scan)
+const results = await window.ENG.AutoTrader.scan();
+// Returns: Array of { pair, dir, confidence, reason, pattern, ... } sorted by confidence desc
+```
 
 ### window.ENG.Strength
 
@@ -223,19 +244,6 @@ const snapshot = window.ENG.Strength.getSnapshot();
 // Returns: { ranked: Array, pairs: Array, updatedAt: Number }
 ```
 
-### window.ENG.AutoTrader
-
-```javascript
-// Start autotrader
-window.ENG.AutoTrader.start();
-
-// Stop autotrader
-window.ENG.AutoTrader.stop();
-
-// Run single cycle (for testing)
-await window.ENG.AutoTrader.runCycle();
-```
-
 ### window.LC (Framework Wrapper)
 
 ```javascript
@@ -252,6 +260,8 @@ const candles = await window.LC.requestCandles(pair, timeframe, count);
 window.LC.requestPrices(["EUR/USD", "GBP/USD"]);
 ```
 
+---
+
 ## Testing
 
 ### Syntax Validation
@@ -261,6 +271,7 @@ node --check js/util-indicators.js
 node --check js/lc-framework.js
 node --check js/engine-strength.js
 node --check js/engine-autotrader.js
+node --check js/engine-backtest.js
 node --check js/app.js
 ```
 
@@ -268,57 +279,62 @@ node --check js/app.js
 
 - [ ] Framework loads and status shows "Framework responding"
 - [ ] Buttons enable after Framework.OnLoad
-- [ ] Strength scan with M15, 500 candles populates table
-- [ ] Auto-refresh updates table every 60 seconds
-- [ ] Best pairs section shows buy/sell ideas
-- [ ] AutoTrader gating logs confidence calculations
-- [ ] AutoTrader respects schedule and cooldowns
-- [ ] Settings persist via localStorage
-- [ ] Tab navigation works correctly
-- [ ] No console errors with missing Framework
+- [ ] All three tabs (Home, Strategy, Tools) switch correctly
+- [ ] ARM toggle on Home tab mirrors ARM in Tools tab
+- [ ] Profit goals save/load via localStorage
+- [ ] Signal Scan button runs and shows top 5 results
+- [ ] Strategy preset dropdown loads and populates description
+- [ ] Pairs textarea persists via localStorage
+- [ ] AutoTrader start/stop buttons work from both Home and Tools tabs
+- [ ] Open Order dropdown auto-populates from live orders; refresh button works
+- [ ] Close One uses selected dropdown order ID
+- [ ] Strength scan populates table and best pairs
+- [ ] Backtest runs and displays results
+- [ ] Copy Log copies full log to clipboard
+- [ ] Page is scrollable on mobile; tabs are touch-friendly
+
+---
 
 ## Troubleshooting
 
+### Sharing Logs for Support
+Go to **Tools -> Log** and click **Copy Log**, then paste directly into a chat or issue. The log contains all timestamped events, payloads, and errors.
+
 ### "Candles API unavailable"
 - Ensure running in LiquidCharts environment
-- Check Framework.OnLoad has executed
-- Verify pair names are correct format
+- Check Framework.OnLoad has executed (status pill shows "Framework responding")
+- Verify pair names are correct format (XXX/YYY)
 
 ### "No valid pairs configured"
-- Add pairs to Settings tab
+- Add pairs to **Strategy tab -> Pairs to Trade**
 - Save settings
 - Ensure pairs are in XXX/YYY or XXXYYY format
 
-### AutoTrader not trading
-Check status messages for:
-- "Outside Mon-Fri schedule" → Enable trading hours
-- "Max trades/day reached" → Wait for next day
-- "Cooldown active" → Wait for cooldown expiry
-- "Confidence below threshold" → Market conditions don't meet criteria
+### Open Order dropdown is empty
+- Click the refresh button next to the dropdown to refresh
+- Use **Dump Orders** to log all open orders to the log
+- Ensure ARM is ON before executing live orders
 
-### High confidence but no trades
-- Check H1 trend confirmation (must be ≥0.30)
-- Check RSI filters (M5 and H1 must pass)
-- Check strength spread (must be ≥0.40)
-- Check spread cap (must be within limits)
+### AutoTrader not trading
+Check log (Tools tab) for:
+- "Outside Mon-Fri schedule window" -> Check schedule settings
+- "Max trades/day reached" -> Wait for next day
+- "Cooldown active" -> Wait for cooldown expiry
+- "Confidence below threshold" -> Market conditions don't meet criteria
+- "strength spread too low" -> Run strength scan first
+
+---
 
 ## Security
 
 - No secrets are stored in code
 - All API calls go through Framework wrapper
-- localStorage used only for settings and learning data
+- localStorage used only for settings, goals, and learning data
 - No external HTTP requests except LiquidCharts widget
 
-Security scan: ✅ No vulnerabilities detected
+Security scan: No vulnerabilities detected
 
-## Contributing
-
-This is a consolidation of three feature branches:
-- `codex/add-manual-refresh-button` (#1)
-- `copilot/enhance-currency-strength-meter` (#3)
-- `copilot/upgrade-currency-strength-meter` (#4)
-
-See [CONFIGURATION.md](./CONFIGURATION.md) for detailed parameter documentation.
+---
 
 ## License
 
@@ -326,4 +342,4 @@ See repository license file.
 
 ## Disclaimer
 
-⚠️ **Trading Risk Warning**: Automated trading involves substantial risk. This software is provided as-is without any warranty. Use at your own risk. Past performance does not guarantee future results. Always test thoroughly in demo mode before live trading.
+Trading Risk Warning: Automated trading involves substantial risk. This software is provided as-is without any warranty. Use at your own risk. Past performance does not guarantee future results. Always test thoroughly in demo mode before live trading.

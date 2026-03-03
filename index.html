@@ -12,11 +12,112 @@
 </head>
 
 <body class="Widget">
-  <!-- Hidden fields required by lc-framework.js for context detection and pair management -->
+  <!-- Hidden context fields required by lc-framework.js -->
   <input id="ctxInstrument" type="hidden" value="Unknown" />
   <input id="ctxTf" type="hidden" value="Unknown" />
-  <textarea id="pairs" style="display:none">NAS100
-EUR/USD
+
+  <div id="app">
+
+    <!-- Tab Navigation -->
+    <div class="tabs">
+      <button class="tabBtn active" data-tab="Home">🏠 Home</button>
+      <button class="tabBtn" data-tab="Strategy">📊 Strategy</button>
+      <button class="tabBtn" data-tab="Tools">🔧 Tools</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════
+         HOME TAB — Dashboard & Controls
+         ═══════════════════════════════════════════════ -->
+    <div id="pageHome" class="page">
+
+      <!-- Controls Card -->
+      <div class="card">
+        <h2 class="title">Trading Controls</h2>
+        <div class="row">
+          <div class="field">
+            <label>ARM &mdash; Live Order Execution</label>
+            <select id="homeArm">
+              <option value="off" selected>OFF (Ticket only)</option>
+              <option value="on">ON (SendOrder &mdash; LIVE)</option>
+            </select>
+            <small>Mirrors the ARM setting in the Tools tab.</small>
+          </div>
+          <div class="field">
+            <label>AutoTrader</label>
+            <div class="btnRow" style="margin-top:4px">
+              <button id="btnHomeAutoStart" disabled>&#9654; Start</button>
+              <button id="btnHomeAutoStop" disabled>&#9632; Stop</button>
+            </div>
+            <span id="homeAtStatus" class="status">Stopped</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Profit Goals Card -->
+      <div class="card">
+        <h2 class="title">Profit Goals</h2>
+        <div class="row">
+          <div class="field">
+            <label>Daily Goal ($)</label>
+            <input id="goalDaily" type="number" value="0" min="0" step="10" />
+          </div>
+          <div class="field">
+            <label>Weekly Goal ($)</label>
+            <input id="goalWeekly" type="number" value="0" min="0" step="50" />
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnSaveGoals" class="primary">&#128190; Save Goals</button>
+          <span id="goalsStatus" class="status"></span>
+        </div>
+      </div>
+
+      <!-- Active Strategy Card -->
+      <div class="card">
+        <h2 class="title">Active Strategy &amp; Signals</h2>
+        <p id="homeStrategyName" class="subtitle">No strategy selected &mdash; go to Strategy tab to choose one</p>
+        <div class="field" style="margin-bottom:16px">
+          <label>Pairs Being Monitored</label>
+          <div id="homePairsList" class="pairTagsBox">&mdash;</div>
+        </div>
+        <div class="btnRow">
+          <button id="btnLastSignals" disabled>&#128269; Show Current Signal Scan (Top 5)</button>
+          <button id="btnRefreshHome" disabled>&#128260; Refresh Markets</button>
+        </div>
+        <div id="lastSignalsResult" class="signalsBox hidden"></div>
+        <p class="note" style="margin-top:8px">
+          <strong>Signal Scan</strong>: runs the AutoTrader signal detection on all configured pairs right now and shows the top 5 candidates by confidence. Use this to manually verify the strategy is finding good setups before enabling live trading.
+        </p>
+      </div>
+
+    </div><!-- end #pageHome -->
+
+    <!-- ═══════════════════════════════════════════════
+         STRATEGY TAB — Configuration & Analysis
+         ═══════════════════════════════════════════════ -->
+    <div id="pageStrategy" class="page hidden">
+
+      <!-- Strategy Preset Card -->
+      <div class="card">
+        <h2 class="title">Strategy</h2>
+        <div class="row">
+          <div class="field">
+            <label>Strategy Preset</label>
+            <select id="btStrategyPreset">
+              <option value="">Loading&hellip;</option>
+            </select>
+          </div>
+        </div>
+        <pre id="btStrategy-display" class="note" style="white-space:pre-wrap;font-family:inherit;margin-top:8px"></pre>
+        <textarea id="btStrategy" style="display:none" readonly></textarea>
+      </div>
+
+      <!-- Pairs to Trade Card -->
+      <div class="card">
+        <h2 class="title">Pairs to Trade</h2>
+        <p class="subtitle">One pair per line (e.g. EUR/USD). These pairs are monitored by the AutoTrader and Strength Meter.</p>
+        <div class="field">
+          <textarea id="pairs" rows="12">EUR/USD
 GBP/USD
 USD/JPY
 AUD/USD
@@ -26,77 +127,348 @@ USD/CHF
 EUR/GBP
 EUR/JPY
 GBP/JPY</textarea>
-
-  <div id="app">
-    <div class="card">
-      <h1 class="title">Trading Functions &mdash; Entry &rarr; CHANGE(101) TP/SL</h1>
-
-      <div class="row">
-        <div class="field">
-          <label>Instrument</label>
-          <select id="toolPair">
-            <option>NAS100</option>
-            <option>EUR/USD</option>
-            <option>GBP/USD</option>
-            <option>USD/JPY</option>
-          </select>
         </div>
-        <div class="field">
-          <label>Lots</label>
-          <input id="toolQty" type="number" value="0.01" min="0.01" step="0.01" />
-        </div>
-        <div class="field">
-          <label>TP distance (price points)</label>
-          <input id="toolTpPips" type="number" value="55" step="5" />
-        </div>
-        <div class="field">
-          <label>SL distance (price points)</label>
-          <input id="toolSlPips" type="number" value="55" step="5" />
-        </div>
-        <div class="field">
-          <label>ARM</label>
-          <select id="toolArm">
-            <option value="off" selected>OFF (Ticket only)</option>
-            <option value="on">ON (SendOrder)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Order ID (for Change / Close One)</label>
-          <input id="toolOrderId" type="text" placeholder="e.g. 123456" />
+        <div class="btnRow">
+          <button id="saveSettings" class="primary">&#128190; Save Pairs</button>
+          <span id="settingsStatus" class="status"></span>
         </div>
       </div>
 
-      <div class="btnRow">
-        <button id="btnTicket" disabled>Open Ticket</button>
-        <button id="btnBuyTPSL" class="primary" disabled>BUY Entry &rarr; CHANGE TP/SL</button>
-        <button id="btnSellTPSL" disabled>SELL Entry &rarr; CHANGE TP/SL</button>
-        <button id="btnDumpTrades" disabled>Dump Orders</button>
-        <button id="btnCloseAll" disabled>Close All (Instrument)</button>
-        <button id="btnCloseOne" disabled>Close One (by Order ID)</button>
-        <button id="btnClearLog">Clear Log</button>
+      <!-- AutoTrader Config Card -->
+      <div class="card">
+        <h2 class="title">AutoTrader Configuration</h2>
+        <div class="row">
+          <div class="field">
+            <label>Signal Timeframe</label>
+            <select id="atTf">
+              <option value="M5">M5</option>
+              <option value="M15" selected>M15</option>
+              <option value="M30">M30</option>
+              <option value="H1">H1</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Candles</label>
+            <input id="atCandles" type="number" value="500" min="200" max="3000" step="100" />
+          </div>
+          <div class="field">
+            <label>Poll Interval (sec)</label>
+            <input id="atPollSec" type="number" value="60" min="10" max="3600" />
+          </div>
+          <div class="field">
+            <label>Risk Mode</label>
+            <select id="atRiskMode">
+              <option value="conservative" selected>Conservative</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Lot Size</label>
+            <input id="atLots" type="number" value="0.01" min="0.01" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Risk:Reward</label>
+            <input id="atRr" type="number" value="1.5" min="0.5" step="0.1" />
+          </div>
+          <div class="field">
+            <label>SL ATR Multiplier</label>
+            <input id="atSlAtr" type="number" value="1.1" min="0.5" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Min Confidence</label>
+            <input id="atMinConfidence" type="number" value="0.58" min="0.4" max="0.9" step="0.01" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Use Schedule</label>
+            <select id="atUseSchedule">
+              <option value="yes" selected>Yes (Mon&ndash;Fri only)</option>
+              <option value="no">No (trade anytime)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Start Hour (UTC)</label>
+            <input id="atStartHour" type="number" value="6" min="0" max="23" />
+          </div>
+          <div class="field">
+            <label>End Hour (UTC)</label>
+            <input id="atEndHour" type="number" value="20" min="0" max="23" />
+          </div>
+          <div class="field">
+            <label>Max Trades/Day</label>
+            <input id="atMaxTradesDay" type="number" value="4" min="1" max="20" />
+          </div>
+          <div class="field">
+            <label>Cooldown (min)</label>
+            <input id="atCooldownMin" type="number" value="45" min="1" max="240" />
+          </div>
+          <div class="field">
+            <label>Adaptive Learning</label>
+            <select id="atLearning">
+              <option value="on" selected>On</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+        </div>
       </div>
 
-      <div class="statusBar">
-        <label id="toolPx">bid/ask: &hellip; / &hellip;</label>
-        <div class="pill" id="statusPill">Loading&hellip;</div>
+      <!-- Strength Meter Card -->
+      <div class="card">
+        <h2 class="title">Currency Strength Meter</h2>
+        <p class="subtitle">Analyse multi-timeframe strength across configured pairs. Run this before enabling the AutoTrader.</p>
+        <div class="row">
+          <div class="field">
+            <label>Timeframe</label>
+            <select id="strengthTf">
+              <option value="300">M5</option>
+              <option value="900" selected>M15</option>
+              <option value="1800">M30</option>
+              <option value="3600">H1</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Candles</label>
+            <input id="strengthCount" type="number" value="500" min="100" max="2000" step="100" />
+          </div>
+          <div class="field">
+            <label>Auto-refresh (sec)</label>
+            <input id="strengthAutoSec" type="number" value="60" min="10" max="3600" />
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnStrengthRun" disabled>&#128202; Run Strength Scan</button>
+          <button id="btnStrengthAuto" disabled>&#9654; Start Auto Refresh</button>
+          <button id="btnStrengthStop" disabled>&#9632; Stop Auto Refresh</button>
+        </div>
+        <p id="strengthStatus" class="note" style="margin-top:8px">&nbsp;</p>
+        <div class="tableContainer">
+          <div id="strengthTable"></div>
+        </div>
+        <div id="strengthBestPairs" class="bestPairs"></div>
       </div>
 
-      <p class="note">
-        <strong>BUY / SELL Entry &rarr; CHANGE TP/SL</strong>: places the market order first, then applies TP/SL via <strong>CHANGE (101)</strong>. TP and SL are automatically placed on the correct side based on trade direction.<br>
-        <strong>Close All</strong>: closes all open long and short positions for the selected instrument.<br>
-        <strong>Close One</strong>: closes a single order by its Order ID (enter above). ARM must be ON to execute any live order.
-      </p>
-    </div>
+    </div><!-- end #pageStrategy -->
 
-    <div class="card">
-      <h2 class="title">Log</h2>
-      <div id="log" class="log"></div>
-    </div>
-  </div>
+    <!-- ═══════════════════════════════════════════════
+         TOOLS TAB — Manual Trading, Backtest & Log
+         ═══════════════════════════════════════════════ -->
+    <div id="pageTools" class="page hidden">
 
-  <!-- Scripts: framework core + settings persistence + trading API -->
+      <!-- Trading Functions Card -->
+      <div class="card">
+        <h2 class="title">Trading Functions &mdash; Entry &rarr; CHANGE(101) TP/SL</h2>
+        <div class="row">
+          <div class="field">
+            <label>Instrument</label>
+            <select id="toolPair">
+              <option>EUR/USD</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Lots</label>
+            <input id="toolQty" type="number" value="0.01" min="0.01" step="0.01" />
+          </div>
+          <div class="field">
+            <label>TP distance (price points)</label>
+            <input id="toolTpPips" type="number" value="55" step="5" />
+          </div>
+          <div class="field">
+            <label>SL distance (price points)</label>
+            <input id="toolSlPips" type="number" value="55" step="5" />
+          </div>
+          <div class="field">
+            <label>ARM</label>
+            <select id="toolArm">
+              <option value="off" selected>OFF (Ticket only)</option>
+              <option value="on">ON (SendOrder)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>
+              Open Order
+              <button id="btnRefreshOrders" class="inlineBtn" title="Refresh order list" aria-label="Refresh order list">&#8635;</button>
+            </label>
+            <select id="toolOrderId">
+              <option value="">&#8212; select open order &#8212;</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="btnRow">
+          <button id="btnTicket" disabled>Open Ticket</button>
+          <button id="btnBuyTPSL" class="primary" disabled>BUY Entry &rarr; CHANGE TP/SL</button>
+          <button id="btnSellTPSL" disabled>SELL Entry &rarr; CHANGE TP/SL</button>
+          <button id="btnDumpTrades" disabled>Dump Orders</button>
+          <button id="btnCloseAll" disabled>Close All (Instrument)</button>
+          <button id="btnCloseOne" disabled>Close One (by Order ID)</button>
+          <button id="btnClearLog">Clear Log</button>
+        </div>
+
+        <div class="statusBar">
+          <label id="toolPx">bid/ask: &hellip; / &hellip;</label>
+          <div class="pill" id="statusPill">Loading&hellip;</div>
+          <button id="btnRefreshTool" disabled>&#128260; Refresh</button>
+        </div>
+
+        <p class="note">
+          <strong>BUY / SELL Entry &rarr; CHANGE TP/SL</strong>: places the market order first, then applies TP/SL via <strong>CHANGE (101)</strong>. TP and SL are placed on the correct side automatically.<br>
+          <strong>Close All</strong>: closes all open long and short positions for the selected instrument.<br>
+          <strong>Close One</strong>: closes the order selected from the dropdown. Use the &#8635; button to refresh the order list. ARM must be ON.
+        </p>
+      </div>
+
+      <!-- Backtest Card -->
+      <div class="card">
+        <h2 class="title">Backtest Engine</h2>
+        <p class="subtitle">Validate the active strategy against historical data. Fetches live candle data from the platform.</p>
+        <div class="row">
+          <div class="field">
+            <label>Instrument</label>
+            <select id="btInstrument">
+              <option>EUR/USD</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Timeframe</label>
+            <select id="btTf">
+              <option value="M5">M5</option>
+              <option value="M15" selected>M15</option>
+              <option value="M30">M30</option>
+              <option value="H1">H1</option>
+              <option value="H4">H4</option>
+              <option value="D1">D1</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Candles to Fetch</label>
+            <input id="btCandleCount" type="number" value="2500" min="300" max="20000" step="100" />
+          </div>
+          <div class="field">
+            <label>Trades to Simulate</label>
+            <input id="btCount" type="number" value="100" min="5" max="5000" />
+          </div>
+          <div class="field">
+            <label>Fast MA</label>
+            <input id="btFastMa" type="number" value="10" min="2" max="100" />
+          </div>
+          <div class="field">
+            <label>Slow MA</label>
+            <input id="btSlowMa" type="number" value="30" min="3" max="500" />
+          </div>
+          <div class="field">
+            <label>ATR Length</label>
+            <input id="btAtrLen" type="number" value="14" min="5" max="100" />
+          </div>
+          <div class="field">
+            <label>Risk:Reward</label>
+            <input id="btRr" type="number" value="1.5" min="0.1" step="0.1" />
+          </div>
+          <div class="field">
+            <label>SL ATR Multiple</label>
+            <input id="btSlAtr" type="number" value="1.1" min="0.2" max="5" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Allow Short</label>
+            <select id="btAllowShort">
+              <option value="yes" selected>Yes</option>
+              <option value="no">No (long only)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Starting Balance ($)</label>
+            <input id="btStartBalance" type="number" value="1000" min="100" />
+          </div>
+          <div class="field">
+            <label>Risk per Trade (%)</label>
+            <input id="btRiskPct" type="number" value="1" min="0.1" max="10" step="0.1" />
+          </div>
+          <div class="field">
+            <label>Trading Cost (R)</label>
+            <input id="btCostR" type="number" value="0.05" min="0" max="2" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Session Filter</label>
+            <select id="btSession">
+              <option value="all" selected>All hours</option>
+              <option value="london">London (7&ndash;16 UTC)</option>
+              <option value="newyork">New York (12&ndash;21 UTC)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Start Hour (UTC)</label>
+            <input id="btStartHour" type="number" value="0" min="0" max="23" />
+          </div>
+          <div class="field">
+            <label>End Hour (UTC)</label>
+            <input id="btEndHour" type="number" value="23" min="0" max="23" />
+          </div>
+          <div class="field">
+            <label>Start Date</label>
+            <input id="btStartDate" type="date" />
+          </div>
+          <div class="field">
+            <label>End Date</label>
+            <input id="btEndDate" type="date" />
+          </div>
+          <div class="field">
+            <label>Intrabar Conflict</label>
+            <select id="btConflictModel">
+              <option value="conservative" selected>Conservative</option>
+              <option value="optimistic">Optimistic</option>
+              <option value="skip">Skip</option>
+            </select>
+          </div>
+        </div>
+        <div class="btnRow">
+          <button id="btnRunBt" class="primary" disabled>&#9654; Run Backtest</button>
+          <button id="btnStopBt" disabled>&#9632; Stop</button>
+          <button id="btnClearBt" disabled>&#128465; Clear Results</button>
+          <button id="btnExportBt" disabled>&#8681; Export CSV</button>
+        </div>
+        <div id="btSummary" class="note" style="margin-top:12px">No results yet.</div>
+        <div id="btTrades" class="log" style="margin-top:8px;max-height:300px"></div>
+        <div id="btResults" style="display:none"></div>
+      </div>
+
+      <!-- Diagnostics Card -->
+      <div class="card">
+        <h2 class="title">Diagnostics</h2>
+        <div class="btnRow">
+          <button id="btnDiagRun" disabled>&#129050; Run Diagnostics</button>
+          <button id="btnHealth" disabled>&#128138; Health Check</button>
+          <button id="btnAutoStart" disabled>&#9654; AT Start</button>
+          <button id="btnAutoStop" disabled>&#9632; AT Stop</button>
+        </div>
+        <span id="atStatus" class="status"></span>
+      </div>
+
+      <!-- Log Card -->
+      <div class="card">
+        <h2 class="title">
+          Log
+          <small class="logHint">&mdash; copy &amp; paste to share for debugging</small>
+        </h2>
+        <div id="log" class="log"></div>
+        <div class="btnRow" style="margin-top:8px">
+          <button id="btnCopyLog">&#128203; Copy Log</button>
+        </div>
+      </div>
+
+    </div><!-- end #pageTools -->
+
+  </div><!-- end #app -->
+
+  <!-- Scripts: load order matters — indicators → framework → api → strategies → engines → ui → app -->
+  <script src="./js/util-indicators.js"></script>
   <script src="./js/lc-framework.js"></script>
   <script src="./js/trading-api.js"></script>
+  <script src="./js/strategy-registry.js"></script>
+  <script src="./js/engine-backtest.js"></script>
+  <script src="./js/engine-strength.js"></script>
+  <script src="./js/engine-autotrader.js"></script>
+  <script src="./js/ui-tabs.js"></script>
   <script src="./js/app.js"></script>
 </body>
 </html>

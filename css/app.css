@@ -1,12 +1,19 @@
 /* === Base Styles === */
 :root {
   --tabs-height: 56px;
+  --accent: #5b4b8a;
+  --gold: #d4af37;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -18,9 +25,12 @@ body {
 }
 
 #app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 0;
 }
 
 .hidden {
@@ -31,17 +41,18 @@ body {
 .tabs {
   display: flex;
   gap: 4px;
-  margin-bottom: 20px;
   border-bottom: 2px solid #ddd;
-  padding-bottom: 0;
+  padding: 8px 12px 0;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
+  flex-shrink: 0;
+  background: #f5f5f5;
 }
 
 .tabBtn {
-  padding: 12px 24px;
+  padding: 10px 20px;
   border: none;
   background: #fff;
   color: #666;
@@ -56,6 +67,7 @@ body {
   top: 2px;
   scroll-snap-align: start;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tabBtn:hover {
@@ -71,11 +83,11 @@ body {
 
 /* === Page Sections === */
 .page {
-  display: block;
+  flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  height: calc(100vh - var(--tabs-height));
-  padding: 12px;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 12px 24px;
 }
 
 .page.hidden {
@@ -87,33 +99,33 @@ body {
   background: #fff;
   border: 1px solid #ddd;
   border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 20px;
+  padding: 20px;
+  margin-bottom: 16px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .title {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
-  margin-bottom: 8px;
-  color: #5b4b8a;
+  margin-bottom: 12px;
+  color: var(--accent);
 }
 
 .card .title {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .subtitle {
   color: #666;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   font-size: 13px;
 }
 
 /* === Fields & Inputs === */
 .row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
   margin-bottom: 16px;
 }
 
@@ -134,20 +146,21 @@ body {
 .field input,
 .field select,
 .field textarea {
-  padding: 8px 12px;
+  padding: 8px 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 14px;
   font-family: inherit;
   background: #fff;
   transition: border-color 0.2s;
+  width: 100%;
 }
 
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
   outline: none;
-  border-color: #5b4b8a;
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(91, 75, 138, 0.1);
 }
 
@@ -158,7 +171,7 @@ body {
 
 .field textarea {
   resize: vertical;
-  min-height: 100px;
+  min-height: 200px;
   font-family: "Monaco", "Courier New", monospace;
   font-size: 13px;
 }
@@ -172,14 +185,14 @@ body {
 /* === Buttons === */
 .btnRow {
   display: flex;
-  gap: 10px;
-  margin-top: 20px;
+  gap: 8px;
+  margin-top: 16px;
   flex-wrap: wrap;
   align-items: center;
 }
 
 button {
-  padding: 10px 18px;
+  padding: 9px 16px;
   border: 1px solid #ddd;
   border-radius: 4px;
   background: #fff;
@@ -212,6 +225,15 @@ button.primary:hover:not(:disabled) {
   box-shadow: 0 2px 6px rgba(212, 175, 55, 0.3);
 }
 
+/* Inline button (inside label) */
+.inlineBtn {
+  padding: 2px 6px;
+  font-size: 12px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
 /* === Status Pills === */
 .pill {
   display: inline-block;
@@ -242,14 +264,14 @@ button.primary:hover:not(:disabled) {
   display: inline-block;
   font-size: 13px;
   color: #666;
-  margin-left: 10px;
+  margin-left: 8px;
 }
 
 /* === Log === */
 .log {
   background: #2d2d2d;
   color: #f0f0f0;
-  padding: 16px;
+  padding: 14px;
   border-radius: 4px;
   font-family: "Monaco", "Courier New", monospace;
   font-size: 12px;
@@ -260,9 +282,15 @@ button.primary:hover:not(:disabled) {
   word-break: break-all;
 }
 
+.logHint {
+  font-size: 12px;
+  font-weight: 400;
+  color: #888;
+}
+
 /* === Strength Table === */
 .tableContainer {
-  margin-top: 20px;
+  margin-top: 16px;
   overflow-x: auto;
 }
 
@@ -277,7 +305,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .tableContainer th {
-  padding: 10px;
+  padding: 8px;
   text-align: left;
   font-weight: 600;
   font-size: 12px;
@@ -288,7 +316,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .tableContainer td {
-  padding: 10px;
+  padding: 8px;
   border-bottom: 1px solid #eee;
   font-size: 13px;
 }
@@ -311,20 +339,20 @@ button.primary:hover:not(:disabled) {
 .bestPairs {
   margin-top: 16px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
 }
 
 .pairIdea {
-  padding: 14px;
+  padding: 12px;
   background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-  border-left: 4px solid #d4af37;
+  border-left: 4px solid var(--gold);
   border-radius: 4px;
   font-size: 14px;
 }
 
 .pairIdea strong {
-  color: #5b4b8a;
+  color: var(--accent);
   font-size: 16px;
 }
 
@@ -332,8 +360,8 @@ button.primary:hover:not(:disabled) {
 .statusBar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-top: 16px;
+  gap: 12px;
+  margin-top: 14px;
   flex-wrap: wrap;
 }
 
@@ -345,23 +373,133 @@ button.primary:hover:not(:disabled) {
 
 /* === Note === */
 .note {
-  margin-top: 12px;
+  margin-top: 10px;
   font-size: 12px;
   color: #888;
   line-height: 1.6;
 }
 
+/* === Pair Tags (Home tab) === */
+.pairTagsBox {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  background: #f8f8f8;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  min-height: 38px;
+  align-items: center;
+}
+
+.pairTag {
+  background: linear-gradient(135deg, #5b4b8a, #7a6ba8);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* === Signal Cards (Last 5 Signals) === */
+.signalsBox {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signalCard {
+  display: grid;
+  grid-template-columns: 24px auto 1fr 2fr;
+  align-items: center;
+  gap: 8px;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.sigRank {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sig-buy  { color: #28a745; font-weight: 700; }
+.sig-sell { color: #dc3545; font-weight: 700; }
+.sig-none { color: #888; }
+
+.sigConf {
+  color: #555;
+  white-space: nowrap;
+}
+
+.sigReason {
+  color: #888;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
   .row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .tabs {
+    padding: 6px 8px 0;
+    gap: 2px;
+  }
+
+  .tabBtn {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .signalCard {
+    grid-template-columns: 24px 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .sigConf, .sigReason {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 480px) {
+  .row {
     grid-template-columns: 1fr;
   }
-  
-  .tabs {
-    overflow-x: auto;
+
+  .btnRow {
+    flex-direction: column;
+    align-items: stretch;
   }
-  
-  .tabBtn {
-    white-space: nowrap;
+
+  .btnRow button {
+    width: 100%;
+    text-align: center;
+  }
+
+  .statusBar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

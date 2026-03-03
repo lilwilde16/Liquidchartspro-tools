@@ -505,6 +505,30 @@
     log("=== DIAGNOSTICS END ===");
   }
 
+  // === ORDER DROPDOWN ===
+  function populateOrderDropdown(){
+    const sel = $("toolOrderId");
+    if(!sel || sel.tagName !== "SELECT") return;
+    const dict = ordersDict();
+    const ids = Object.keys(dict);
+    const prev = sel.value;
+    sel.innerHTML = `<option value="">\u2014 select open order \u2014</option>`;
+    ids.forEach((id)=>{
+      const o = dict[id];
+      const inst = o.instrumentId || o.instrument || "";
+      const dir = (o.tradingAction === 2 || o.orderType === 2 || o.direction === "sell") ? "SELL" : "BUY";
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = `${inst} ${dir} #${id}`;
+      sel.appendChild(opt);
+    });
+    if(prev && ids.includes(prev)){
+      sel.value = prev;
+    }else if(prev){
+      log(`ℹ️ Order #${prev} is no longer open — dropdown reset`);
+    }
+  }
+
   // === FRAMEWORK CALLBACKS ===
   Framework.OnLoad = function(){
     setStatus("Framework responding", "ok");
@@ -516,7 +540,9 @@
       "btnPrices", "btnTicket", "btnBuyMarket", "btnSellMarket",
       "btnBuyTPSL", "btnSellTPSL", "btnChangeTPSL", "btnDumpTrades",
       "btnCloseAll", "btnCloseOne", "btnClearLog", "btnStrengthRun", "btnStrengthAuto",
-      "btnStrengthStop", "btnRunBt", "btnClearBt", "btnAutoStart", "btnAutoStop"
+      "btnStrengthStop", "btnRunBt", "btnClearBt", "btnAutoStart", "btnAutoStop",
+      "btnHomeAutoStart", "btnHomeAutoStop", "btnLastSignals", "btnRefreshHome",
+      "btnRefreshTool", "btnExportBt", "btnStopBt"
     ];
     
     buttonsToEnable.forEach((id)=>{
@@ -585,7 +611,15 @@
     };
 
     if($("btnRefreshTool")) $("btnRefreshTool").onclick = async ()=>{ await safeRefreshMarket(); };
+    if($("btnRefreshHome")) $("btnRefreshHome").onclick = async ()=>{ await safeRefreshMarket(); };
     if($("btnClearLog")) $("btnClearLog").onclick = ()=>{ $("log").textContent=""; };
+
+    // Home tab AutoTrader proxies
+    if($("btnHomeAutoStart")) $("btnHomeAutoStart").onclick = ()=>{ window.ENG?.AutoTrader?.start?.(); };
+    if($("btnHomeAutoStop")) $("btnHomeAutoStop").onclick = ()=>{ window.ENG?.AutoTrader?.stop?.(); };
+
+    // Order ID dropdown refresh
+    if($("btnRefreshOrders")) $("btnRefreshOrders").onclick = ()=>{ populateOrderDropdown(); };
 
     try{
       const inst = (Framework.Chart && Framework.Chart.instrumentId) ? Framework.Chart.instrumentId : null;
@@ -602,6 +636,10 @@
 
     if($("toolPair")) $("toolPair").addEventListener("change", ()=>{ requestPrices([selectedPair()]); refreshPx(); });
     if($("pairs")) $("pairs").addEventListener("change", refreshToolMarkets);
+
+    // Populate and auto-refresh the order dropdown every 5 seconds
+    populateOrderDropdown();
+    window.LC._orderDropdownInterval = setInterval(populateOrderDropdown, 5000);
   };
 
   Framework.OnPriceChange = function(){

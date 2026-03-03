@@ -818,6 +818,12 @@
     stop, 
     init, 
     runCycle,
-    isRunning: ()=>state.running
+    isRunning: ()=>state.running,
+    scan: async ()=>{
+      const pairs = parsePairs();
+      if(pairs.length === 0) return [];
+      const c = cfg();
+      return await scanAllPairs(pairs, c);
+    }
   };
 })();
