@@ -12,6 +12,11 @@
         // Reset content pane scroll position on tab change
         activePage.scrollTop = 0;
       }
+
+      // Refresh order dropdown when switching to Tools tab
+      if(tab === "Tools" && typeof window.LC?.populateOrderDropdown === "function"){
+        setTimeout(window.LC.populateOrderDropdown, 100);
+      }
     }
 
    document.addEventListener("click", (e)=>{

@@ -70,6 +70,11 @@
   function applyStrategyToForm(strategy){
     if(!strategy) return;
     const d = strategy.defaults || {};
+    // Apply strategy settings to the live strategy settings inputs
+    if($("stratFastMa") && Number.isFinite(Number(d.fastMa))) $("stratFastMa").value = String(d.fastMa);
+    if($("stratSlowMa") && Number.isFinite(Number(d.slowMa))) $("stratSlowMa").value = String(d.slowMa);
+    if($("stratAtrLen") && Number.isFinite(Number(d.atrLen))) $("stratAtrLen").value = String(d.atrLen);
+    // Also apply to backtest fields for consistency
     if($("btFastMa") && Number.isFinite(Number(d.fastMa))) $("btFastMa").value = String(d.fastMa);
     if($("btSlowMa") && Number.isFinite(Number(d.slowMa))) $("btSlowMa").value = String(d.slowMa);
     if($("btAtrLen") && Number.isFinite(Number(d.atrLen))) $("btAtrLen").value = String(d.atrLen);
@@ -93,9 +98,16 @@
     const prev = select.value;
     select.innerHTML = registry.list.map((s)=>`<option value="${s.id}">${s.name}</option>`).join("");
     select.value = (prev && registry.byId[prev]) ? prev : registry.list[0].id;
-    applyStrategyToForm(registry.byId[select.value]);
 
-    select.onchange = ()=>{ applyStrategyToForm(registry.byId[select.value]); };
+    // Show description preview on change, but do NOT apply until Confirm is clicked
+    select.onchange = ()=>{
+      const s = registry.byId[select.value];
+      if($("btStrategy-display")) $("btStrategy-display").textContent = s ? s.description : "";
+      if($("btStrategy")) $("btStrategy").value = s ? s.description : "";
+    };
+
+    // Apply the default strategy on initial load
+    applyStrategyToForm(registry.byId[select.value]);
   }
 
   function initBacktestDateDefaults(){
@@ -163,6 +175,20 @@
     window.LC.refreshBacktestMarkets = populateBacktestMarkets;
     window.LC.refreshBacktestStrategies = populateStrategyDropdown;
 
+    // === CONFIRM STRATEGY BUTTON ===
+    if($("btnConfirmStrategy")){
+      $("btnConfirmStrategy").onclick = ()=>{
+        const select = $("btStrategyPreset");
+        const registry = window.STRATEGIES;
+        const strategy = registry?.byId?.[select?.value];
+        if(strategy){
+          applyStrategyToForm(strategy);
+          const s = $("strategyConfirmStatus");
+          if(s){ s.textContent = "\u2714 Strategy confirmed!"; setTimeout(()=>{ s.textContent = ""; }, 2000); }
+        }
+      };
+    }
+
     // === ARM SYNC: homeArm ↔ toolArm ===
     const homeArmEl = $("homeArm");
     const toolArmEl = $("toolArm");
@@ -217,6 +243,8 @@
       document.body.removeChild(ta);
     }
 
+    function isJPYPair(pair){ return String(pair).includes("JPY"); }
+
     // === LAST 5 SIGNALS (Current Signal Scan) ===
     if($("btnLastSignals")){
       $("btnLastSignals").onclick = async ()=>{
@@ -234,38 +262,46 @@
             resultBox.innerHTML = "<p>\u274C AutoTrader engine not available. Ensure all scripts are loaded.</p>";
             return;
           }
+          const scanTime = new Date().toLocaleTimeString();
           const results = await window.ENG.AutoTrader.scan();
-          const withSignal = results.filter((r)=>r.confidence > 0);
-          const top5 = results.slice(0, 5);
+          const minConf = Math.max(0.4, Math.min(0.9, parseFloat($("atMinConfidence")?.value || "0.58")));
 
-          if(top5.length === 0){
+          // Filter to signals that would actually trigger a trade: directional + meets confidence threshold
+          const tradeable = results.filter((r)=>r.dir !== 0 && r.confidence >= minConf);
+          const top5 = tradeable.slice(0, 5);
+
+          if(results.length === 0){
             resultBox.innerHTML = "<p>No pairs returned data. Check that pairs are configured and the platform has live data.</p>";
             return;
           }
 
-          resultBox.innerHTML = top5.map((r, i)=>{
-            const dirLabel = r.dir === 1 ? "<span class='sig-buy' aria-label='BUY signal'>\uD83D\uDFE2 BUY</span>" :
-                             r.dir === -1 ? "<span class='sig-sell' aria-label='SELL signal'>\uD83D\uDD34 SELL</span>" :
-                             "<span class='sig-none' aria-label='No signal'>\u26AA WATCHING</span>";
-            const conf = Number.isFinite(r.confidence) ? (r.confidence * 100).toFixed(0) + "%" : "\u2014";
-            const reason = r.reason || r.pattern || "\u2014";
-            return `<div class="signalCard">
-              <span class="sigRank" aria-label="Rank ${i+1}">${i+1}</span>
-              <strong>${r.pair}</strong> ${dirLabel}
-              <span class="sigConf">Confidence: <b>${conf}</b></span>
-              <span class="sigReason">${reason}</span>
-            </div>`;
-          }).join("");
-
-          if(withSignal.length === 0){
-            resultBox.innerHTML += `<p class="note" style="margin-top:8px">No actionable signals right now. The market may be ranging or conditions don&rsquo;t meet the strategy thresholds.</p>`;
+          if(top5.length === 0){
+            resultBox.innerHTML = `<p class="note">No tradeable signals found at <strong>${scanTime}</strong>. Scanned ${results.length} pair(s) &mdash; none met the confidence threshold (${(minConf*100).toFixed(0)}%) with a directional signal. The market may be ranging or conditions don&rsquo;t meet the strategy thresholds.</p>`;
+            return;
           }
+
+          resultBox.innerHTML = `<p class="note" style="margin-bottom:8px">Scan at <strong>${scanTime}</strong> &mdash; ${top5.length} tradeable signal(s) found (threshold: ${(minConf*100).toFixed(0)}%)</p>` +
+            top5.map((r, i)=>{
+              const dirLabel = r.dir === 1 ? "<span class='sig-buy' aria-label='BUY signal'>\uD83D\uDFE2 BUY</span>" :
+                               "<span class='sig-sell' aria-label='SELL signal'>\uD83D\uDD34 SELL</span>";
+              const conf = (r.confidence * 100).toFixed(0) + "%";
+              const price = Number.isFinite(r.close) ? r.close.toFixed(isJPYPair(r.pair) ? 3 : 5) : "\u2014";
+              const reason = r.reason || r.pattern || "\u2014";
+              return `<div class="signalCard">
+                <span class="sigRank" aria-label="Rank ${i+1}">${i+1}</span>
+                <strong>${r.pair}</strong> ${dirLabel}
+                <span class="sigConf">Confidence: <b>${conf}</b></span>
+                <span class="sigPrice">Price: <b>${price}</b></span>
+                <span class="sigTime">Time: ${scanTime}</span>
+                <span class="sigReason">${reason}</span>
+              </div>`;
+            }).join("");
 
         }catch(e){
           resultBox.innerHTML = `<p>\u274C Scan failed: ${e?.message || e}</p>`;
         }finally{
           btn.disabled = false;
-          btn.textContent = "\uD83D\uDD0D Show Current Signal Scan (Top 5)";
+          btn.textContent = "\uD83D\uDD0D Show Last 5 Signals (by Pair)";
         }
       };
     }

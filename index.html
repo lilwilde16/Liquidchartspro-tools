@@ -75,18 +75,18 @@
       <!-- Active Strategy Card -->
       <div class="card">
         <h2 class="title">Active Strategy &amp; Signals</h2>
-        <p id="homeStrategyName" class="subtitle">No strategy selected &mdash; go to Strategy tab to choose one</p>
+        <p id="homeStrategyName" class="subtitle">No strategy selected &mdash; go to Strategy tab to confirm one</p>
         <div class="field" style="margin-bottom:16px">
           <label>Pairs Being Monitored</label>
           <div id="homePairsList" class="pairTagsBox">&mdash;</div>
         </div>
         <div class="btnRow">
-          <button id="btnLastSignals" disabled>&#128269; Show Current Signal Scan (Top 5)</button>
+          <button id="btnLastSignals" disabled>&#128269; Show Last 5 Signals (by Pair)</button>
           <button id="btnRefreshHome" disabled>&#128260; Refresh Markets</button>
         </div>
         <div id="lastSignalsResult" class="signalsBox hidden"></div>
         <p class="note" style="margin-top:8px">
-          <strong>Signal Scan</strong>: runs the AutoTrader signal detection on all configured pairs right now and shows the top 5 candidates by confidence. Use this to manually verify the strategy is finding good setups before enabling live trading.
+          <strong>Signal Scan</strong>: scans all configured pairs and shows the last 5 signals that would have sent a trade &mdash; displaying time and price point for each. Use this to verify the strategy is reading markets correctly before enabling live trading.
         </p>
       </div>
 
@@ -102,7 +102,7 @@
         <h2 class="title">Strategy</h2>
         <div class="row">
           <div class="field">
-            <label>Strategy Preset</label>
+            <label>Strategy</label>
             <select id="btStrategyPreset">
               <option value="">Loading&hellip;</option>
             </select>
@@ -110,6 +110,26 @@
         </div>
         <pre id="btStrategy-display" class="note" style="white-space:pre-wrap;font-family:inherit;margin-top:8px"></pre>
         <textarea id="btStrategy" style="display:none" readonly></textarea>
+
+        <!-- Individual Strategy Settings (SMA Crossover) -->
+        <div class="row" style="margin-top:12px">
+          <div class="field">
+            <label>Fast MA Period</label>
+            <input id="stratFastMa" type="number" value="10" min="2" max="100" />
+          </div>
+          <div class="field">
+            <label>Slow MA Period</label>
+            <input id="stratSlowMa" type="number" value="30" min="3" max="500" />
+          </div>
+          <div class="field">
+            <label>ATR Length</label>
+            <input id="stratAtrLen" type="number" value="14" min="5" max="100" />
+          </div>
+        </div>
+        <div class="btnRow" style="margin-top:12px">
+          <button id="btnConfirmStrategy" class="primary">&#10003; Confirm Strategy</button>
+          <span id="strategyConfirmStatus" class="status"></span>
+        </div>
       </div>
 
       <!-- Pairs to Trade Card -->
@@ -156,19 +176,8 @@ GBP/JPY</textarea>
             <input id="atPollSec" type="number" value="60" min="10" max="3600" />
           </div>
           <div class="field">
-            <label>Risk Mode</label>
-            <select id="atRiskMode">
-              <option value="conservative" selected>Conservative</option>
-              <option value="aggressive">Aggressive</option>
-            </select>
-          </div>
-          <div class="field">
             <label>Lot Size</label>
             <input id="atLots" type="number" value="0.01" min="0.01" step="0.01" />
-          </div>
-          <div class="field">
-            <label>Risk:Reward</label>
-            <input id="atRr" type="number" value="1.5" min="0.5" step="0.1" />
           </div>
           <div class="field">
             <label>SL ATR Multiplier</label>
@@ -181,18 +190,30 @@ GBP/JPY</textarea>
         </div>
         <div class="row">
           <div class="field">
+            <label>Trading Days</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+              <label><input type="checkbox" id="atDayMon" checked /> Mon</label>
+              <label><input type="checkbox" id="atDayTue" checked /> Tue</label>
+              <label><input type="checkbox" id="atDayWed" checked /> Wed</label>
+              <label><input type="checkbox" id="atDayThu" checked /> Thu</label>
+              <label><input type="checkbox" id="atDayFri" checked /> Fri</label>
+              <label><input type="checkbox" id="atDaySat" /> Sat</label>
+              <label><input type="checkbox" id="atDaySun" /> Sun</label>
+            </div>
+          </div>
+          <div class="field">
             <label>Use Schedule</label>
             <select id="atUseSchedule">
-              <option value="yes" selected>Yes (Mon&ndash;Fri only)</option>
+              <option value="yes" selected>Yes (days &amp; hours above)</option>
               <option value="no">No (trade anytime)</option>
             </select>
           </div>
           <div class="field">
-            <label>Start Hour (UTC)</label>
+            <label>Session Start Hour (UTC)</label>
             <input id="atStartHour" type="number" value="6" min="0" max="23" />
           </div>
           <div class="field">
-            <label>End Hour (UTC)</label>
+            <label>Session End Hour (UTC)</label>
             <input id="atEndHour" type="number" value="20" min="0" max="23" />
           </div>
           <div class="field">

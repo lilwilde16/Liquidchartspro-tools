@@ -1,53 +1,17 @@
 (function(){
   const SMA_CROSSOVER = {
     id: "sma_crossover",
-    name: "SMA Crossover (Balanced)",
+    name: "Simple Moving Average Crossover",
     description: [
-      "Entry: Fast SMA crosses above/below Slow SMA.",
-      "Exit: ATR stop + configurable RR target.",
-      "Use when you want a neutral baseline for most symbols."
+      "Entry: Fast SMA crosses above Slow SMA → BUY; crosses below → SELL.",
+      "Exit: ATR-based stop-loss (1.1× ATR) with 1.5:1 reward-to-risk target.",
+      "Trend filter: H1 SMA alignment confirms direction before entry.",
+      "Best for: trending markets during London and New York sessions."
     ].join("\n"),
-    defaults: { fastMa: 10, slowMa: 30, atrLen: 14 }
+    defaults: { fastMa: 10, slowMa: 30, atrLen: 14, rr: 1.5, slAtr: 1.1, allowShort: "yes", timeframe: "M15", session: "london" }
   };
 
-  const SMA_LONG_TREND = {
-    id: "sma_long_trend",
-    name: "SMA Long-Term Trend (Live-tested)",
-    description: [
-      "Built for long horizon trend trading from live-data sweep baseline.",
-      "Suggested baseline: Fast 50, Slow 300, ATR 14, long-only.",
-      "Goal: avoid overtrading and ride established directional moves."
-    ].join("\n"),
-    defaults: { fastMa: 50, slowMa: 300, atrLen: 14, rr: 2.5, slAtr: 1.5, allowShort: "no", timeframe: "H1", session: "london", count: 80 }
-  };
-
-  const STRENGTH_SCALP_WEEKLY = {
-    id: "strength_scalp_weekly",
-    name: "Strength Scalper (Weekly Focus)",
-    description: [
-      "Scalp only when trend pressure is clear (anti-consolidation filter).",
-      "Entry: SMA cross + trend strength ratio over ATR threshold.",
-      "Session-first: London / New York overlap is preferred.",
-      "Best workflow: run Strength scanner first, then backtest top movers only."
-    ].join("\n"),
-    defaults: { fastMa: 20, slowMa: 100, atrLen: 14, rr: 1.5, slAtr: 1.1, allowShort: "yes", timeframe: "M15", session: "london", count: 120 }
-  };
-
-  const NAS100_SCALPER = {
-    id: "nas100_scalper",
-    name: "NAS100 Scalper (Correlated Indices)",
-    description: [
-      "High-precision NAS100 scalper leveraging correlated movements.",
-      "Entry: Monitors USD strength as correlation proxy (US30/SPX500 analysis planned).",
-      "Confirms with NAS100 candlestick patterns (engulfing, breakouts).",
-      "Risk: 2-3% position size, RR=1.67 (TP:SL ratio of 5:3 in pips).",
-      "Timeframes: M1 and M5 for high-frequency intraday trades.",
-      "Signal threshold: Trend ratio ≥ 0.5, pattern confirmation required."
-    ].join("\n"),
-    defaults: { fastMa: 10, slowMa: 30, atrLen: 14, rr: 1.67, slAtr: 1.0, allowShort: "yes", timeframe: "M5", session: "newyork", count: 200 }
-  };
-
-  const list = [SMA_CROSSOVER, SMA_LONG_TREND, STRENGTH_SCALP_WEEKLY, NAS100_SCALPER];
+  const list = [SMA_CROSSOVER];
 
   window.STRATEGIES = {
     list,

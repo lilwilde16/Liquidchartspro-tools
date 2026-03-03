@@ -150,24 +150,38 @@
   }
 
   // === CONFIGURATION ===
+  function getTradingDays(){
+    // Returns array of UTC day numbers that trading is allowed on (0=Sun, 1=Mon, ..., 6=Sat)
+    const dayMap = [["atDayMon",1],["atDayTue",2],["atDayWed",3],["atDayThu",4],["atDayFri",5],["atDaySat",6],["atDaySun",0]];
+    const days = [];
+    let anyFound = false;
+    dayMap.forEach(([id, day])=>{
+      const el = $(id);
+      if(el){ anyFound = true; if(el.checked) days.push(day); }
+    });
+    // If no checkboxes found, default to Mon-Fri
+    if(!anyFound) return [1,2,3,4,5];
+    return days;
+  }
+
   function cfg(){
     return {
       tf: $("atTf")?.value || "M15",
       candles: Math.max(200, Math.min(3000, Math.floor(toNum($("atCandles")?.value, 500)))),
       intervalSec: Math.max(1, Math.min(3600, Math.floor(toNum($("atPollSec")?.value, 1)))),
-      riskMode: $("atRiskMode")?.value || "conservative",
       lots: toNum($("atLots")?.value, 0.01),
-      rr: toNum($("atRr")?.value, DEFAULT_RR),
       slAtr: toNum($("atSlAtr")?.value, DEFAULT_SL_ATR_MULT),
       useSchedule: ($("atUseSchedule")?.value || "yes") === "yes",
+      tradingDays: getTradingDays(),
       startHour: Math.floor(toNum($("atStartHour")?.value, 6)),
       endHour: Math.floor(toNum($("atEndHour")?.value, 20)),
-      volStart: Math.floor(toNum($("atVolStart")?.value, 12)),
-      volEnd: Math.floor(toNum($("atVolEnd")?.value, 16)),
       maxTradesPerDay: Math.max(1, Math.min(20, Math.floor(toNum($("atMaxTradesDay")?.value, 4)))),
       cooldownMin: Math.max(1, Math.min(240, Math.floor(toNum($("atCooldownMin")?.value, GLOBAL_COOLDOWN_MIN)))),
       learning: ($("atLearning")?.value || "on") === "on",
-      minConfidence: Math.max(0.4, Math.min(0.9, toNum($("atMinConfidence")?.value, 0.58)))
+      minConfidence: Math.max(0.4, Math.min(0.9, toNum($("atMinConfidence")?.value, 0.58))),
+      fastMa: Math.max(2, Math.floor(toNum($("stratFastMa")?.value, 10))),
+      slowMa: Math.max(3, Math.floor(toNum($("stratSlowMa")?.value, 30))),
+      atrLen: Math.max(5, Math.floor(toNum($("stratAtrLen")?.value, 14)))
     };
   }
 
@@ -180,7 +194,7 @@
     if(!c.useSchedule) return true;
     const now = new Date();
     const day = now.getUTCDay();
-    if(day === 0 || day === 6) return false;
+    if(!c.tradingDays.includes(day)) return false;
     return inHourRange(now.getUTCHours(), c.startHour, c.endHour);
   }
 
@@ -291,15 +305,19 @@
   // === PAIR ANALYSIS ===
   async function pairMetrics(pair, c){
     // Fetch M5, H1 data for multi-timeframe analysis
+    // Request enough candles to cover the slow MA period
+    const m5Count = Math.max(300, (c.slowMa || 30) * 5);
+    const h1Count = Math.max(200, (c.slowMa || 30) * 3);
     const [m5Raw, h1Raw] = await Promise.all([
-      window.LC.requestCandles(pair, "M5", 300),
-      window.LC.requestCandles(pair, "H1", 200)
+      window.LC.requestCandles(pair, "M5", m5Count),
+      window.LC.requestCandles(pair, "H1", h1Count)
     ]);
 
     const m5Candles = normalizeCandles(m5Raw);
     const h1Candles = normalizeCandles(h1Raw);
 
-    if(m5Candles.length < 50 || h1Candles.length < 50){
+    const minRequired = Math.max(50, (c.slowMa || 30) + 10);
+    if(m5Candles.length < minRequired || h1Candles.length < minRequired){
       throw new Error("not enough candles");
     }
 
@@ -317,16 +335,21 @@
       throw new Error("indicator utils missing");
     }
 
+    // Use strategy-configured MA and ATR periods
+    const fastMa = c.fastMa || 10;
+    const slowMa = c.slowMa || 30;
+    const atrLen = c.atrLen || 14;
+
     // M5 indicators
-    const m5Fast = window.UTIL.sma(m5Close, 20);
-    const m5Slow = window.UTIL.sma(m5Close, 100);
-    const m5ATR = window.UTIL.atr(m5High, m5Low, m5Close, 14);
+    const m5Fast = window.UTIL.sma(m5Close, fastMa);
+    const m5Slow = window.UTIL.sma(m5Close, slowMa);
+    const m5ATR = window.UTIL.atr(m5High, m5Low, m5Close, atrLen);
     const m5RSI = window.UTIL.rsi(m5Close, 7);
 
     // H1 indicators
-    const h1Fast = window.UTIL.sma(h1Close, 20);
-    const h1Slow = window.UTIL.sma(h1Close, 100);
-    const h1ATR = window.UTIL.atr(h1High, h1Low, h1Close, 14);
+    const h1Fast = window.UTIL.sma(h1Close, fastMa);
+    const h1Slow = window.UTIL.sma(h1Close, slowMa);
+    const h1ATR = window.UTIL.atr(h1High, h1Low, h1Close, atrLen);
     const h1RSI = window.UTIL.rsi(h1Close, 7);
 
     const m5i = m5Close.length - 1;
@@ -594,14 +617,13 @@
   // === TRADING EXECUTION ===
   async function placeTrade(candidate, c){
     const side = candidate.dir === 1 ? "BUY" : "SELL";
-    const riskMult = c.riskMode === "conservative" ? 0.9 : 1.05;
     
     // Calculate pip size for the instrument (supports both forex and indices)
     const pipSize = calculatePipSize(candidate.pair);
     
-    // Calculate SL and TP in pips (ATR is in price units, convert to pips)
-    const slPips = (candidate.atrNow / pipSize) * c.slAtr * riskMult;
-    const tpPips = slPips * c.rr;
+    // SL and TP are set by strategy defaults (slAtr from config, RR is strategy-defined)
+    const slPips = (candidate.atrNow / pipSize) * c.slAtr;
+    const tpPips = slPips * DEFAULT_RR;
     
     // Get current market price
     const market = window.LC?.api?.market(candidate.pair);

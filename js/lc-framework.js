@@ -509,23 +509,38 @@
   function populateOrderDropdown(){
     const sel = $("toolOrderId");
     if(!sel || sel.tagName !== "SELECT") return;
-    const dict = ordersDict();
-    const ids = Object.keys(dict);
+    const oDict = ordersDict();
+    const pDict = positionsDict();
     const prev = sel.value;
     sel.innerHTML = `<option value="">\u2014 select open order \u2014</option>`;
-    ids.forEach((id)=>{
-      const o = dict[id];
+    const addedIds = new Set();
+    // Orders dict
+    Object.keys(oDict).forEach((id)=>{
+      const o = oDict[id];
       const inst = o.instrumentId || o.instrument || "";
       const dir = (o.tradingAction === 2 || o.orderType === 2 || o.direction === "sell") ? "SELL" : "BUY";
       const opt = document.createElement("option");
       opt.value = id;
       opt.textContent = `${inst} ${dir} #${id}`;
       sel.appendChild(opt);
+      addedIds.add(id);
     });
-    if(prev && ids.includes(prev)){
+    // Positions dict (only those not already added from orders)
+    Object.keys(pDict).forEach((id)=>{
+      if(addedIds.has(id)) return;
+      const p = pDict[id];
+      const inst = p.instrumentId || p.instrument || id;
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = `${inst} (Position) #${id}`;
+      sel.appendChild(opt);
+      addedIds.add(id);
+    });
+    const allIds = Array.from(addedIds);
+    if(prev && allIds.includes(prev)){
       sel.value = prev;
     }else if(prev){
-      log(`ℹ️ Order #${prev} is no longer open — dropdown reset`);
+      log(`\u2139\uFE0F Order #${prev} is no longer open \u2014 dropdown reset`);
     }
   }
 
@@ -652,6 +667,7 @@
   window.LC.pRequestCandles = requestCandles;
   window.LC.requestPrices = requestPrices;
   window.LC.refreshToolMarkets = refreshToolMarkets;
+  window.LC.populateOrderDropdown = populateOrderDropdown;
 
   window.LC.api = {
     safeJson,
