@@ -500,18 +500,18 @@
       if($(id)) $(id).disabled = false;
     });
 
-    $("btnPing").onclick = ()=>{
+    if($("btnPing")) $("btnPing").onclick = ()=>{
       log("Ping clicked.");
       log("RequestPrices exists " + (typeof Framework.RequestPrices === "function" ? "✅" : "❌"));
     };
 
-    $("btnReqPrices").onclick = ()=>{
+    if($("btnReqPrices")) $("btnReqPrices").onclick = ()=>{
       const pairs = ($("pairs")?.value||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean).slice(0,5);
       requestPrices(pairs);
       log("✅ RequestPrices sent for: " + pairs.join(", "));
     };
 
-    $("btnHealth").onclick = ()=>{
+    if($("btnHealth")) $("btnHealth").onclick = ()=>{
       log("=== HEALTH CHECK ===");
       log("Candles API: " + ((Framework.pRequestCandles || Framework.RequestCandles)?"✅":"❌"));
       log("RequestPrices: " + (typeof Framework.RequestPrices === "function"?"✅":"❌"));
@@ -521,12 +521,12 @@
       log("====================");
     };
 
-    $("btnDiagRun").onclick = async ()=>{ setStatus("Running diagnostics…", "warn"); await runDiagnostics(); setStatus("Diagnostics done", "ok"); };
-    $("btnPrices").onclick = ()=>{ requestPrices([selectedPair()]); refreshPx(); log(`🔁 Requested prices for ${selectedPair()}`); };
-    $("btnTicket").onclick = ()=>openTicket(selectedPair());
-    $("btnBuyMarket").onclick = async ()=>{ try{ await sendMarket(selectedPair(), true, lots()); setStatus("BUY sent", "ok"); }catch(e){ setStatus("BUY failed", "bad"); log(`❌ BUY failed: ${e?.message || e}`);} };
-    $("btnSellMarket").onclick = async ()=>{ try{ await sendMarket(selectedPair(), false, lots()); setStatus("SELL sent", "ok"); }catch(e){ setStatus("SELL failed", "bad"); log(`❌ SELL failed: ${e?.message || e}`);} };
-    $("btnBuyTPSL").onclick = async ()=>{ 
+    if($("btnDiagRun")) $("btnDiagRun").onclick = async ()=>{ setStatus("Running diagnostics…", "warn"); await runDiagnostics(); setStatus("Diagnostics done", "ok"); };
+    if($("btnPrices")) $("btnPrices").onclick = ()=>{ requestPrices([selectedPair()]); refreshPx(); log(`🔁 Requested prices for ${selectedPair()}`); };
+    if($("btnTicket")) $("btnTicket").onclick = ()=>openTicket(selectedPair());
+    if($("btnBuyMarket")) $("btnBuyMarket").onclick = async ()=>{ try{ await sendMarket(selectedPair(), true, lots()); setStatus("BUY sent", "ok"); }catch(e){ setStatus("BUY failed", "bad"); log(`❌ BUY failed: ${e?.message || e}`);} };
+    if($("btnSellMarket")) $("btnSellMarket").onclick = async ()=>{ try{ await sendMarket(selectedPair(), false, lots()); setStatus("SELL sent", "ok"); }catch(e){ setStatus("SELL failed", "bad"); log(`❌ SELL failed: ${e?.message || e}`);} };
+    if($("btnBuyTPSL")) $("btnBuyTPSL").onclick = async ()=>{ 
       try{ 
         await placeMarketThenAttachTPSL(selectedPair(), true, lots(), tpPts(), slPts(), true); 
         setStatus("BUY TP/SL placed", "ok"); 
@@ -535,7 +535,7 @@
         log(`❌ BUY TP/SL failed: ${e?.message || e}`);
       } 
     };
-    $("btnSellTPSL").onclick = async ()=>{ 
+    if($("btnSellTPSL")) $("btnSellTPSL").onclick = async ()=>{ 
       try{ 
         await placeMarketThenAttachTPSL(selectedPair(), false, lots(), tpPts(), slPts(), true); 
         setStatus("SELL TP/SL placed", "ok"); 
@@ -544,7 +544,7 @@
         log(`❌ SELL TP/SL failed: ${e?.message || e}`);
       } 
     };
-    $("btnChangeTPSL").onclick = async ()=>{
+    if($("btnChangeTPSL")) $("btnChangeTPSL").onclick = async ()=>{
       const oid = ($("toolOrderId")?.value || "").trim();
       if(!oid){ log("❌ Enter orderId first"); return; }
       const ord = ordersDict()[oid];
@@ -552,11 +552,11 @@
       try{ await changeOrderTPSLFromDistance(oid, selectedPair(), isBuy, tpPts(), slPts()); setStatus("CHANGE sent", "ok"); }
       catch(e){ setStatus("CHANGE failed", "bad"); log(`❌ CHANGE failed: ${e?.message || e}`);} 
     };
-    $("btnDumpTrades").onclick = dumpOpenTrades;
-    $("btnCloseAll").onclick = async ()=>{ try{ await closeAllForInstrument(selectedPair()); setStatus("Close sent", "ok"); }catch(e){ setStatus("Close failed", "bad"); log(`❌ Close failed: ${e?.message || e}`);} };
+    if($("btnDumpTrades")) $("btnDumpTrades").onclick = dumpOpenTrades;
+    if($("btnCloseAll")) $("btnCloseAll").onclick = async ()=>{ try{ await closeAllForInstrument(selectedPair()); setStatus("Close sent", "ok"); }catch(e){ setStatus("Close failed", "bad"); log(`❌ Close failed: ${e?.message || e}`);} };
 
-    $("btnRefreshTool").onclick = async ()=>{ await safeRefreshMarket(); };
-    $("btnClearLog").onclick = ()=>{ $("log").textContent=""; };
+    if($("btnRefreshTool")) $("btnRefreshTool").onclick = async ()=>{ await safeRefreshMarket(); };
+    if($("btnClearLog")) $("btnClearLog").onclick = ()=>{ $("log").textContent=""; };
 
     try{
       const inst = (Framework.Chart && Framework.Chart.instrumentId) ? Framework.Chart.instrumentId : null;
