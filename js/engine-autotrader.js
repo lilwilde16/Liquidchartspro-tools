@@ -633,41 +633,21 @@
     slPrice = Number(slPrice.toFixed(precision));
 
     try{
-      // Try to place order with TP/SL attached
-      let orderId = null;
-      try{
-        const result = await window.LC.api.sendMarketOrderWithTPSL(
-          candidate.pair,
-          candidate.dir === 1,
-          c.lots,
-          tpPrice,
-          slPrice
-        );
-        orderId = result?.orderId || result?.id || null;
-        
+      // Place market order then attach TP/SL via CHANGE (101) — the reliable ENTRY→CHANGE pattern
+      const result = await window.LC.api.placeMarketThenAttachTPSL(
+        candidate.pair,
+        candidate.dir === 1,
+        c.lots,
+        tpPrice,
+        slPrice,
+        false  // already absolute prices
+      );
+      const orderId = result?.orderId || null;
+
+      if(result?.status === "tpsl_attached"){
         window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} | conf=${candidate.confidence.toFixed(2)} | entry=${entryPrice.toFixed(precision)} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)} | session=${getCurrentSession()}`);
-      }catch(attachError){
-        // Fallback: place market then attach TP/SL via CHANGE (101) using top-level tp/sl fields
-        window.LC.log(`⚠️ TP/SL attachment failed: ${attachError?.message || attachError}`);
-        window.LC.log(`🔄 Attempting fallback via placeMarketThenAttachTPSL...`);
-
-        const fallbackResult = await window.LC.api.placeMarketThenAttachTPSL(
-          candidate.pair,
-          candidate.dir === 1,
-          c.lots,
-          tpPrice,
-          slPrice,
-          false  // already absolute prices
-        );
-        orderId = fallbackResult?.orderId || null;
-
-        if(fallbackResult?.status === "tpsl_attached"){
-          window.LC.log(`✅ Fallback successful: TP/SL attached via CHANGE | order=${orderId} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)}`);
-        }else{
-          window.LC.log(`⚠️ Fallback status: ${fallbackResult?.status} | order=${orderId}`);
-        }
-
-        window.LC.log(`🤖 AutoTrader ${side} ${candidate.pair} (fallback) | conf=${candidate.confidence.toFixed(2)} | entry=${entryPrice.toFixed(precision)} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)} | session=${getCurrentSession()}`);
+      }else{
+        window.LC.log(`⚠️ AutoTrader ${side} ${candidate.pair} | status=${result?.status} | order=${orderId} | TP=${tpPrice.toFixed(precision)} SL=${slPrice.toFixed(precision)}`);
       }
 
       state.lastTradeAt = Date.now();
@@ -804,7 +784,7 @@
   // === LIFECYCLE ===
   function start(){
     if(state.running) return;
-    if(!window.LC?.requestCandles || !window.LC?.api?.sendMarketOrderWithTPSL){
+    if(!window.LC?.requestCandles || !window.LC?.api?.placeMarketThenAttachTPSL){
       window.LC.log("❌ AutoTrader cannot start: required APIs unavailable.");
       return;
     }

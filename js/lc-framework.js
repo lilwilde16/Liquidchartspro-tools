@@ -147,12 +147,12 @@
     if(!toolArmed()) throw new Error("ARM OFF → cannot CHANGE.");
     if(!orderId) throw new Error("Missing orderId.");
 
-    // Use the same takeProfit/stopLoss object shape as sendWithTPSL so the Framework/API receives a consistent payload.
+    // Use top-level tp/sl keys (same as attachTPSLViaChange) — the platform reliably reads these on CHANGE (101).
     const payload = {
       tradingAction: actionConst("CHANGE", 101),
       orderId: String(orderId),
-      takeProfit: { price: Number(tpAbsPrice) },
-      stopLoss: { price: Number(slAbsPrice) }
+      tp: Number(tpAbsPrice),
+      sl: Number(slAbsPrice)
     };
 
     log(`🧪 CHANGE payload=${safeJson(payload)}`);
@@ -528,15 +528,8 @@
     $("btnSellMarket").onclick = async ()=>{ try{ await sendMarket(selectedPair(), false, lots()); setStatus("SELL sent", "ok"); }catch(e){ setStatus("SELL failed", "bad"); log(`❌ SELL failed: ${e?.message || e}`);} };
     $("btnBuyTPSL").onclick = async ()=>{ 
       try{ 
-        const m = getMarket(selectedPair());
-        const ask = Number(m.ask);
-        if(!Number.isFinite(ask)) throw new Error("No valid ask price");
-        const tpDist = tpPts();
-        const slDist = slPts();
-        const tpPrice = ask + tpDist;
-        const slPrice = ask - slDist;
-        await sendWithTPSL(selectedPair(), true, lots(), tpPrice, slPrice); 
-        setStatus("BUY TP/SL sent", "ok"); 
+        await placeMarketThenAttachTPSL(selectedPair(), true, lots(), tpPts(), slPts(), true); 
+        setStatus("BUY TP/SL placed", "ok"); 
       }catch(e){ 
         setStatus("BUY TP/SL failed", "bad"); 
         log(`❌ BUY TP/SL failed: ${e?.message || e}`);
@@ -544,15 +537,8 @@
     };
     $("btnSellTPSL").onclick = async ()=>{ 
       try{ 
-        const m = getMarket(selectedPair());
-        const bid = Number(m.bid);
-        if(!Number.isFinite(bid)) throw new Error("No valid bid price");
-        const tpDist = tpPts();
-        const slDist = slPts();
-        const tpPrice = bid - tpDist;
-        const slPrice = bid + slDist;
-        await sendWithTPSL(selectedPair(), false, lots(), tpPrice, slPrice); 
-        setStatus("SELL TP/SL sent", "ok"); 
+        await placeMarketThenAttachTPSL(selectedPair(), false, lots(), tpPts(), slPts(), true); 
+        setStatus("SELL TP/SL placed", "ok"); 
       }catch(e){ 
         setStatus("SELL TP/SL failed", "bad"); 
         log(`❌ SELL TP/SL failed: ${e?.message || e}`);
