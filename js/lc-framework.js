@@ -147,16 +147,18 @@
     if(!toolArmed()) throw new Error("ARM OFF → cannot CHANGE.");
     if(!orderId) throw new Error("Missing orderId.");
 
+    // Use the same takeProfit/stopLoss object shape as sendWithTPSL so the Framework/API receives a consistent payload.
     const payload = {
       tradingAction: actionConst("CHANGE", 101),
       orderId: String(orderId),
-      tp: tpAbsPrice,
-      sl: slAbsPrice
+      takeProfit: { price: Number(tpAbsPrice) },
+      stopLoss: { price: Number(slAbsPrice) }
     };
 
     log(`🧪 CHANGE payload=${safeJson(payload)}`);
     const res = await sendOrderAsync(payload);
     log(`↩️ CHANGE result=${safeJson(res)}`);
+    return res;
   }
 
   async function changeOrderTPSLFromDistance(orderId, pair, isBuy, tpDistancePts, slDistancePts){
@@ -166,7 +168,7 @@
     const base = isBuy ? ask : bid;
     const tpAbs = isBuy ? (base + tpDistancePts) : (base - tpDistancePts);
     const slAbs = isBuy ? (base - slDistancePts) : (base + slDistancePts);
-    await changeOrderTPSL(orderId, tpAbs, slAbs);
+    return await changeOrderTPSL(orderId, tpAbs, slAbs);
   }
 
   function ordersDict(){
