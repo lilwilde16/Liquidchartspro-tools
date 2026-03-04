@@ -127,17 +127,56 @@
 
   function normalizeCandles(raw){
     if(!raw) return [];
-    const src = Array.isArray(raw) ? raw : (raw.candles || raw.Candles || raw.data || raw.Data || []);
-    const rows = src.map((c)=>({
-      t: Number(c?.time ?? c?.Time ?? c?.timestamp ?? c?.Timestamp ?? c?.t ?? 0),
-      o: Number(c?.open ?? c?.Open ?? c?.o ?? NaN),
-      h: Number(c?.high ?? c?.High ?? c?.h ?? NaN),
-      l: Number(c?.low ?? c?.Low ?? c?.l ?? NaN),
-      c: Number(c?.close ?? c?.Close ?? c?.c ?? NaN)
-    })).filter((x)=>Number.isFinite(x.o) && Number.isFinite(x.h) && Number.isFinite(x.l) && Number.isFinite(x.c));
-    // Ensure chronological order (oldest first)
-    if(rows.length > 1 && rows[0].t && rows[rows.length-1].t && rows[0].t > rows[rows.length-1].t) rows.reverse();
-    return rows;
+
+    function toMs(t){ const n = Number(t); return (n > 0) ? (n < 1e12 ? n * 1000 : n) : 0; } // < 1e12: seconds (Unix epoch), >= 1e12: already ms
+    function ensureChron(rows){
+      if(rows.length > 1 && rows[0].t && rows[rows.length-1].t && rows[0].t > rows[rows.length-1].t) rows.reverse();
+      return rows;
+    }
+
+    // Array-of-arrays ([[time, open, high, low, close], ...])
+    const src = Array.isArray(raw) ? raw : (raw.candles || raw.Candles || raw.data || raw.Data || null);
+    if(Array.isArray(src) && src.length && Array.isArray(src[0])){
+      const rows = src.map((r)=>({
+        t: toMs(r[0] ?? 0),
+        o: Number(r[1] ?? NaN),
+        h: Number(r[2] ?? NaN),
+        l: Number(r[3] ?? NaN),
+        c: Number(r[4] ?? NaN)
+      })).filter((x)=>Number.isFinite(x.o) && Number.isFinite(x.h) && Number.isFinite(x.l) && Number.isFinite(x.c));
+      return ensureChron(rows);
+    }
+
+    // Array-of-objects
+    if(Array.isArray(src)){
+      const rows = src.map((c)=>({
+        t: toMs(c?.time ?? c?.Time ?? c?.timestamp ?? c?.Timestamp ?? c?.t ?? 0),
+        o: Number(c?.open ?? c?.Open ?? c?.o ?? NaN),
+        h: Number(c?.high ?? c?.High ?? c?.h ?? NaN),
+        l: Number(c?.low ?? c?.Low ?? c?.l ?? NaN),
+        c: Number(c?.close ?? c?.Close ?? c?.c ?? NaN)
+      })).filter((x)=>Number.isFinite(x.o) && Number.isFinite(x.h) && Number.isFinite(x.l) && Number.isFinite(x.c));
+      return ensureChron(rows);
+    }
+
+    // Object-with-arrays ({ open: [...], high: [...], low: [...], close: [...], time: [...] })
+    const o = raw.open || raw.Open || raw.o;
+    const h = raw.high || raw.High || raw.h;
+    const l = raw.low || raw.Low || raw.l;
+    const c = raw.close || raw.Close || raw.c;
+    const t = raw.time || raw.Time || raw.timestamp || raw.Timestamp || raw.t || [];
+    if(Array.isArray(o) && Array.isArray(h) && Array.isArray(l) && Array.isArray(c)){
+      const tLen = Array.isArray(t) ? t.length : 0;
+      const n = Math.min(o.length, h.length, l.length, c.length, tLen || Infinity);
+      const rows = [];
+      for(let i = 0; i < n; i++){
+        const row = { t: toMs(t[i] ?? 0), o: Number(o[i]), h: Number(h[i]), l: Number(l[i]), c: Number(c[i]) };
+        if(Number.isFinite(row.o) && Number.isFinite(row.h) && Number.isFinite(row.l) && Number.isFinite(row.c)) rows.push(row);
+      }
+      return ensureChron(rows);
+    }
+
+    return [];
   }
 
   function getCurrentSession(){
@@ -636,13 +675,13 @@
           const crossedAbove = fCurr > sCurr && fPrev <= sPrev;
           const crossedBelow = fCurr < sCurr && fPrev >= sPrev;
           if(crossedAbove || crossedBelow){
-            const tsRaw = candles[i].t;
-            // Timestamps < 1e12 are in seconds; >= 1e12 are already in milliseconds
-            const tsMs = (tsRaw > 0) ? (tsRaw < 1e12 ? tsRaw * 1000 : tsRaw) : 0;
+            // normalizeCandles already converts timestamps to ms
+            const tsMs = candles[i].t || 0;
+            const rawPrice = candles[i].c;
             found.push({
               pair,
               dir: crossedAbove ? 1 : -1,
-              price: candles[i].c,
+              price: Number.isFinite(rawPrice) ? rawPrice : null,
               t: tsMs,
               candlesAgo: candles.length - 1 - i
             });
@@ -652,9 +691,12 @@
       }catch(_){ }
     }));
 
-    // Sort all signals: most recent first (fewest candles ago, then by timestamp)
+    // Sort all signals: most recent first by timestamp; fall back to candlesAgo when timestamps unavailable
     allSignals.sort((a, b)=>{
-      if(a.t && b.t) return b.t - a.t;
+      const aHasT = a.t > 0, bHasT = b.t > 0;
+      if(aHasT && bHasT) return b.t - a.t || a.candlesAgo - b.candlesAgo;
+      if(aHasT) return -1;
+      if(bHasT) return 1;
       return a.candlesAgo - b.candlesAgo;
     });
 
