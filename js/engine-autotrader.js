@@ -646,19 +646,20 @@
   // === SMA CROSSOVER HISTORY SCAN (for "Last 5 Signals") ===
   // Returns the last `count` SMA crossover signals across all pairs, purely
   // based on fast MA crossing slow MA — no confidence, RSI, or strength filters.
-  async function scanCrossoverSignals(pairs, c, count){
+  async function scanCrossoverSignals(pairs, c, count, apiOverride){
     count = count || 5;
     const tf = c.tf || "M15";
     const fastMa = c.fastMa || 10;
     const slowMa = c.slowMa || 30;
     // Fetch enough candles to have many crossovers to look through
     const needed = Math.max(300, slowMa * 10);
+    const api = apiOverride || window.LC;
 
     const allSignals = [];
 
     await Promise.allSettled(pairs.map(async (pair)=>{
       try{
-        const raw = await window.LC.requestCandles(pair, tf, needed);
+        const raw = await api.requestCandles(pair, tf, needed);
         const candles = normalizeCandles(raw);
         if(candles.length < slowMa + 2) return;
 
@@ -678,7 +679,6 @@
             // normalizeCandles already converts timestamps to ms
             const tsMs = candles[i].t || 0;
             const rawPrice = candles[i].c;
-            console.debug('sma-scan', pair, 'idx', i, 'candlesAgo', candles.length - 1 - i, 't(ms)', tsMs, 'close', rawPrice);
             found.push({
               pair,
               dir: crossedAbove ? 1 : -1,
@@ -951,11 +951,11 @@
       const c = cfg();
       return await scanAllPairs(pairs, c);
     },
-    scanCrossoverSignals: async (count)=>{
+    scanCrossoverSignals: async (count, apiOverride)=>{
       const pairs = parsePairs();
       if(pairs.length === 0) return [];
       const c = cfg();
-      return await scanCrossoverSignals(pairs, c, count || 5);
+      return await scanCrossoverSignals(pairs, c, count || 5, apiOverride);
     }
   };
 })();

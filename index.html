@@ -84,6 +84,13 @@
           <button id="btnLastSignals" disabled>&#128269; Show Last 5 Signals (by Pair)</button>
           <button id="btnRefreshHome" disabled>&#128260; Refresh Markets</button>
         </div>
+        <div class="field" style="margin-top:8px">
+          <label>
+            <input type="checkbox" id="useChartCandlesForSignals" />
+            Use chart provider candles for signals
+          </label>
+          <small>Enable if signal entry prices differ from what you see on the chart &mdash; routes candle requests explicitly through the chart provider API.</small>
+        </div>
         <div id="lastSignalsResult" class="signalsBox hidden"></div>
         <p class="note" style="margin-top:8px">
           <strong>Signal Scan</strong>: scans all configured pairs and shows the last 5 SMA crossover signals from candle history &mdash; the exact candles where the fast MA crossed the slow MA. <strong>Entry price shown is the historical close price at the crossover candle, not the current market price.</strong> No confidence threshold applied; use this to verify the strategy is detecting entry points correctly.
@@ -481,7 +488,8 @@ GBP/JPY</textarea>
 
   </div><!-- end #app -->
 
-  <!-- Scripts: load order matters — indicators → framework → api → strategies → engines → ui → app -->
+  <!-- Scripts: load order matters — candle-utils → indicators → framework → api → strategies → engines → ui → app -->
+  <script src="./js/lib/candle-utils.js"></script>
   <script src="./js/util-indicators.js"></script>
   <script src="./js/lc-framework.js"></script>
   <script src="./js/trading-api.js"></script>
