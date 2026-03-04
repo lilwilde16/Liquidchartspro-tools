@@ -668,9 +668,11 @@
         const fast = window.UTIL.sma(closes, fastMa);
         const slow = window.UTIL.sma(closes, slowMa);
 
-        // Scan backward from the most recent candle to find crossovers
+        // Scan backward from the most recent CLOSED candle to find crossovers.
+        // After candle-utils normalisation the array is oldest→newest, so the
+        // last element (candles.length - 1) is the still-forming bar — skip it.
         const found = [];
-        for(let i = candles.length - 1; i >= 1 && found.length < count; i--){
+        for(let i = candles.length - 2; i >= 1 && found.length < count; i--){
           // Skip candles where either MA is not yet computed
           const fCurr = fast[i], sCurr = slow[i], fPrev = fast[i-1], sPrev = slow[i-1];
           if(fCurr === null || sCurr === null || fPrev === null || sPrev === null) continue;
@@ -685,7 +687,7 @@
               dir: crossedAbove ? 1 : -1,
               price: Number.isFinite(rawPrice) ? rawPrice : null,
               t: tsMs,
-              candlesAgo: candles.length - 1 - i
+              candlesAgo: candles.length - 2 - i
             });
           }
         }
