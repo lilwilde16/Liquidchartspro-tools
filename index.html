@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>LiquidChartsPro Tools</title>
 
   <!-- LiquidCharts widget must load first -->
@@ -90,6 +91,14 @@
             Use chart provider candles for signals
           </label>
           <small>Enable if signal entry prices differ from what you see on the chart &mdash; routes candle requests explicitly through the chart provider API.</small>
+        </div>
+        <div class="field" style="margin-top:8px">
+          <label>
+            <input type="checkbox" id="showSignalDebug" />
+            Show signal debug info (current market price &amp; raw data)
+          </label>
+          <button id="btnCopySignalDebug" disabled style="margin-left:8px" aria-label="Copy Debug Data">&#128203; Copy Debug Data</button>
+          <pre id="signalDebugDump" style="display:none" aria-hidden="true"></pre>
         </div>
         <div id="lastSignalsResult" class="signalsBox hidden"></div>
         <p class="note" style="margin-top:8px">
