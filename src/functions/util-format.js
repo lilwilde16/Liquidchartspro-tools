@@ -16,4 +16,5 @@
   }
 
   window.FMT = window.FMT || { num, pct, money };
+  if(typeof module !== "undefined" && module.exports) module.exports = { num, pct, money };
 })();

@@ -96,4 +96,5 @@
     window.UTIL.atr = atr;
     window.UTIL.rsi = rsi;
     window.UTIL.linregSlope = linregSlope;
+  if(typeof module !== "undefined" && module.exports) module.exports = { toChron, sma, atr, rsi, linregSlope };
 })();
