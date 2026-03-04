@@ -135,6 +135,44 @@
       });
     }
 
+    /**
+     * Compute SMA crossover signals on closed candles only (forming bar at
+     * index 0 of the raw array is excluded by the caller) and return the
+     * last 5 signals found (oldest-first) together with the total signal count.
+     *
+     * The limit of 5 matches the widget's stated purpose: "Last 5 SMA Crossover
+     * Signals". Use the returned `total` for logging the full dataset size.
+     *
+     * @param {Array}  candles    - Closed-candle array ordered oldest → newest
+     * @param {number} fastPeriod - Fast SMA period
+     * @param {number} slowPeriod - Slow SMA period
+     * @returns {{ signals: Array, total: number }}
+     *   signals – up to 5 most-recent signal objects: { type, time, close, idx }
+     *   total   – full count of all crossover signals found in the range
+     */
+    function lastCrossSignals(candles, fastPeriod, slowPeriod){
+      const closes  = candles.map(c => typeof c.c === "number" ? c.c : parseFloat(c.c));
+      const times   = candles.map(c => c.t);
+      const signals = [];
+
+      for(let i = slowPeriod; i < closes.length; i++){
+        const fastNow  = sma(closes, i,   fastPeriod);
+        const slowNow  = sma(closes, i,   slowPeriod);
+        const fastPrev = sma(closes, i-1, fastPeriod);
+        const slowPrev = sma(closes, i-1, slowPeriod);
+
+        if(fastNow === null || slowNow === null || fastPrev === null || slowPrev === null) continue;
+
+        if(fastPrev <= slowPrev && fastNow > slowNow){
+          signals.push({ type: "BUY",  time: times[i], close: closes[i], idx: i });
+        } else if(fastPrev >= slowPrev && fastNow < slowNow){
+          signals.push({ type: "SELL", time: times[i], close: closes[i], idx: i });
+        }
+      }
+
+      return { signals: signals.slice(-5), total: signals.length };
+    }
+
     /* ── main backtest logic ── */
     async function runBacktest(){
       const instrument = $("btInstrument").value.trim() || "EUR/USD";
@@ -173,31 +211,10 @@
         return;
       }
 
-      // Build close-price array
-      const closes = candles.map(c => typeof c.c === "number" ? c.c : parseFloat(c.c));
-      const times  = candles.map(c => c.t);
-
-      // Scan for crossovers (oldest → newest); collect the last 5
-      const signals = [];
-      for(let i = slowPeriod; i < closes.length; i++){
-        const fastNow  = sma(closes, i,   fastPeriod);
-        const slowNow  = sma(closes, i,   slowPeriod);
-        const fastPrev = sma(closes, i-1, fastPeriod);
-        const slowPrev = sma(closes, i-1, slowPeriod);
-
-        if(fastNow === null || slowNow === null || fastPrev === null || slowPrev === null) continue;
-
-        if(fastPrev <= slowPrev && fastNow > slowNow){
-          signals.push({ type: "BUY",  time: times[i], close: closes[i], idx: i });
-        } else if(fastPrev >= slowPrev && fastNow < slowNow){
-          signals.push({ type: "SELL", time: times[i], close: closes[i], idx: i });
-        }
-      }
-
-      const last5 = signals.slice(-5);
-      log("Found " + signals.length + " total crossover signal(s); displaying last " + last5.length + ".");
+      const { signals: last5, total } = lastCrossSignals(candles, fastPeriod, slowPeriod);
+      log("Found " + total + " total crossover signal(s); displaying last " + last5.length + ".");
       renderSignals(last5, instrument, tf, fastPeriod, slowPeriod, candles.length);
-      setStatus("Done – " + signals.length + " signal(s) found.");
+      setStatus("Done – " + total + " signal(s) found.");
     }
 
     function renderSignals(signals, instrument, tf, fast, slow, totalBars){
