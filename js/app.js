@@ -259,6 +259,12 @@
         resultBox.innerHTML = "<p>Scanning all pairs for SMA crossover signals\u2026</p>";
         resultBox.classList.remove("hidden");
 
+        // Reset debug state
+        const debugDump = $("signalDebugDump");
+        const copyBtn = $("btnCopySignalDebug");
+        if(debugDump){ debugDump.textContent = ""; debugDump.style.display = "none"; }
+        if(copyBtn) copyBtn.disabled = true;
+
         try{
           if(!window.ENG?.AutoTrader?.scanCrossoverSignals){
             resultBox.innerHTML = "<p>\u274C AutoTrader engine not available. Ensure all scripts are loaded.</p>";
@@ -278,19 +284,55 @@
           const slowMa = parseInt($("stratSlowMa")?.value || "30", 10);
           const tf = $("atTf")?.value || "M15";
 
+          // Optionally fetch current market prices for debug
+          const debugEnabled = $("showSignalDebug")?.checked;
+          const midPrices = {};
+          if(debugEnabled){
+            await Promise.all(signals.map(async (r)=>{
+              try{
+                const mkt = await window.LC?.api?.market?.(r.pair);
+                if(mkt){
+                  const bid = Number(mkt.bid ?? mkt.Bid ?? NaN);
+                  const ask = Number(mkt.ask ?? mkt.Ask ?? NaN);
+                  const last = Number(mkt.price ?? mkt.last ?? mkt.Last ?? NaN);
+                  if(Number.isFinite(bid) && Number.isFinite(ask)){
+                    midPrices[r.pair] = (bid + ask) / 2;
+                  }else if(Number.isFinite(last)){
+                    midPrices[r.pair] = last;
+                  }
+                }
+              }catch(err){ if(debugEnabled) console.debug("[app.js] market price fetch failed for", r.pair, err); }
+            }));
+          }
+
           resultBox.innerHTML = `<p class="note" style="margin-bottom:8px">Last 5 SMA(${fastMa})/SMA(${slowMa}) crossover signals on <strong>${tf}</strong> &mdash; scan at ${scanTime}</p>` +
             signals.map((r, i)=>{
               const dirLabel = r.dir === 1 ? "<span class='sig-buy' aria-label='BUY signal'>\uD83D\uDFE2 BUY</span>" :
                                "<span class='sig-sell' aria-label='SELL signal'>\uD83D\uDD34 SELL</span>";
               const price = Number.isFinite(r.price) ? r.price.toFixed(isJPYPair(r.pair) ? 3 : 5) : "\u2014";
               const timeStr = isLikelyMs(r.t) ? `${new Date(r.t).toLocaleString()} (${r.candlesAgo} candles ago)` : `${r.candlesAgo} candle(s) ago`;
+              const midPrice = midPrices[r.pair];
+              const midStr = debugEnabled && Number.isFinite(midPrice) ? ` <span class="sigMid" title="Current mid-market price">(now: ${midPrice.toFixed(isJPYPair(r.pair) ? 3 : 5)})</span>` : "";
               return `<div class="signalCard">
                 <span class="sigRank" aria-label="Rank ${i+1}">${i+1}</span>
                 <strong>${r.pair}</strong> ${dirLabel}
-                <span class="sigPrice">Entry price: <b>${price}</b></span>
+                <span class="sigPrice">Entry price: <b>${price}</b>${midStr}</span>
                 <span class="sigTime">Signal time: ${timeStr}</span>
               </div>`;
             }).join("");
+
+          // Populate debug dump if debug mode is on
+          if(debugEnabled && debugDump){
+            const lines = ["pair\tdir\tentry_price\tcurrent_mid\tt_ms\tcandles_ago"];
+            signals.forEach((r)=>{
+              const mid = Number.isFinite(midPrices[r.pair]) ? midPrices[r.pair].toFixed(isJPYPair(r.pair) ? 3 : 5) : "";
+              const ep = Number.isFinite(r.price) ? r.price.toFixed(isJPYPair(r.pair) ? 3 : 5) : "";
+              lines.push([r.pair, r.dir === 1 ? "BUY" : "SELL", ep, mid, r.t ?? "", r.candlesAgo ?? ""].join("\t"));
+            });
+            debugDump.textContent = lines.join("\n");
+            debugDump.style.display = "block";
+            if(copyBtn) copyBtn.disabled = false;
+          }
 
         }catch(e){
           resultBox.innerHTML = `<p>\u274C Scan failed: ${e?.message || e}</p>`;
@@ -298,6 +340,23 @@
           btn.disabled = false;
           btn.textContent = "\uD83D\uDD0D Show Last 5 Signals (by Pair)";
         }
+      };
+    }
+
+    // === COPY SIGNAL DEBUG DATA ===
+    if($("btnCopySignalDebug")){
+      $("btnCopySignalDebug").onclick = ()=>{
+        const dump = $("signalDebugDump");
+        if(!dump) return;
+        const text = dump.textContent;
+        if(!text) return;
+        if(navigator.clipboard){
+          navigator.clipboard.writeText(text).catch(()=>fallbackCopy(text));
+        }else{
+          fallbackCopy(text);
+        }
+        const btn = $("btnCopySignalDebug");
+        if(btn){ btn.textContent = "\u2714 Copied!"; setTimeout(()=>{ btn.textContent = "\uD83D\uDCCB Copy Debug Data"; }, 2000); }
       };
     }
 
@@ -385,6 +444,17 @@
 
     window.applySettingsToUI();
     updateHomeDisplay();
+  }
+
+  // Early boot guard: warn if ENG or AutoTrader failed to load
+  function warnIfEngMissing(){
+    if(!window.ENG) console.warn("[app.js] window.ENG is not defined — engine scripts may have failed to load.");
+    else if(!window.ENG.AutoTrader) console.warn("[app.js] window.ENG.AutoTrader is not defined — engine-autotrader.js may have failed to load.");
+  }
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", warnIfEngMissing, { once: true });
+  }else{
+    warnIfEngMissing();
   }
 
   if(document.readyState === "loading"){
