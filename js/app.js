@@ -245,6 +245,8 @@
 
     function isJPYPair(pair){ return String(pair).includes("JPY"); }
 
+    function isLikelyMs(ts){ return Number.isFinite(ts) && ts > 1e12; } // 1e12 ms ≈ Sep 2001, reasonable cutoff between seconds and milliseconds
+
     // === LAST 5 SIGNALS (SMA Crossover history scan) ===
     if($("btnLastSignals")){
       $("btnLastSignals").onclick = async ()=>{
@@ -279,7 +281,7 @@
               const dirLabel = r.dir === 1 ? "<span class='sig-buy' aria-label='BUY signal'>\uD83D\uDFE2 BUY</span>" :
                                "<span class='sig-sell' aria-label='SELL signal'>\uD83D\uDD34 SELL</span>";
               const price = Number.isFinite(r.price) ? r.price.toFixed(isJPYPair(r.pair) ? 3 : 5) : "\u2014";
-              const timeStr = r.t ? new Date(r.t).toLocaleString() : `${r.candlesAgo} candle(s) ago`;
+              const timeStr = isLikelyMs(r.t) ? `${new Date(r.t).toLocaleString()} (${r.candlesAgo} candles ago)` : `${r.candlesAgo} candle(s) ago`;
               return `<div class="signalCard">
                 <span class="sigRank" aria-label="Rank ${i+1}">${i+1}</span>
                 <strong>${r.pair}</strong> ${dirLabel}
