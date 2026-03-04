@@ -356,8 +356,9 @@
       window.LC.requestCandles(pair, "H1", h1Count)
     ]);
 
-    const m5Candles = normalizeCandles(m5Raw);
-    const h1Candles = normalizeCandles(h1Raw);
+    const _norm = (window.CandleUtils && typeof window.CandleUtils.normalizeCandles === 'function') ? window.CandleUtils.normalizeCandles : normalizeCandles;
+    const m5Candles = _norm(m5Raw);
+    const h1Candles = _norm(h1Raw);
 
     const minRequired = Math.max(50, (c.slowMa || 30) + 10);
     if(m5Candles.length < minRequired || h1Candles.length < minRequired){
@@ -660,7 +661,7 @@
     await Promise.allSettled(pairs.map(async (pair)=>{
       try{
         const raw = await api.requestCandles(pair, tf, needed);
-        const candles = normalizeCandles(raw);
+        const candles = (window.CandleUtils && typeof window.CandleUtils.normalizeCandles === 'function') ? window.CandleUtils.normalizeCandles(raw) : normalizeCandles(raw);
         if(candles.length < slowMa + 2) return;
 
         const closes = candles.map(x=>x.c);

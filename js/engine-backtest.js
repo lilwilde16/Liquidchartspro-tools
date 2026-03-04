@@ -216,7 +216,7 @@
     if(!window.LC?.requestCandles) return { error: "Candles API unavailable. Run inside LiquidCharts with framework connected." };
 
     const payload = await window.LC.requestCandles(cfg.instrument, cfg.timeframe, cfg.candleCount);
-    const normalized = normalizeCandles(payload);
+    const normalized = (window.CandleUtils && typeof window.CandleUtils.normalizeCandles === 'function') ? window.CandleUtils.normalizeCandles(payload) : normalizeCandles(payload);
     const filtered = applyDateSessionFilter(normalized, cfg);
     const candles = filtered.candles;
 
