@@ -283,8 +283,8 @@
               return `<div class="signalCard">
                 <span class="sigRank" aria-label="Rank ${i+1}">${i+1}</span>
                 <strong>${r.pair}</strong> ${dirLabel}
-                <span class="sigPrice">Price: <b>${price}</b></span>
-                <span class="sigTime">When: ${timeStr}</span>
+                <span class="sigPrice">Entry price: <b>${price}</b></span>
+                <span class="sigTime">Signal time: ${timeStr}</span>
               </div>`;
             }).join("");
 
