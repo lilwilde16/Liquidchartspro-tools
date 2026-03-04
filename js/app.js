@@ -245,7 +245,7 @@
 
     function isJPYPair(pair){ return String(pair).includes("JPY"); }
 
-    // === LAST 5 SIGNALS (Current Signal Scan) ===
+    // === LAST 5 SIGNALS (SMA Crossover history scan) ===
     if($("btnLastSignals")){
       $("btnLastSignals").onclick = async ()=>{
         const btn = $("btnLastSignals");
@@ -254,46 +254,37 @@
 
         btn.disabled = true;
         btn.textContent = "Scanning\u2026";
-        resultBox.innerHTML = "<p>Running signal scan across all pairs\u2026</p>";
+        resultBox.innerHTML = "<p>Scanning all pairs for SMA crossover signals\u2026</p>";
         resultBox.classList.remove("hidden");
 
         try{
-          if(!window.ENG?.AutoTrader?.scan){
+          if(!window.ENG?.AutoTrader?.scanCrossoverSignals){
             resultBox.innerHTML = "<p>\u274C AutoTrader engine not available. Ensure all scripts are loaded.</p>";
             return;
           }
           const scanTime = new Date().toLocaleTimeString();
-          const results = await window.ENG.AutoTrader.scan();
-          const minConf = Math.max(0.4, Math.min(0.9, parseFloat($("atMinConfidence")?.value || "0.58")));
+          const signals = await window.ENG.AutoTrader.scanCrossoverSignals(5);
 
-          // Filter to signals that would actually trigger a trade: directional + meets confidence threshold
-          const tradeable = results.filter((r)=>r.dir !== 0 && r.confidence >= minConf);
-          const top5 = tradeable.slice(0, 5);
-
-          if(results.length === 0){
+          if(signals.length === 0){
             resultBox.innerHTML = "<p>No pairs returned data. Check that pairs are configured and the platform has live data.</p>";
             return;
           }
 
-          if(top5.length === 0){
-            resultBox.innerHTML = `<p class="note">No tradeable signals found at <strong>${scanTime}</strong>. Scanned ${results.length} pair(s) &mdash; none met the confidence threshold (${(minConf*100).toFixed(0)}%) with a directional signal. The market may be ranging or conditions don&rsquo;t meet the strategy thresholds.</p>`;
-            return;
-          }
+          const fastMa = parseInt($("stratFastMa")?.value || "10", 10);
+          const slowMa = parseInt($("stratSlowMa")?.value || "30", 10);
+          const tf = $("atTf")?.value || "M15";
 
-          resultBox.innerHTML = `<p class="note" style="margin-bottom:8px">Scan at <strong>${scanTime}</strong> &mdash; ${top5.length} tradeable signal(s) found (threshold: ${(minConf*100).toFixed(0)}%)</p>` +
-            top5.map((r, i)=>{
+          resultBox.innerHTML = `<p class="note" style="margin-bottom:8px">Last 5 SMA(${fastMa})/SMA(${slowMa}) crossover signals on <strong>${tf}</strong> &mdash; scan at ${scanTime}</p>` +
+            signals.map((r, i)=>{
               const dirLabel = r.dir === 1 ? "<span class='sig-buy' aria-label='BUY signal'>\uD83D\uDFE2 BUY</span>" :
                                "<span class='sig-sell' aria-label='SELL signal'>\uD83D\uDD34 SELL</span>";
-              const conf = (r.confidence * 100).toFixed(0) + "%";
-              const price = Number.isFinite(r.close) ? r.close.toFixed(isJPYPair(r.pair) ? 3 : 5) : "\u2014";
-              const reason = r.reason || r.pattern || "\u2014";
+              const price = Number.isFinite(r.price) ? r.price.toFixed(isJPYPair(r.pair) ? 3 : 5) : "\u2014";
+              const timeStr = r.t ? new Date(r.t).toLocaleString() : `${r.candlesAgo} candle(s) ago`;
               return `<div class="signalCard">
                 <span class="sigRank" aria-label="Rank ${i+1}">${i+1}</span>
                 <strong>${r.pair}</strong> ${dirLabel}
-                <span class="sigConf">Confidence: <b>${conf}</b></span>
                 <span class="sigPrice">Price: <b>${price}</b></span>
-                <span class="sigTime">Time: ${scanTime}</span>
-                <span class="sigReason">${reason}</span>
+                <span class="sigTime">When: ${timeStr}</span>
               </div>`;
             }).join("");
 
