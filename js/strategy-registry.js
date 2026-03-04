@@ -3,7 +3,7 @@
     id: "sma_crossover",
     name: "Simple Moving Average Crossover",
     description: [
-      "Entry: Fast SMA crosses above Slow SMA → BUY; crosses below → SELL.",
+      "Entry (M15): Fast SMA crosses above Slow SMA → BUY; crosses below → SELL.",
       "Exit: ATR-based stop-loss (1.1× ATR) with 1.5:1 reward-to-risk target.",
       "Trend filter: H1 SMA alignment confirms direction before entry.",
       "Best for: trending markets during London and New York sessions."
