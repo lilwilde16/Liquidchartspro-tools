@@ -6,6 +6,17 @@
 
 - **`js/lib/candle-utils.js`** — new shared helper module exposing `window.CandleUtils`
   with `candleTimeMs` and `normalizeCandles` for use across all engine modules.
+  Handles all three candle data shapes: array-of-arrays, array-of-objects, and
+  object-with-arrays. Exposes `module.exports` for Node.js usage as well.
+- **`tools/verify_candles_server.py`** — optional local verification server (Flask +
+  yfinance) that fetches historical candles and returns normalized ms-timestamp rows.
+  Supports `M1/M5/M15/M30/H1/D1` timeframes with CORS enabled. Run with
+  `python tools/verify_candles_server.py` and compare against
+  `window.LC.requestCandles` outputs.
+- **Engines prefer shared `CandleUtils.normalizeCandles`** — `js/engine-autotrader.js`,
+  `js/engine-strength.js`, and `js/engine-backtest.js` now call
+  `window.CandleUtils.normalizeCandles` when available, falling back to their local
+  `normalizeCandles` implementation for backwards compatibility.
 - **Chart-provider candle fallback** — a new "Use chart provider candles for signals"
   checkbox (id `useChartCandlesForSignals`) on the Home tab lets users explicitly route
   the "Last 5 Signals" scan through the chart provider API. Off by default.
@@ -42,3 +53,6 @@
 4. To test the chart-provider fallback: tick "Use chart provider candles for signals"
    and click **🔍 Show Last 5 Signals** again — results should be identical (same
    source), confirming the routing path works without error.
+5. To verify ms normalization independently: run `python tools/verify_candles_server.py`
+   and compare `/api/candles?symbol=EURUSD&tf=M5&count=50` against live candles —
+   all `t` values should be 13-digit millisecond timestamps.

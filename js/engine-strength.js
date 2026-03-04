@@ -124,7 +124,7 @@
     
     try{
       const raw = await api.requestCandles(pair, timeframe, count);
-      const candles = normalizeCandles(raw);
+      const candles = (window.CandleUtils && typeof window.CandleUtils.normalizeCandles === 'function') ? window.CandleUtils.normalizeCandles(raw) : normalizeCandles(raw);
       runCache[cacheKey] = candles;
       return candles;
     }catch(e){
