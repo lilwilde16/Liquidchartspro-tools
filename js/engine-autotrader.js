@@ -678,6 +678,7 @@
             // normalizeCandles already converts timestamps to ms
             const tsMs = candles[i].t || 0;
             const rawPrice = candles[i].c;
+            console.debug('sma-scan', pair, 'idx', i, 'candlesAgo', candles.length - 1 - i, 't(ms)', tsMs, 'close', rawPrice);
             found.push({
               pair,
               dir: crossedAbove ? 1 : -1,

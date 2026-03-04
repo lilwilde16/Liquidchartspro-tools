@@ -13,45 +13,24 @@
     // Backward compatibility for older wiring.
   }
 
-  function normalizeCandles(raw){
-    if(!raw) return [];
-    const src = Array.isArray(raw) ? raw : (raw.candles || raw.Candles || raw.data || raw.Data || null);
-
-    if(Array.isArray(src)){
-      const rows = src.map((c)=>({
-        t: Number(c?.time ?? c?.Time ?? c?.timestamp ?? c?.Timestamp ?? c?.t ?? 0),
-        o: Number(c?.open ?? c?.Open ?? c?.o),
-        h: Number(c?.high ?? c?.High ?? c?.h),
-        l: Number(c?.low ?? c?.Low ?? c?.l),
-        c: Number(c?.close ?? c?.Close ?? c?.c)
-      })).filter((r)=>Number.isFinite(r.o) && Number.isFinite(r.h) && Number.isFinite(r.l) && Number.isFinite(r.c));
-
-      if(rows.length > 1 && rows[0].t && rows[rows.length - 1].t && rows[0].t > rows[rows.length - 1].t) rows.reverse();
-      return rows;
-    }
-
-    const o = raw.open || raw.Open || raw.o;
-    const h = raw.high || raw.High || raw.h;
-    const l = raw.low || raw.Low || raw.l;
-    const c = raw.close || raw.Close || raw.c;
-    const t = raw.time || raw.Time || raw.timestamp || raw.Timestamp || [];
-    if(Array.isArray(o) && Array.isArray(h) && Array.isArray(l) && Array.isArray(c)){
-      const n = Math.min(o.length, h.length, l.length, c.length);
-      const rows = [];
-      for(let i = 0; i < n; i++){
-        const row = { t: Number(t[i] ?? 0), o: Number(o[i]), h: Number(h[i]), l: Number(l[i]), c: Number(c[i]) };
-        if(Number.isFinite(row.o) && Number.isFinite(row.h) && Number.isFinite(row.l) && Number.isFinite(row.c)) rows.push(row);
-      }
-      if(rows.length > 1 && rows[0].t && rows[rows.length - 1].t && rows[0].t > rows[rows.length - 1].t) rows.reverse();
-      return rows;
-    }
-
-    return [];
+  function candleTimeMs(t){
+    if(!Number.isFinite(t) || t <= 0) return 0;
+    return t < 1e12 ? Math.round(t * 1000) : Math.round(t);
   }
 
-  function candleTimeMs(t){
-    if(!Number.isFinite(t) || t <= 0) return NaN;
-    return t < 1e12 ? t * 1000 : t;
+  function normalizeCandles(raw){
+    if(!raw) return [];
+    const src = Array.isArray(raw) ? raw : (raw.candles || raw.Candles || raw.data || raw.Data || raw);
+    if(!Array.isArray(src)) return [];
+    const rows = src.map((c)=>({
+      t: candleTimeMs(Number(c?.time ?? c?.Time ?? c?.timestamp ?? c?.Timestamp ?? c?.t ?? 0)),
+      o: Number(c?.open ?? c?.Open ?? c?.o ?? NaN),
+      h: Number(c?.high ?? c?.High ?? c?.h ?? NaN),
+      l: Number(c?.low ?? c?.Low ?? c?.l ?? NaN),
+      c: Number(c?.close ?? c?.Close ?? c?.c ?? NaN)
+    })).filter((x)=>Number.isFinite(x.o) && Number.isFinite(x.h) && Number.isFinite(x.l) && Number.isFinite(x.c));
+    if(rows.length > 1 && rows[0].t && rows[rows.length-1].t && rows[0].t > rows[rows.length-1].t) rows.reverse();
+    return rows;
   }
 
   function inHourWindow(hour, startHour, endHour){
@@ -75,7 +54,7 @@
     let missingTs = 0;
     const filtered = candles.filter((c)=>{
       const ms = candleTimeMs(c.t);
-      if(!Number.isFinite(ms)){
+      if(ms <= 0){
         missingTs += 1;
         return cfg.session === "all" && !cfg.startDate && !cfg.endDate;
       }
