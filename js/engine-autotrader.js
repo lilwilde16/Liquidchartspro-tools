@@ -128,12 +128,16 @@
   function normalizeCandles(raw){
     if(!raw) return [];
     const src = Array.isArray(raw) ? raw : (raw.candles || raw.Candles || raw.data || raw.Data || []);
-    return src.map((c)=>({
+    const rows = src.map((c)=>({
+      t: Number(c?.time ?? c?.Time ?? c?.timestamp ?? c?.Timestamp ?? c?.t ?? 0),
       o: Number(c?.open ?? c?.Open ?? c?.o ?? NaN),
       h: Number(c?.high ?? c?.High ?? c?.h ?? NaN),
       l: Number(c?.low ?? c?.Low ?? c?.l ?? NaN),
       c: Number(c?.close ?? c?.Close ?? c?.c ?? NaN)
     })).filter((x)=>Number.isFinite(x.o) && Number.isFinite(x.h) && Number.isFinite(x.l) && Number.isFinite(x.c));
+    // Ensure chronological order (oldest first)
+    if(rows.length > 1 && rows[0].t && rows[rows.length-1].t && rows[0].t > rows[rows.length-1].t) rows.reverse();
+    return rows;
   }
 
   function getCurrentSession(){
@@ -600,6 +604,63 @@
     return { pattern: null, direction: 0 };
   }
 
+  // === SMA CROSSOVER HISTORY SCAN (for "Last 5 Signals") ===
+  // Returns the last `count` SMA crossover signals across all pairs, purely
+  // based on fast MA crossing slow MA — no confidence, RSI, or strength filters.
+  async function scanCrossoverSignals(pairs, c, count){
+    count = count || 5;
+    const tf = c.tf || "M15";
+    const fastMa = c.fastMa || 10;
+    const slowMa = c.slowMa || 30;
+    // Fetch enough candles to have many crossovers to look through
+    const needed = Math.max(300, slowMa * 10);
+
+    const allSignals = [];
+
+    await Promise.allSettled(pairs.map(async (pair)=>{
+      try{
+        const raw = await window.LC.requestCandles(pair, tf, needed);
+        const candles = normalizeCandles(raw);
+        if(candles.length < slowMa + 2) return;
+
+        const closes = candles.map(x=>x.c);
+        const fast = window.UTIL.sma(closes, fastMa);
+        const slow = window.UTIL.sma(closes, slowMa);
+
+        // Scan backward from the most recent candle to find crossovers
+        const found = [];
+        for(let i = candles.length - 1; i >= 1 && found.length < count; i--){
+          // Skip candles where either MA is not yet computed
+          const fCurr = fast[i], sCurr = slow[i], fPrev = fast[i-1], sPrev = slow[i-1];
+          if(fCurr === null || sCurr === null || fPrev === null || sPrev === null) continue;
+          const crossedAbove = fCurr > sCurr && fPrev <= sPrev;
+          const crossedBelow = fCurr < sCurr && fPrev >= sPrev;
+          if(crossedAbove || crossedBelow){
+            const tsRaw = candles[i].t;
+            // Timestamps < 1e12 are in seconds; >= 1e12 are already in milliseconds
+            const tsMs = (tsRaw > 0) ? (tsRaw < 1e12 ? tsRaw * 1000 : tsRaw) : 0;
+            found.push({
+              pair,
+              dir: crossedAbove ? 1 : -1,
+              price: candles[i].c,
+              t: tsMs,
+              candlesAgo: candles.length - 1 - i
+            });
+          }
+        }
+        allSignals.push(...found);
+      }catch(_){ }
+    }));
+
+    // Sort all signals: most recent first (fewest candles ago, then by timestamp)
+    allSignals.sort((a, b)=>{
+      if(a.t && b.t) return b.t - a.t;
+      return a.candlesAgo - b.candlesAgo;
+    });
+
+    return allSignals.slice(0, count);
+  }
+
   // === PAIR SCANNING ===
   async function scanAllPairs(pairs, c){
     const settled = await Promise.allSettled(pairs.map(async (pair)=>{
@@ -846,6 +907,12 @@
       if(pairs.length === 0) return [];
       const c = cfg();
       return await scanAllPairs(pairs, c);
+    },
+    scanCrossoverSignals: async (count)=>{
+      const pairs = parsePairs();
+      if(pairs.length === 0) return [];
+      const c = cfg();
+      return await scanCrossoverSignals(pairs, c, count || 5);
     }
   };
 })();
