@@ -9,7 +9,7 @@
   <!-- LiquidCharts widget must load first -->
   <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
   <link rel="stylesheet" href="https://pro.liquidcharts.com/scripts/widget-css">
-  <link rel="stylesheet" href="./css/app.css">
+  <link rel="stylesheet" href="./src/ui/css/app.css">
 </head>
 
 <body class="Widget">
@@ -497,17 +497,21 @@ GBP/JPY</textarea>
 
   </div><!-- end #app -->
 
-  <!-- Scripts: load order matters — candle-utils → indicators → framework → api → strategies → engines → ui → app -->
-  <script src="./js/lib/candle-utils.js"></script>
-  <script src="./js/util-indicators.js"></script>
-  <script src="./js/lc-framework.js"></script>
-  <script src="./js/trading-api.js"></script>
-  <script src="./js/strategy-registry.js"></script>
-  <script src="./js/engine-backtest.js"></script>
-  <script src="./js/engine-backtest-signals.js"></script>
-  <script src="./js/engine-strength.js"></script>
-  <script src="./js/engine-autotrader.js"></script>
-  <script src="./js/ui-tabs.js"></script>
-  <script src="./js/app.js"></script>
+  <!-- Scripts: load order matters — functions → integrations → strategies → backtest → ui → app -->
+  <script src="./src/functions/candle-utils.js"></script>
+  <script src="./src/functions/util-indicators.js"></script>
+  <script src="./src/functions/util-format.js"></script>
+  <script src="./src/functions/util-backtest.js"></script>
+  <script src="./src/functions/util-export.js"></script>
+  <script src="./src/integrations/lc-framework.js"></script>
+  <script src="./src/integrations/trading-api.js"></script>
+  <script src="./src/strategies/strategy-registry.js"></script>
+  <script src="./src/backtest/engine-backtest.js"></script>
+  <script src="./src/backtest/engine-backtest-signals.js"></script>
+  <script src="./src/strategies/engine-strength.js"></script>
+  <script src="./src/strategies/engine-autotrader.js"></script>
+  <script src="./src/ui/ui-tabs.js"></script>
+  <script src="./src/ui/signals-display.js"></script>
+  <script src="./src/ui/app.js"></script>
 </body>
 </html>

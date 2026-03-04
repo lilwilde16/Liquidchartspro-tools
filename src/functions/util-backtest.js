@@ -207,4 +207,9 @@
     formatDuration,
     calculateTradeStats
   };
+  if(typeof module !== "undefined" && module.exports) module.exports = {
+    maxDrawdown, maxDrawdownPct, winRate, expectancy, profitFactor, sharpeRatio,
+    pipSize, priceToPips, pipsToPrice, roundToTick, calculateLotSize,
+    formatTimestamp, formatDuration, calculateTradeStats
+  };
 })();

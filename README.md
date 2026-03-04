@@ -4,6 +4,62 @@ A comprehensive trading toolkit with a three-tab interface: **Home** (live contr
 
 ---
 
+## Quick Start
+
+### 1. Run the tests (no LiquidChartsPro account needed)
+
+```bash
+npm install   # only needed once
+npm test      # runs 63 unit tests — should all pass
+```
+
+### 2. Preview the UI locally
+
+```bash
+npm start     # serves the project at http://localhost:8080
+```
+
+Open [http://localhost:8080](http://localhost:8080) in your browser. The tool will
+show the full interface but data connections require the LiquidChartsPro widget
+(see step 3).
+
+### 3. Use the live tool inside LiquidChartsPro
+
+1. Log in to your LiquidChartsPro account.
+2. Open a chart window and add this tool as a widget (paste the GitHub Pages URL
+   or the local server URL).
+3. The `Sway.Framework` connects automatically and activates live candle data and
+   order execution.
+4. In the **Strategy** tab, enter your pairs (one per line, e.g. `EUR/USD`).
+5. Configure AutoTrader settings, then go to the **Home** tab and click **▶ Start**.
+
+> ⚠️ **Set ARM to OFF first.** The ARM toggle controls whether orders are actually
+> sent to the broker. Keep it **OFF (Ticket only)** until you have verified the
+> strategy is working correctly.
+
+---
+
+## Repository layout
+
+```
+src/
+  functions/      Pure utility functions (indicators, formatters, stats)
+  strategies/     AutoTrader engine, Strength Meter, Strategy registry
+  ui/             Front-end JS, CSS, and the signals display stub
+  integrations/   LiquidChartsPro framework wrapper and trading API
+  backtest/       Backtesting engines
+  tests/          Jest unit tests for all verified pure functions
+scripts/          Python automation scripts (live_forex_backtest.py)
+tools/            Optional local candle verification server
+docs/             Reference docs and deleted-file log
+widgets/          Standalone HTML widgets (backtest last-5 signals)
+```
+
+See [VERIFIED_FUNCTIONS.md](./VERIFIED_FUNCTIONS.md) for a full list of every
+verified function, how it was verified, and how to validate it manually.
+
+---
+
 ## Tabs Overview
 
 ### 🏠 Home Tab
