@@ -412,7 +412,7 @@ button.primary:hover:not(:disabled) {
 
 .signalCard {
   display: grid;
-  grid-template-columns: 24px auto 1fr 2fr;
+  grid-template-columns: 24px auto 1fr 1fr 1fr 2fr;
   align-items: center;
   gap: 8px;
   background: #f8f9fa;
@@ -443,6 +443,18 @@ button.primary:hover:not(:disabled) {
 .sigConf {
   color: #555;
   white-space: nowrap;
+}
+
+.sigPrice {
+  color: #333;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.sigTime {
+  color: #777;
+  white-space: nowrap;
+  font-size: 12px;
 }
 
 .sigReason {
@@ -478,7 +490,7 @@ button.primary:hover:not(:disabled) {
     grid-template-rows: auto auto;
   }
 
-  .sigConf, .sigReason {
+  .sigConf, .sigPrice, .sigTime, .sigReason {
     grid-column: 2;
   }
 }
