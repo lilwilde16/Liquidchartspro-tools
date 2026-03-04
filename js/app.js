@@ -265,7 +265,9 @@
             return;
           }
           const scanTime = new Date().toLocaleTimeString();
-          const signals = await window.ENG.AutoTrader.scanCrossoverSignals(5);
+          const useChartCandles = $("useChartCandlesForSignals")?.checked;
+          const apiOverride = useChartCandles ? window.LC : null;
+          const signals = await window.ENG.AutoTrader.scanCrossoverSignals(5, apiOverride);
 
           if(signals.length === 0){
             resultBox.innerHTML = "<p>No pairs returned data. Check that pairs are configured and the platform has live data.</p>";
