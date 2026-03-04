@@ -336,6 +336,38 @@ Security scan: No vulnerabilities detected
 
 ---
 
+## Local widgets
+
+Standalone HTML widgets live in the `widgets/` directory. They use the same
+LiquidCharts platform scripts (`widget-js` / `widget-css`) as the main tool
+and must be opened while the platform is running so that `Sway.Framework` is
+available in the page.
+
+### `widgets/backtest-last5-signals.html` – Last 5 SMA Crossover Signals
+
+A self-contained backtest widget that fetches historical candles and displays
+the last 5 Simple Moving Average crossover signals on closed bars.
+
+**How to open:**
+
+1. Load the LiquidCharts platform in your browser (log in at
+   `https://pro.liquidcharts.com`).
+2. Use the platform's "Add Widget" / "Custom HTML" feature to load the file, **or**
+   open `widgets/backtest-last5-signals.html` directly in the same browser
+   session that has the platform open (the `Framework` object is injected by
+   the platform's `widget-js` script).
+3. Hard-refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`) to ensure the latest platform
+   scripts are loaded.
+4. Enter your **Instrument** (e.g. `EUR/USD`), choose a **Timeframe**, set a
+   **Lookback** count and **Fast / Slow SMA** periods, then click
+   **▶ Run (Last 5 Signals)**.
+5. The table shows the last 5 crossover signals with type (BUY/SELL), UTC time,
+   close price, and how many bars ago each occurred.
+6. Use **🔍 Dump Sample Candle** to inspect the raw candle shape returned by
+   the API, which is useful for debugging field names.
+
+---
+
 ## License
 
 See repository license file.
