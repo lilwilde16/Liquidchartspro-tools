@@ -6,7 +6,8 @@
   function toPosInt(v, fallback, minValue) {
     const n = parseInt(v, 10);
     if (!Number.isFinite(n)) return fallback;
-    return Math.max(minValue || 1, n);
+    const min = Number.isFinite(minValue) ? Number(minValue) : 1;
+    return Math.max(min, n);
   }
 
   function toNum(v, fallback) {
@@ -38,6 +39,32 @@
     const keepN = toPosInt(input && input.keepN, 5, 1);
 
     return window.LCPro.Backtest.lastCrossSignals(input.instrumentId, input.timeframeSec, input.lookback, fastLen, slowLen, keepN);
+  }
+
+  async function runNas100MomentumScalper(input) {
+    const p = (input && input.params) || {};
+    const tickSize = Math.max(0.00001, toNum(p.tickSize, 1));
+    const set = await window.LCPro.Backtest.buildNas100MomentumSignalSet({
+      instrumentId: input.instrumentId,
+      timeframeSec: input.timeframeSec,
+      lookback: input.lookback,
+      keepN: toPosInt(input && input.keepN, 25, 1),
+      rangePreset: input.rangePreset || "week",
+      fastEma: toPosInt(p.fastEma, 18, 3),
+      slowEma: toPosInt(p.slowEma, 55, 8),
+      breakoutLen: toPosInt(p.breakoutLen, 8, 3),
+      breakoutBufferTicks: Math.max(0, toNum(p.breakoutBufferTicks, 3)),
+      atrShortLen: toPosInt(p.atrShortLen, 8, 2),
+      atrLongLen: toPosInt(p.atrLongLen, 34, 5),
+      minAtrRatio: Math.max(0.5, toNum(p.minAtrRatio, 1.12)),
+      slopeLen: toPosInt(p.slopeLen, 5, 2),
+      minSlopeTicks: Math.max(0, toNum(p.minSlopeTicks, 20)),
+      rangeLen: toPosInt(p.rangeLen, 14, 4),
+      minRangeTicks: Math.max(1, toNum(p.minRangeTicks, 55)),
+      cooldownBars: toPosInt(p.cooldownBars, 3, 0),
+      tickSize
+    });
+    return set.signals || [];
   }
 
   function evaluateSmaFromSignalSet(set, strategy, strategyParams, tradeManagement) {
@@ -186,6 +213,61 @@
       slowLen: p.slowLen,
       keepN,
       rangePreset: input.rangePreset || "week"
+    });
+
+    const report = evaluateSmaFromSignalSet(set, strategy, p, tm);
+    report.rangePreset = input.rangePreset || "week";
+    return report;
+  }
+
+  async function runNas100MomentumBacktest(input, strategy) {
+    const pInput = input && input.params ? input.params : {};
+    const tmDefaults = (strategy && strategy.tradeManagementDefaults) || {};
+    const tmInput = input && input.tradeManagement ? input.tradeManagement : {};
+
+    const p = {
+      fastEma: toPosInt(pInput.fastEma, 18, 3),
+      slowEma: toPosInt(pInput.slowEma, 55, 8),
+      breakoutLen: toPosInt(pInput.breakoutLen, 8, 3),
+      breakoutBufferTicks: Math.max(0, toNum(pInput.breakoutBufferTicks, 3)),
+      atrShortLen: toPosInt(pInput.atrShortLen, 8, 2),
+      atrLongLen: toPosInt(pInput.atrLongLen, 34, 5),
+      minAtrRatio: Math.max(0.5, toNum(pInput.minAtrRatio, 1.12)),
+      slopeLen: toPosInt(pInput.slopeLen, 5, 2),
+      minSlopeTicks: Math.max(0, toNum(pInput.minSlopeTicks, 20)),
+      rangeLen: toPosInt(pInput.rangeLen, 14, 4),
+      minRangeTicks: Math.max(1, toNum(pInput.minRangeTicks, 55)),
+      cooldownBars: toPosInt(pInput.cooldownBars, 3, 0),
+      tickSize: Math.max(0.00001, toNum(pInput.tickSize, toNum(tmInput.tickSize, toNum(tmDefaults.tickSize, 1))))
+    };
+
+    const tm = {
+      slTicks: Math.max(1, toNum(tmInput.slTicks, toNum(tmDefaults.slTicks, 28))),
+      tpTicks: Math.max(1, toNum(tmInput.tpTicks, toNum(tmDefaults.tpTicks, 32))),
+      tickSize: Math.max(0.00001, toNum(tmInput.tickSize, toNum(tmDefaults.tickSize, 1))),
+      exitOnOpposite: tmInput.exitOnOpposite !== false,
+      bothHitModel: tmInput.bothHitModel === "tp_first" ? "tp_first" : "sl_first"
+    };
+
+    const set = await window.LCPro.Backtest.buildNas100MomentumSignalSet({
+      instrumentId: input.instrumentId,
+      timeframeSec: input.timeframeSec,
+      lookback: input.lookback,
+      keepN: toPosInt(input && input.keepN, 25, 1),
+      rangePreset: input.rangePreset || "week",
+      fastEma: p.fastEma,
+      slowEma: p.slowEma,
+      breakoutLen: p.breakoutLen,
+      breakoutBufferTicks: p.breakoutBufferTicks,
+      atrShortLen: p.atrShortLen,
+      atrLongLen: p.atrLongLen,
+      minAtrRatio: p.minAtrRatio,
+      slopeLen: p.slopeLen,
+      minSlopeTicks: p.minSlopeTicks,
+      rangeLen: p.rangeLen,
+      minRangeTicks: p.minRangeTicks,
+      cooldownBars: p.cooldownBars,
+      tickSize: p.tickSize
     });
 
     const report = evaluateSmaFromSignalSet(set, strategy, p, tm);
@@ -349,6 +431,34 @@
         bothHitModel: "sl_first"
       },
       runSignals: runSmaCrossover
+    },
+    nas100_momentum_scalper: {
+      id: "nas100_momentum_scalper",
+      name: "NAS100 Momentum Scalper",
+      notes: "Fast trend-following breakout entries with ATR momentum and anti-consolidation filters.",
+      defaultParams: {
+        fastEma: 18,
+        slowEma: 55,
+        breakoutLen: 8,
+        breakoutBufferTicks: 3,
+        atrShortLen: 8,
+        atrLongLen: 34,
+        minAtrRatio: 1.12,
+        slopeLen: 5,
+        minSlopeTicks: 20,
+        rangeLen: 14,
+        minRangeTicks: 55,
+        cooldownBars: 3,
+        tickSize: 1
+      },
+      tradeManagementDefaults: {
+        slTicks: 28,
+        tpTicks: 32,
+        tickSize: 1,
+        exitOnOpposite: true,
+        bothHitModel: "sl_first"
+      },
+      runSignals: runNas100MomentumScalper
     }
   };
 
@@ -369,6 +479,9 @@
     if (!s) throw new Error("Strategy not found: " + id);
     if (id === "sma_crossover") {
       return await runSmaBacktest(input || {}, s);
+    }
+    if (id === "nas100_momentum_scalper") {
+      return await runNas100MomentumBacktest(input || {}, s);
     }
     throw new Error("Backtest runner not implemented for strategy: " + id);
   }
