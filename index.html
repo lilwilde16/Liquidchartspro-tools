@@ -36,7 +36,7 @@
   .bad{ background:#ffe8e8; }
   .market-row{ margin-top:8px; }
   #px{ display:block; min-height:34px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
-  #log, #toolsOutput{
+  #log, #toolsOutput, #btVerification, #btLog{
     background:#f7f9fc; color:#17212f; border-radius:14px; border:1px solid #d6dde8;
     padding:10px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
     white-space:pre-wrap; max-height:35vh; overflow:auto;
@@ -166,27 +166,53 @@
         <input id="btLookback" type="number" min="200" max="5000" value="900" />
       </div>
       <div class="field">
+        <label>Backtest range</label>
+        <select id="btRangePreset">
+          <option value="day">Last Day</option>
+          <option value="week" selected>Last Week</option>
+          <option value="month">Last Month</option>
+        </select>
+      </div>
+      <div class="field">
         <label>Signals to keep</label>
-        <input id="btKeepN" type="number" min="1" max="100" value="5" />
+        <input id="btKeepN" type="number" min="1" max="300" value="25" />
       </div>
     </div>
     <div class="row" style="margin-top:10px;">
       <div class="field" style="min-width:280px;">
-        <label>Strategy params (JSON)</label>
+        <label>Strategy signal params (JSON)</label>
         <textarea id="btParams" rows="3">{"fastLen":9,"slowLen":21}</textarea>
+      </div>
+      <div class="field" style="min-width:280px;">
+        <label>Trade management (JSON)</label>
+        <textarea id="btTradeMgmt" rows="3">{"slTicks":55,"tpTicks":55,"tickSize":1,"exitOnOpposite":true,"bothHitModel":"sl_first"}</textarea>
       </div>
     </div>
     <div class="row" style="margin-top:10px;">
       <button id="btnRunStrategyBacktest" class="primary" type="button" disabled>Run Strategy Backtest</button>
       <button id="btnResetBtParams" type="button">Reset Params</button>
       <span class="pill" id="btStatus">Waiting...</span>
+      <label style="display:flex;align-items:center;gap:6px;margin:0;">
+        <input id="btShowVerification" type="checkbox" checked style="width:auto;" />
+        Show verification diagnostics
+      </label>
     </div>
     <div id="btInfo" class="small">Choose a strategy and run.</div>
   </div>
 
   <div class="card">
+    <div class="title">Backtester Summary</div>
+    <div id="btSummary" class="small">Run backtest to see performance summary.</div>
+  </div>
+
+  <div class="card">
     <div class="title">Backtester Results</div>
     <div id="btResults" class="small">Run the strategy to see signals.</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Verification</div>
+    <pre id="btVerification">Verification diagnostics will appear here.</pre>
   </div>
 
   <div class="card">

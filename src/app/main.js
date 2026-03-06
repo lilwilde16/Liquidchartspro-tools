@@ -107,6 +107,11 @@
     const strategySelect = $("btStrategySelect");
     const strategyInfo = $("btInfo");
     const paramsInput = $("btParams");
+    const tradeMgmtInput = $("btTradeMgmt");
+    const rangePresetEl = $("btRangePreset");
+    const summaryEl = $("btSummary");
+    const verificationEl = $("btVerification");
+    const showVerificationEl = $("btShowVerification");
     const btnRun = $("btnRunStrategyBacktest");
     const btnReset = $("btnResetBtParams");
     const statusEl = $("btStatus");
@@ -115,29 +120,46 @@
 
     const strategyApi = window.LCPro.Strategy;
     const registry = strategyApi && strategyApi.STRATEGIES;
-    if (!strategySelect || !strategyInfo || !paramsInput || !btnRun || !btnReset || !registry) return;
+    if (
+      !strategySelect ||
+      !strategyInfo ||
+      !paramsInput ||
+      !tradeMgmtInput ||
+      !rangePresetEl ||
+      !summaryEl ||
+      !verificationEl ||
+      !btnRun ||
+      !btnReset ||
+      !registry
+    )
+      return;
 
     const items = Object.keys(registry).map((k) => registry[k]);
     strategySelect.innerHTML = items
       .map((s) => '<option value="' + s.id + '">' + s.name + "</option>")
       .join("");
 
-    function getBacktestInputs() {
-      let params = {};
-      const raw = paramsInput.value || "{}";
+    function parseJsonField(raw, label) {
       try {
-        params = JSON.parse(raw);
+        return JSON.parse(raw || "{}");
       } catch (e) {
-        throw new Error("Params JSON is invalid");
+        throw new Error(label + " JSON is invalid");
       }
+    }
+
+    function getBacktestInputs() {
+      const params = parseJsonField(paramsInput.value || "{}", "Strategy params");
+      const tradeManagement = parseJsonField(tradeMgmtInput.value || "{}", "Trade management");
 
       return {
         strategyId: strategySelect.value,
         instrumentId: $("btSym") ? $("btSym").value : "NAS100",
         timeframeSec: parseInt($("btTfSec") ? $("btTfSec").value : "900", 10),
+        rangePreset: rangePresetEl.value || "week",
         lookback: Math.max(200, parseInt($("btLookback") ? $("btLookback").value || "900" : "900", 10)),
         keepN: Math.max(1, parseInt($("btKeepN") ? $("btKeepN").value || "5" : "5", 10)),
-        params
+        params,
+        tradeManagement
       };
     }
 
@@ -149,13 +171,108 @@
       }
 
       strategyInfo.textContent =
-        "ID: " + s.id + " | " + (s.notes || "No notes") + " | defaultParams=" + JSON.stringify(s.defaultParams || {});
+        "ID: " +
+        s.id +
+        " | " +
+        (s.notes || "No notes") +
+        " | defaultParams=" +
+        JSON.stringify(s.defaultParams || {}) +
+        " | tradeDefaults=" +
+        JSON.stringify(s.tradeManagementDefaults || {});
     }
 
     function resetParamsToDefault() {
       const s = strategyApi.getStrategy(strategySelect.value);
       paramsInput.value = JSON.stringify((s && s.defaultParams) || {}, null, 0);
+      tradeMgmtInput.value = JSON.stringify((s && s.tradeManagementDefaults) || {}, null, 0);
       updateStrategyInfo();
+    }
+
+    function renderSummary(report) {
+      const s = report.summary || {};
+      summaryEl.innerHTML =
+        "<strong>Trades:</strong> " +
+        (s.totalTrades || 0) +
+        " | <strong>Wins:</strong> " +
+        (s.wins || 0) +
+        " | <strong>Losses:</strong> " +
+        (s.losses || 0) +
+        " | <strong>Win rate:</strong> " +
+        Number(s.winRate || 0).toFixed(1) +
+        "%" +
+        "<br><strong>Gross Ticks:</strong> " +
+        Number(s.grossTicks || 0).toFixed(1) +
+        " | <strong>Avg R:</strong> " +
+        Number(s.avgR || 0).toFixed(2) +
+        "<br><strong>Range:</strong> " +
+        (report.rangePreset || "week") +
+        " | <strong>Strategy:</strong> " +
+        (report.strategyName || report.strategyId || "n/a");
+    }
+
+    function renderTrades(report) {
+      const rows = (report.trades || []).slice(-200).reverse();
+      if (!rows.length) {
+        $("btResults").innerHTML = '<div class="small">No trades generated for selected range/settings.</div>';
+        return;
+      }
+
+      let html =
+        '<div style="overflow-x:auto;"><table><thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Entry</th><th>Exit Time</th><th>Exit</th><th>Reason</th><th>PnL Ticks</th><th>R</th></tr></thead><tbody>';
+
+      rows.forEach((t) => {
+        html +=
+          "<tr><td>" +
+          t.trade +
+          "</td><td>" +
+          t.side +
+          "</td><td>" +
+          fmtTime(t.entryTime) +
+          "</td><td>" +
+          Number(t.entryPrice).toFixed(5) +
+          "</td><td>" +
+          fmtTime(t.exitTime) +
+          "</td><td>" +
+          Number(t.exitPrice).toFixed(5) +
+          "</td><td>" +
+          t.exitReason +
+          "</td><td>" +
+          Number(t.pnlTicks).toFixed(1) +
+          "</td><td>" +
+          Number(t.pnlR).toFixed(2) +
+          "</td></tr>";
+      });
+
+      html += "</tbody></table></div>";
+      $("btResults").innerHTML = html;
+    }
+
+    function renderVerification(report) {
+      const v = report.verification || {};
+      const show = !showVerificationEl || !!showVerificationEl.checked;
+      if (!show) {
+        verificationEl.textContent = "Verification diagnostics hidden.";
+        return;
+      }
+
+      verificationEl.textContent = JSON.stringify(
+        {
+          rangePreset: v.rangePreset,
+          rangeFrom: fmtTime(v.rangeFrom || 0),
+          rangeTo: fmtTime(v.rangeTo || 0),
+          candlesReceived: v.candlesReceived,
+          candlesClosed: v.candlesClosed,
+          candlesInRange: v.candlesInRange,
+          signalsTotal: v.signalsTotal,
+          signalsInRange: v.signalsInRange,
+          monotonicTime: v.monotonicTime,
+          missingTimeCount: v.missingTimeCount,
+          tradeManagement: report.tradeManagement,
+          params: report.params
+        },
+        null,
+        2
+      );
     }
 
     async function runSelectedStrategyBacktest() {
@@ -169,16 +286,26 @@
             input.instrumentId +
             " tf=" +
             input.timeframeSec +
+            " range=" +
+            input.rangePreset +
             " lookback=" +
             input.lookback +
             " keep=" +
             input.keepN
         );
 
-        const signals = await strategyApi.runSignals(input.strategyId, input);
-        renderSignals(signals, "btResults");
+        const report = await strategyApi.runBacktest(input.strategyId, input);
+        renderSummary(report);
+        renderTrades(report);
+        renderVerification(report);
         setStatus("Done", "ok");
-        log("Backtest done. Found " + signals.length + " signals.");
+        log(
+          "Backtest done. trades=" +
+            ((report.summary && report.summary.totalTrades) || 0) +
+            " winRate=" +
+            Number((report.summary && report.summary.winRate) || 0).toFixed(1) +
+            "%"
+        );
       } catch (e) {
         setStatus("Failed", "bad");
         log("[ERR] " + (e && e.message ? e.message : String(e)));
@@ -202,6 +329,12 @@
       },
       setStatus
     };
+
+    if (showVerificationEl) {
+      showVerificationEl.addEventListener("change", function () {
+        if (!showVerificationEl.checked) verificationEl.textContent = "Verification diagnostics hidden.";
+      });
+    }
   }
 
   function initToolsTab() {
