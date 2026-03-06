@@ -84,6 +84,53 @@
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
     const btnTestCalc = $("btnTestCalc");
+    const btnTestBuyTpSl = $("btnTestBuyTpSl");
+    const btnTestSellTpSl = $("btnTestSellTpSl");
+
+    function readToolTradeInput() {
+      return {
+        instrument: $("toolInstrument") ? $("toolInstrument").value : "NAS100",
+        lots: $("toolLots") ? Number($("toolLots").value) : 0.01,
+        tpTicks: $("toolTpTicks") ? Number($("toolTpTicks").value) : 55,
+        slTicks: $("toolSlTicks") ? Number($("toolSlTicks").value) : 55,
+        tickSize: $("toolTickSize") ? Number($("toolTickSize").value) : 1
+      };
+    }
+
+    async function runEntryTpSlTest(side) {
+      const input = readToolTradeInput();
+
+      // Price refresh before absolute TP/SL calculation
+      try {
+        window.LCPro.MarketData.requestPrices([input.instrument]);
+      } catch (e) {}
+
+      write("Submitting " + side + " test order with entry-then-modify flow...");
+      try {
+        const res = await window.LCPro.Trading.entryThenModify(
+          input.instrument,
+          side,
+          input.lots,
+          input.tpTicks,
+          input.slTicks,
+          input.tickSize
+        );
+        write({
+          action: side + " test order",
+          instrument: input.instrument,
+          lots: input.lots,
+          tpTicks: input.tpTicks,
+          slTicks: input.slTicks,
+          tickSize: input.tickSize,
+          result: res
+        });
+      } catch (e) {
+        write({
+          action: side + " test order",
+          error: e && e.message ? e.message : String(e)
+        });
+      }
+    }
 
     if (btnHealthCheck) {
       btnHealthCheck.addEventListener("click", function () {
@@ -106,6 +153,18 @@
         const tickSize = $("toolTickSize") ? Number($("toolTickSize").value) : 1;
         const calc = window.LCPro.Trading.calcTpSlAbsolute(instrument, side, tpTicks, slTicks, tickSize);
         write(calc);
+      });
+    }
+
+    if (btnTestBuyTpSl) {
+      btnTestBuyTpSl.addEventListener("click", function () {
+        runEntryTpSlTest("BUY");
+      });
+    }
+
+    if (btnTestSellTpSl) {
+      btnTestSellTpSl.addEventListener("click", function () {
+        runEntryTpSlTest("SELL");
       });
     }
   }
