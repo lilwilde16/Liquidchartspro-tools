@@ -199,8 +199,8 @@
   }
 
   function isBetterCandidate(a, b, targetWinRate) {
-    if (!a) return false;
-    if (!b) return true;
+    if (!b) return false;
+    if (!a) return true;
 
     const aScore = scoreTowardTarget(a.summary, targetWinRate);
     const bScore = scoreTowardTarget(b.summary, targetWinRate);
