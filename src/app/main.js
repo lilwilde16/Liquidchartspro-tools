@@ -23,6 +23,93 @@
     };
   }
 
+  function setTab(tabName) {
+    const tabs = ["Home", "Strategy", "Tools"];
+    tabs.forEach((name) => {
+      const tabEl = $("tab" + name);
+      const pageEl = $("page" + name);
+      if (tabEl) tabEl.classList.toggle("active", name === tabName);
+      if (pageEl) pageEl.classList.toggle("hidden", name !== tabName);
+    });
+  }
+
+  function initTabs() {
+    ["Home", "Strategy", "Tools"].forEach((name) => {
+      const tabEl = $("tab" + name);
+      if (tabEl) {
+        tabEl.addEventListener("click", function () {
+          setTab(name);
+        });
+      }
+    });
+  }
+
+  function initStrategyTab() {
+    const strategySelect = $("strategySelect");
+    const strategyInfo = $("strategyInfo");
+    const registry = window.LCPro.Strategy && window.LCPro.Strategy.STRATEGIES;
+
+    if (!strategySelect || !strategyInfo || !registry) return;
+
+    const items = Object.keys(registry).map((k) => registry[k]);
+    strategySelect.innerHTML = items
+      .map((s) => '<option value="' + s.id + '">' + s.name + "</option>")
+      .join("");
+
+    function renderStrategyInfo() {
+      const id = strategySelect.value;
+      const selected = items.find((s) => s.id === id);
+      if (!selected) {
+        strategyInfo.textContent = "No strategy selected.";
+        return;
+      }
+      strategyInfo.textContent = "ID: " + selected.id + " | " + (selected.notes || "No notes");
+    }
+
+    strategySelect.addEventListener("change", renderStrategyInfo);
+    renderStrategyInfo();
+  }
+
+  function initToolsTab() {
+    const out = $("toolsOutput");
+    const write = function (obj) {
+      if (!out) return;
+      try {
+        out.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+      } catch (e) {
+        out.textContent = String(obj);
+      }
+    };
+
+    const btnHealthCheck = $("btnHealthCheck");
+    const btnDumpState = $("btnDumpState");
+    const btnTestCalc = $("btnTestCalc");
+
+    if (btnHealthCheck) {
+      btnHealthCheck.addEventListener("click", function () {
+        write(window.LCPro.Debug.healthCheck());
+      });
+    }
+
+    if (btnDumpState) {
+      btnDumpState.addEventListener("click", function () {
+        write(window.LCPro.Debug.dumpOrderPositionState());
+      });
+    }
+
+    if (btnTestCalc) {
+      btnTestCalc.addEventListener("click", function () {
+        const instrument = $("toolInstrument") ? $("toolInstrument").value : "NAS100";
+        const side = $("toolSide") ? $("toolSide").value : "BUY";
+        const tpTicks = $("toolTpTicks") ? Number($("toolTpTicks").value) : 55;
+        const slTicks = $("toolSlTicks") ? Number($("toolSlTicks").value) : 55;
+        const tickSize = $("toolTickSize") ? Number($("toolTickSize").value) : 1;
+        const calc = window.LCPro.Trading.calcTpSlAbsolute(instrument, side, tpTicks, slTicks, tickSize);
+        write(calc);
+      });
+    }
+  }
+
   function renderSignals(signals) {
     if (!signals.length) {
       $("results").innerHTML = '<div class="small">No signals found. Try increasing lookback or adjusting SMA lengths.</div>';
@@ -126,6 +213,11 @@
     const Framework = window.LCPro.Core.ensureFramework();
     const log = window.LCPro.Debug.createLogger($("log"));
     const setStatus = (text, cls) => window.LCPro.Debug.setStatus($("status"), text, cls);
+
+    initTabs();
+    initStrategyTab();
+    initToolsTab();
+    setTab("Home");
 
     Framework.OnLoad = function () {
       setStatus("Connected", "ok");

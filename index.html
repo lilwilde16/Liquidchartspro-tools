@@ -7,99 +7,167 @@
 <link rel="stylesheet" type="text/css" href="https://pro.liquidcharts.com/css/widget-css"/>
 <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
 <style>
-  body.Widget{ margin:0; font-family:-apple-system, Segoe UI, Roboto, Arial; background:#0d47ff; color:#e9ecff; }
-   #app{ height:100vh; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; box-sizing:border-box; }
-  .card{ background:#0b2ea8; border:1px solid rgba(255,255,255,.22); border-radius:16px; padding:12px; margin-bottom:10px; }
-   .title{ font-size:16px; font-weight:950; margin:0 0 10px 0; }
-   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
-   .field{ flex:1; min-width:160px; }
-   label{ display:block; font-size:12px; opacity:.75; margin:0 0 6px 0; }
-   input,select{
-     width:100%; box-sizing:border-box; padding:11px 12px; font-size:15px;
-     border-radius:14px; border:1px solid rgba(255,255,255,.14);
-     background:rgba(255,255,255,.06); color:#e9ecff; outline:none;
-   }
-   button{
-     padding:11px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.14);
-     background:rgba(255,255,255,.08); color:#e9ecff; font-weight:900; cursor:pointer;
-   }
-   button.primary{ background:#2d6cdf; border-color:rgba(255,255,255,.18); }
-   button:disabled{ opacity:.55; cursor:not-allowed; }
-   .pill{ display:inline-block; padding:7px 10px; border-radius:999px; background:rgba(255,255,255,.08);
-     border:1px solid rgba(255,255,255,.10); font-weight:900; font-size:12px; }
-   .ok{ background:rgba(23,212,122,.16); }
-   .warn{ background:rgba(255,176,32,.16); }
-   .bad{ background:rgba(255,59,59,.16); }
-   #log{
-     background:#05060b; color:#31ff3a; border-radius:14px; border:1px solid rgba(255,255,255,.10);
-     padding:10px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-     white-space:pre-wrap; max-height:35vh; overflow:auto;
-   }
-   table{ width:100%; border-collapse:collapse; font-size:13px; }
-   th, td{ padding:9px 8px; border-bottom:1px solid rgba(255,255,255,.08); text-align:left; }
-   th{ background:rgba(255,255,255,.06); position:sticky; top:0; z-index:2; }
-   .buy{ color:#17d47a; font-weight:950; }
-   .sell{ color:#ff3b3b; font-weight:950; }
-   .small{ font-size:12px; opacity:.75; line-height:1.35; margin-top:6px; }
-   code{ font-family:ui-monospace, Menlo, Consolas, monospace; }
+  body.Widget{ margin:0; font-family:-apple-system, Segoe UI, Roboto, Arial; background:#ffffff; color:#17212f; }
+  #app{ height:100vh; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; box-sizing:border-box; }
+  .tabs{ display:flex; gap:8px; margin-bottom:12px; }
+  .tab{ padding:10px 14px; border-radius:12px; border:1px solid #d6dde8; background:#f4f7fb; color:#1e2a3a; font-weight:700; cursor:pointer; }
+  .tab.active{ background:#2d6cdf; border-color:#2d6cdf; color:#fff; }
+  .page{ display:block; }
+  .page.hidden{ display:none; }
+  .card{ background:#ffffff; border:1px solid #d6dde8; border-radius:16px; padding:12px; margin-bottom:10px; }
+  .title{ font-size:16px; font-weight:950; margin:0 0 10px 0; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  .field{ flex:1; min-width:160px; }
+  label{ display:block; font-size:12px; color:#5b6678; margin:0 0 6px 0; }
+  input,select,textarea{
+    width:100%; box-sizing:border-box; padding:11px 12px; font-size:15px;
+    border-radius:14px; border:1px solid #cfd7e3; background:#fff; color:#17212f; outline:none;
+  }
+  button{
+    padding:11px 12px; border-radius:14px; border:1px solid #cfd7e3;
+    background:#f4f7fb; color:#17212f; font-weight:900; cursor:pointer;
+  }
+  button.primary{ background:#2d6cdf; border-color:#2d6cdf; color:#fff; }
+  button:disabled{ opacity:.55; cursor:not-allowed; }
+  .pill{ display:inline-block; padding:7px 10px; border-radius:999px; background:#f4f7fb;
+    border:1px solid #cfd7e3; font-weight:900; font-size:12px; }
+  .ok{ background:#e8f8ef; }
+  .warn{ background:#fff4df; }
+  .bad{ background:#ffe8e8; }
+  .market-row{ margin-top:8px; }
+  #px{ display:block; min-height:34px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  #log, #toolsOutput{
+    background:#f7f9fc; color:#17212f; border-radius:14px; border:1px solid #d6dde8;
+    padding:10px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    white-space:pre-wrap; max-height:35vh; overflow:auto;
+  }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th, td{ padding:9px 8px; border-bottom:1px solid #e7ecf3; text-align:left; }
+  th{ background:#f4f7fb; position:sticky; top:0; z-index:2; }
+  .buy{ color:#169f5f; font-weight:950; }
+  .sell{ color:#c93434; font-weight:950; }
+  .small{ font-size:12px; color:#5b6678; line-height:1.35; margin-top:6px; }
+  code{ font-family:ui-monospace, Menlo, Consolas, monospace; }
 </style>
 </head>
 <body class="Widget">
 <div id="app">
-<div class="card">
-<div class="title">Backtest - Last 5 MA Crossover Signals</div>
-<div class="row">
-<div class="field">
-<label>Instrument</label>
-<select id="sym">
-<option value="NAS100" selected>NAS100</option>
-<option value="EUR/USD">EUR/USD</option>
-<option value="GBP/USD">GBP/USD</option>
-<option value="USD/JPY">USD/JPY</option>
-</select>
+<div class="tabs">
+  <button id="tabHome" class="tab active" type="button">Home</button>
+  <button id="tabStrategy" class="tab" type="button">Strategy</button>
+  <button id="tabTools" class="tab" type="button">Tools</button>
 </div>
-<div class="field">
-<label>Timeframe</label>
-<select id="tfSec">
-<option value="60">M1</option>
-<option value="300">M5</option>
-<option value="900" selected>M15</option>
-<option value="1800">M30</option>
-<option value="3600">H1</option>
-</select>
+
+<div id="pageHome" class="page">
+  <div class="card">
+    <div class="title">Backtest - Last 5 MA Crossover Signals</div>
+    <div class="row">
+      <div class="field">
+        <label>Instrument</label>
+        <select id="sym">
+          <option value="NAS100" selected>NAS100</option>
+          <option value="EUR/USD">EUR/USD</option>
+          <option value="GBP/USD">GBP/USD</option>
+          <option value="USD/JPY">USD/JPY</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Timeframe</label>
+        <select id="tfSec">
+          <option value="60">M1</option>
+          <option value="300">M5</option>
+          <option value="900" selected>M15</option>
+          <option value="1800">M30</option>
+          <option value="3600">H1</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Lookback candles (pull)</label>
+        <input id="lookback" type="number" min="200" max="5000" value="900" />
+      </div>
+      <div class="field">
+        <label>Fast SMA</label>
+        <input id="fastLen" type="number" min="2" max="300" value="9" />
+      </div>
+      <div class="field">
+        <label>Slow SMA</label>
+        <input id="slowLen" type="number" min="3" max="500" value="21" />
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button id="btnRun" class="primary" disabled>Run (Last 5 Signals)</button>
+      <button id="btnDumpCandle" disabled>Dump Sample Candle</button>
+      <button id="btnClearLog" disabled>Clear Log</button>
+      <span class="pill" id="status">Loading...</span>
+    </div>
+    <div class="market-row">
+      <span class="pill" id="px">bid/ask: ...</span>
+    </div>
+    <div class="small">
+      Uses historical candles from <code>Framework.pRequestCandles</code> or <code>Framework.RequestCandles</code>.<br>
+      Uses <b>closed candles only</b> (skips the forming bar at index 0). Signals are detected on closed candles.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="title">Results</div>
+    <div id="results" class="small">Run the backtest to see the last 5 crossover signals.</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Log</div>
+    <div id="log"></div>
+  </div>
 </div>
-<div class="field">
-<label>Lookback candles (pull)</label>
-<input id="lookback" type="number" min="200" max="5000" value="900" />
+
+<div id="pageStrategy" class="page hidden">
+  <div class="card">
+    <div class="title">Strategy</div>
+    <div class="row">
+      <div class="field">
+        <label>Select strategy</label>
+        <select id="strategySelect"></select>
+      </div>
+    </div>
+    <div id="strategyInfo" class="small">No strategy selected.</div>
+  </div>
 </div>
-<div class="field">
-<label>Fast SMA</label>
-<input id="fastLen" type="number" min="2" max="300" value="9" />
-</div>
-<div class="field">
-<label>Slow SMA</label>
-<input id="slowLen" type="number" min="3" max="500" value="21" />
-</div>
-</div>
-<div class="row" style="margin-top:10px;">
-<button id="btnRun" class="primary" disabled>Run (Last 5 Signals)</button>
-<button id="btnDumpCandle" disabled>Dump Sample Candle</button>
-<button id="btnClearLog" disabled>Clear Log</button>
-<span class="pill" id="status">Loading...</span>
-<span class="pill" id="px">bid/ask: ...</span>
-</div>
-<div class="small">
-     Uses historical candles from <code>Framework.pRequestCandles</code> or <code>Framework.RequestCandles</code>.<br>
-     Uses <b>closed candles only</b> (skips the forming bar at index 0). Signals are detected on closed candles.
-</div>
-</div>
-<div class="card">
-<div class="title">Results</div>
-<div id="results" class="small">Run the backtest to see the last 5 crossover signals.</div>
-</div>
-<div class="card">
-<div class="title">Log</div>
-<div id="log"></div>
+
+<div id="pageTools" class="page hidden">
+  <div class="card">
+    <div class="title">Tools</div>
+    <div class="row">
+      <button id="btnHealthCheck" type="button">Health Check</button>
+      <button id="btnDumpState" type="button">Dump Orders/Positions</button>
+      <button id="btnTestCalc" type="button">Test TP/SL Calc</button>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field">
+        <label>Instrument</label>
+        <input id="toolInstrument" type="text" value="NAS100" />
+      </div>
+      <div class="field">
+        <label>Side</label>
+        <select id="toolSide">
+          <option value="BUY">BUY</option>
+          <option value="SELL">SELL</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>TP Ticks</label>
+        <input id="toolTpTicks" type="number" value="55" />
+      </div>
+      <div class="field">
+        <label>SL Ticks</label>
+        <input id="toolSlTicks" type="number" value="55" />
+      </div>
+      <div class="field">
+        <label>Tick Size</label>
+        <input id="toolTickSize" type="number" value="1" step="0.0001" />
+      </div>
+    </div>
+    <pre id="toolsOutput">Tools output...</pre>
+  </div>
 </div>
 </div>
 <script src="./src/core/framework.js"></script>
