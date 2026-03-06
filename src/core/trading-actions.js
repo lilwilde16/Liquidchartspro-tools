@@ -161,6 +161,37 @@
     return out;
   }
 
+  async function closeAllPositions() {
+    const positions = getPositionDict();
+    const instrumentIds = Object.keys(positions);
+    const out = [];
+
+    for (let i = 0; i < instrumentIds.length; i++) {
+      const instrumentId = instrumentIds[i];
+      const res = await closeAllOnInstrument(instrumentId);
+      out.push({ instrumentId, result: res });
+    }
+
+    return out;
+  }
+
+  async function closeOrderById(orderId) {
+    const id = String(orderId);
+    const order = getOrder(id);
+    const payload = {
+      tradingAction: orderType("CLOSETRADE", 4),
+      orderId: id
+    };
+
+    if (order) {
+      const instrumentId = order.instrumentId || order.instrument;
+      if (instrumentId) payload.instrumentId = instrumentId;
+    }
+
+    const response = await sendOrder(payload);
+    return { payload, response };
+  }
+
   LCPro.Trading = {
     openDealTicket,
     sendOrder,
@@ -173,6 +204,8 @@
     getOrder,
     modifyOrderTpSl,
     entryThenModify,
-    closeAllOnInstrument
+    closeAllOnInstrument,
+    closeAllPositions,
+    closeOrderById
   };
 })();

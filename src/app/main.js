@@ -86,9 +86,13 @@
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
+    const btnRefreshOrders = $("btnRefreshOrders");
     const btnTestCalc = $("btnTestCalc");
     const btnTestBuyTpSl = $("btnTestBuyTpSl");
     const btnTestSellTpSl = $("btnTestSellTpSl");
+    const btnCloseAllPositions = $("btnCloseAllPositions");
+    const btnCloseOrderById = $("btnCloseOrderById");
+    const toolOrderId = $("toolOrderId");
 
     function readToolTradeInput() {
       return {
@@ -137,6 +141,35 @@
       }
     }
 
+    function refreshOrderDropdown() {
+      if (!toolOrderId) return;
+
+      let orders = {};
+      try {
+        orders = window.LCPro.Trading.getOrderDict();
+      } catch (e) {
+        toolOrderId.innerHTML = '<option value="">-- Orders unavailable --</option>';
+        return;
+      }
+
+      const ids = Object.keys(orders);
+      if (!ids.length) {
+        toolOrderId.innerHTML = '<option value="">-- No open orders --</option>';
+        return;
+      }
+
+      const prev = toolOrderId.value;
+      const opts = ['<option value="">-- Select order --</option>'];
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        const o = orders[id] || {};
+        const instrument = o.instrumentId || o.instrument || "Unknown";
+        opts.push('<option value="' + id + '">' + instrument + " | #" + id + "</option>");
+      }
+      toolOrderId.innerHTML = opts.join("");
+      if (prev && ids.indexOf(prev) >= 0) toolOrderId.value = prev;
+    }
+
     if (btnHealthCheck) {
       btnHealthCheck.addEventListener("click", function () {
         write(window.LCPro.Debug.healthCheck());
@@ -146,6 +179,14 @@
     if (btnDumpState) {
       btnDumpState.addEventListener("click", function () {
         write(window.LCPro.Debug.dumpOrderPositionState());
+        refreshOrderDropdown();
+      });
+    }
+
+    if (btnRefreshOrders) {
+      btnRefreshOrders.addEventListener("click", function () {
+        refreshOrderDropdown();
+        write("Order dropdown refreshed.");
       });
     }
 
@@ -176,6 +217,40 @@
       btnTestSellTpSl.addEventListener("click", onSellClick);
       btnTestSellTpSl.onclick = onSellClick;
     }
+
+    if (btnCloseAllPositions) {
+      btnCloseAllPositions.addEventListener("click", async function () {
+        write("Closing all open positions...");
+        try {
+          const res = await window.LCPro.Trading.closeAllPositions();
+          write({ action: "close_all_positions", result: res });
+          refreshOrderDropdown();
+        } catch (e) {
+          write({ action: "close_all_positions", error: e && e.message ? e.message : String(e) });
+        }
+      });
+    }
+
+    if (btnCloseOrderById) {
+      btnCloseOrderById.addEventListener("click", async function () {
+        const id = toolOrderId ? toolOrderId.value : "";
+        if (!id) {
+          write("Select an order id first.");
+          return;
+        }
+        write("Closing selected order id #" + id + " ...");
+        try {
+          const res = await window.LCPro.Trading.closeOrderById(id);
+          write({ action: "close_order_by_id", orderId: id, result: res });
+          refreshOrderDropdown();
+        } catch (e) {
+          write({ action: "close_order_by_id", orderId: id, error: e && e.message ? e.message : String(e) });
+        }
+      });
+    }
+
+    refreshOrderDropdown();
+    setInterval(refreshOrderDropdown, 5000);
   }
 
   function renderSignals(signals) {
