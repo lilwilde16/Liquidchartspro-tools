@@ -90,6 +90,7 @@
     const btnTestCalc = $("btnTestCalc");
     const btnTestBuyTpSl = $("btnTestBuyTpSl");
     const btnTestSellTpSl = $("btnTestSellTpSl");
+    const btnChangeTpSlSelected = $("btnChangeTpSlSelected");
     const btnCloseAllPositions = $("btnCloseAllPositions");
     const btnCloseOrderById = $("btnCloseOrderById");
     const toolOrderId = $("toolOrderId");
@@ -98,13 +99,26 @@
       return {
         instrument: $("toolInstrument") ? $("toolInstrument").value : "NAS100",
         lots: $("toolLots") ? Number($("toolLots").value) : 0.01,
+        side: $("toolSide") ? $("toolSide").value : "BUY",
         tpTicks: $("toolTpTicks") ? Number($("toolTpTicks").value) : 55,
         slTicks: $("toolSlTicks") ? Number($("toolSlTicks").value) : 55,
         tickSize: $("toolTickSize") ? Number($("toolTickSize").value) : 1
       };
     }
 
-    async function runEntryTpSlTest(side) {
+    function inferOrderSide(orderRaw, fallbackSide) {
+      if (!orderRaw || typeof orderRaw !== "object") return fallbackSide;
+      const dir = String(orderRaw.direction || orderRaw.side || "").toUpperCase();
+      if (dir === "BUY" || dir === "LONG") return "BUY";
+      if (dir === "SELL" || dir === "SHORT") return "SELL";
+
+      const action = Number(orderRaw.tradingAction || orderRaw.orderType || NaN);
+      if (action === 1) return "BUY";
+      if (action === 2) return "SELL";
+      return fallbackSide;
+    }
+
+    async function runEntryWithTpSlTest(side) {
       const input = readToolTradeInput();
 
       // Price refresh before absolute TP/SL calculation
@@ -112,11 +126,11 @@
         window.LCPro.MarketData.requestPrices([input.instrument]);
       } catch (e) {}
 
-      write("Submitting " + side + " test order with entry-then-modify flow...");
+      write("Submitting " + side + " entry with TP/SL in payload...");
       try {
         // Ensure framework exists at click time so failures are visible to user.
         window.LCPro.Core.ensureFramework();
-        const res = await window.LCPro.Trading.entryThenModify(
+        const res = await window.LCPro.Trading.sendMarketOrderWithTpSl(
           input.instrument,
           side,
           input.lots,
@@ -125,7 +139,7 @@
           input.tickSize
         );
         write({
-          action: side + " test order",
+          action: side + " entry_with_tpsl",
           instrument: input.instrument,
           lots: input.lots,
           tpTicks: input.tpTicks,
@@ -133,9 +147,56 @@
           tickSize: input.tickSize,
           result: res
         });
+        setTimeout(refreshOrderDropdown, 700);
       } catch (e) {
         write({
-          action: side + " test order",
+          action: side + " entry_with_tpsl",
+          error: e && e.message ? e.message : String(e)
+        });
+      }
+    }
+
+    async function changeTpSlSelectedOrder() {
+      const input = readToolTradeInput();
+      const id = toolOrderId ? toolOrderId.value : "";
+      if (!id) {
+        write("Select an order id first.");
+        return;
+      }
+
+      try {
+        window.LCPro.Core.ensureFramework();
+        const orderRaw = window.LCPro.Trading.getOrder(id);
+        const instrument =
+          (orderRaw && (orderRaw.instrumentId || orderRaw.instrument || orderRaw.symbol)) || input.instrument;
+        const side = inferOrderSide(orderRaw, input.side || "BUY");
+
+        const calc = window.LCPro.Trading.calcTpSlAbsolute(
+          instrument,
+          side,
+          input.tpTicks,
+          input.slTicks,
+          input.tickSize
+        );
+        if (!calc.ok) {
+          write({ action: "change_tpsl_selected", orderId: id, reason: calc.reason });
+          return;
+        }
+
+        const mod = await window.LCPro.Trading.modifyOrderTpSl(id, calc.tp, calc.sl);
+        write({
+          action: "change_tpsl_selected",
+          orderId: id,
+          instrument,
+          side,
+          tp: calc.tp,
+          sl: calc.sl,
+          result: mod
+        });
+      } catch (e) {
+        write({
+          action: "change_tpsl_selected",
+          orderId: id,
           error: e && e.message ? e.message : String(e)
         });
       }
@@ -203,7 +264,7 @@
 
     if (btnTestBuyTpSl) {
       const onBuyClick = function () {
-        runEntryTpSlTest("BUY");
+        runEntryWithTpSlTest("BUY");
       };
       btnTestBuyTpSl.addEventListener("click", onBuyClick);
       btnTestBuyTpSl.onclick = onBuyClick;
@@ -211,10 +272,16 @@
 
     if (btnTestSellTpSl) {
       const onSellClick = function () {
-        runEntryTpSlTest("SELL");
+        runEntryWithTpSlTest("SELL");
       };
       btnTestSellTpSl.addEventListener("click", onSellClick);
       btnTestSellTpSl.onclick = onSellClick;
+    }
+
+    if (btnChangeTpSlSelected) {
+      btnChangeTpSlSelected.addEventListener("click", function () {
+        changeTpSlSelectedOrder();
+      });
     }
 
     if (btnCloseAllPositions) {
