@@ -4,6 +4,7 @@
   const LCPro = (window.LCPro = window.LCPro || {});
   const Core = LCPro.Core || {};
   const MarketData = LCPro.MarketData || {};
+  let entryModifyInFlight = false;
 
   function orderType(name, fallback) {
     const t = window.Liquid && window.Liquid.OrderTypes;
@@ -161,40 +162,53 @@
   }
 
   async function entryThenModify(instrumentId, side, lots, tpTicks, slTicks, tickSize, timeoutMs) {
-    const before = new Set(listOpenOrderIds());
-    const entryResponse = await sendMarketOrder(instrumentId, side, lots);
+    if (entryModifyInFlight) {
+      return { ok: false, reason: "Entry/modify already in progress" };
+    }
 
-    const deadline = Date.now() + (Number(timeoutMs) || 8000);
-    let newId = null;
+    entryModifyInFlight = true;
+    try {
+      const before = new Set(listOpenOrderIds());
+      const entryResponse = await sendMarketOrder(instrumentId, side, lots);
 
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 250));
-      const nowIds = listOpenOrderIds();
-      for (let i = 0; i < nowIds.length; i++) {
-        if (!before.has(nowIds[i])) {
-          newId = nowIds[i];
-          break;
+      // Prefer broker-returned id first for immediate modify.
+      let newId = entryResponse && (entryResponse.orderId || entryResponse.id || entryResponse.ticket || null);
+      if (newId) newId = String(newId);
+
+      if (!newId) {
+        const deadline = Date.now() + (Number(timeoutMs) || 8000);
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 250));
+          const nowIds = listOpenOrderIds();
+          for (let i = 0; i < nowIds.length; i++) {
+            if (!before.has(nowIds[i])) {
+              newId = nowIds[i];
+              break;
+            }
+          }
+          if (newId) break;
         }
       }
-      if (newId) break;
+
+      if (!newId) {
+        return { ok: false, reason: "No new orderId detected after entry", entryResponse };
+      }
+
+      const p = calcTpSlAbsolute(instrumentId, side, tpTicks, slTicks, tickSize);
+      if (!p.ok) return { ok: false, reason: p.reason, entryResponse, orderId: newId };
+
+      const modify = await modifyOrderTpSl(newId, p.tp, p.sl);
+      return {
+        ok: true,
+        orderId: newId,
+        entryResponse,
+        tp: p.tp,
+        sl: p.sl,
+        modifyResponse: modify.response
+      };
+    } finally {
+      entryModifyInFlight = false;
     }
-
-    if (!newId) {
-      return { ok: false, reason: "No new orderId detected after entry", entryResponse };
-    }
-
-    const p = calcTpSlAbsolute(instrumentId, side, tpTicks, slTicks, tickSize);
-    if (!p.ok) return { ok: false, reason: p.reason, entryResponse, orderId: newId };
-
-    const modify = await modifyOrderTpSl(newId, p.tp, p.sl);
-    return {
-      ok: true,
-      orderId: newId,
-      entryResponse,
-      tp: p.tp,
-      sl: p.sl,
-      modifyResponse: modify.response
-    };
   }
 
   async function closeAllOnInstrument(instrumentId) {

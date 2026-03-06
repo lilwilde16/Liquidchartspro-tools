@@ -227,6 +227,7 @@
     const btnCloseAllPositions = $("btnCloseAllPositions");
     const btnCloseOrderById = $("btnCloseOrderById");
     const toolOrderId = $("toolOrderId");
+    let entrySubmitInFlight = false;
 
     function readToolTradeInput() {
       return {
@@ -252,6 +253,12 @@
     }
 
     async function runEntryWithTpSlTest(side) {
+      if (entrySubmitInFlight) {
+        write("Entry already in progress. Please wait.");
+        return;
+      }
+      entrySubmitInFlight = true;
+
       const input = readToolTradeInput();
 
       // Price refresh before absolute TP/SL calculation
@@ -286,6 +293,8 @@
           action: side + " entry_then_change_101",
           error: e && e.message ? e.message : String(e)
         });
+      } finally {
+        entrySubmitInFlight = false;
       }
     }
 
