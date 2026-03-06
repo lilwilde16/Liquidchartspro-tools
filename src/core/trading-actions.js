@@ -79,12 +79,74 @@
   }
 
   function listOpenOrderIds() {
-    return Object.keys(getOrderDict());
+    return listOpenOrdersDetailed().map((o) => String(o.orderId)).filter(Boolean);
   }
 
   function getOrder(orderId) {
+    const target = String(orderId);
+    const all = listOpenOrdersDetailed();
+    for (let i = 0; i < all.length; i++) {
+      if (String(all[i].orderId) === target) return all[i].raw;
+    }
+    return null;
+  }
+
+  function collectDictKeys(dict) {
+    const set = new Set();
+    if (!dict) return [];
+    try {
+      Object.keys(dict).forEach((k) => set.add(k));
+      Object.getOwnPropertyNames(dict).forEach((k) => set.add(k));
+      for (const k in dict) set.add(k);
+    } catch (e) {
+      return [];
+    }
+    return Array.from(set);
+  }
+
+  function listOpenOrdersDetailed() {
     const d = getOrderDict();
-    return d[String(orderId)] || null;
+    const keys = collectDictKeys(d);
+    const out = [];
+
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      const o = d[k];
+      if (!o || typeof o !== "object") continue;
+      const orderId = o.orderId || o.id || o.ticket || k;
+      const instrumentId = o.instrumentId || o.instrument || o.symbol || "";
+      out.push({ orderId: String(orderId), instrumentId: String(instrumentId || ""), raw: o });
+    }
+
+    // Dedupe by order id in case keys/properties overlap
+    const seen = new Set();
+    return out.filter((x) => {
+      if (seen.has(x.orderId)) return false;
+      seen.add(x.orderId);
+      return true;
+    });
+  }
+
+  function listOpenPositionsDetailed() {
+    const d = getPositionDict();
+    const keys = collectDictKeys(d);
+    const out = [];
+
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      const p = d[k];
+      if (!p || typeof p !== "object") continue;
+      const instrumentId = p.instrumentId || p.instrument || p.symbol || k;
+      out.push({ instrumentId: String(instrumentId || ""), raw: p });
+    }
+
+    const seen = new Set();
+    return out.filter((x) => {
+      if (!x.instrumentId) return false;
+      if (seen.has(x.instrumentId)) return false;
+      seen.add(x.instrumentId);
+      return true;
+    });
   }
 
   async function modifyOrderTpSl(orderId, tpAbs, slAbs) {
@@ -162,8 +224,17 @@
   }
 
   async function closeAllPositions() {
-    const positions = getPositionDict();
-    const instrumentIds = Object.keys(positions);
+    const instrumentIds = listOpenPositionsDetailed().map((p) => p.instrumentId);
+    if (!instrumentIds.length) {
+      // Fallback to instruments inferred from open orders.
+      const fromOrders = listOpenOrdersDetailed()
+        .map((o) => o.instrumentId)
+        .filter(Boolean);
+      for (let i = 0; i < fromOrders.length; i++) {
+        if (instrumentIds.indexOf(fromOrders[i]) < 0) instrumentIds.push(fromOrders[i]);
+      }
+    }
+
     const out = [];
 
     for (let i = 0; i < instrumentIds.length; i++) {
@@ -188,8 +259,21 @@
       if (instrumentId) payload.instrumentId = instrumentId;
     }
 
-    const response = await sendOrder(payload);
-    return { payload, response };
+    try {
+      const response = await sendOrder(payload);
+      return { payload, response, fallbackUsed: false };
+    } catch (e) {
+      // If direct close-by-id fails, fallback to closing both sides on this instrument.
+      const instrumentId = payload.instrumentId || (order && (order.instrumentId || order.instrument));
+      if (!instrumentId) throw e;
+      const fallback = await closeAllOnInstrument(String(instrumentId));
+      return {
+        payload,
+        response: { error: e.message || String(e) },
+        fallbackUsed: true,
+        fallback
+      };
+    }
   }
 
   LCPro.Trading = {
@@ -201,6 +285,8 @@
     getOrderDict,
     getPositionDict,
     listOpenOrderIds,
+    listOpenOrdersDetailed,
+    listOpenPositionsDetailed,
     getOrder,
     modifyOrderTpSl,
     entryThenModify,

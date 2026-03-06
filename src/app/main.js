@@ -144,30 +144,29 @@
     function refreshOrderDropdown() {
       if (!toolOrderId) return;
 
-      let orders = {};
+      let orders = [];
       try {
-        orders = window.LCPro.Trading.getOrderDict();
+        orders = window.LCPro.Trading.listOpenOrdersDetailed();
       } catch (e) {
         toolOrderId.innerHTML = '<option value="">-- Orders unavailable --</option>';
         return;
       }
 
-      const ids = Object.keys(orders);
-      if (!ids.length) {
+      if (!orders.length) {
         toolOrderId.innerHTML = '<option value="">-- No open orders --</option>';
         return;
       }
 
       const prev = toolOrderId.value;
       const opts = ['<option value="">-- Select order --</option>'];
-      for (let i = 0; i < ids.length; i++) {
-        const id = ids[i];
-        const o = orders[id] || {};
-        const instrument = o.instrumentId || o.instrument || "Unknown";
+      for (let i = 0; i < orders.length; i++) {
+        const id = String(orders[i].orderId || "");
+        const instrument = orders[i].instrumentId || "Unknown";
+        if (!id) continue;
         opts.push('<option value="' + id + '">' + instrument + " | #" + id + "</option>");
       }
       toolOrderId.innerHTML = opts.join("");
-      if (prev && ids.indexOf(prev) >= 0) toolOrderId.value = prev;
+      if (prev && orders.some((o) => String(o.orderId) === prev)) toolOrderId.value = prev;
     }
 
     if (btnHealthCheck) {
