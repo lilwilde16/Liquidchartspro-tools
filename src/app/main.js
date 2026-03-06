@@ -111,9 +111,13 @@
     const rangePresetEl = $("btRangePreset");
     const summaryEl = $("btSummary");
     const verificationEl = $("btVerification");
+    const optimizerReportEl = $("btOptimizerReport");
     const showVerificationEl = $("btShowVerification");
     const btnRun = $("btnRunStrategyBacktest");
+    const btnOptimize = $("btnOptimizeBacktest");
     const btnReset = $("btnResetBtParams");
+    const targetWinRateEl = $("btTargetWinRate");
+    const maxCandidatesEl = $("btMaxCandidates");
     const statusEl = $("btStatus");
     const log = window.LCPro.Debug.createLogger($("btLog"));
     const setStatus = (text, cls) => window.LCPro.Debug.setStatus(statusEl, text, cls);
@@ -128,8 +132,12 @@
       !rangePresetEl ||
       !summaryEl ||
       !verificationEl ||
+      !optimizerReportEl ||
       !btnRun ||
+      !btnOptimize ||
       !btnReset ||
+      !targetWinRateEl ||
+      !maxCandidatesEl ||
       !registry
     )
       return;
@@ -275,6 +283,10 @@
       );
     }
 
+    function renderOptimizerReport(text) {
+      optimizerReportEl.textContent = text || "No optimizer output yet.";
+    }
+
     async function runSelectedStrategyBacktest() {
       setStatus("Running...", "warn");
       try {
@@ -312,10 +324,62 @@
       }
     }
 
+    async function runOptimizer() {
+      setStatus("Optimizing...", "warn");
+      renderOptimizerReport("Optimizer running...");
+
+      try {
+        const input = getBacktestInputs();
+        const targetWinRate = Number(targetWinRateEl.value || 60);
+        const maxCandidates = Number(maxCandidatesEl.value || 120);
+
+        log(
+          "Optimizer run: " +
+            input.strategyId +
+            " targetWinRate=" +
+            targetWinRate +
+            " maxCandidates=" +
+            maxCandidates
+        );
+
+        const result = await strategyApi.optimizeBacktest(input.strategyId, input, {
+          targetWinRate,
+          maxCandidates
+        });
+
+        paramsInput.value = JSON.stringify(result.bestParams || {}, null, 0);
+        tradeMgmtInput.value = JSON.stringify(result.bestTradeManagement || {}, null, 0);
+
+        if (result.best) {
+          renderSummary(result.best);
+          renderTrades(result.best);
+          renderVerification(result.best);
+        }
+
+        renderOptimizerReport(result.explanation || "Optimizer completed.");
+        setStatus("Optimized", "ok");
+        log(
+          "Optimizer done. evaluated=" +
+            Number(result.evaluated || 0) +
+            " baselineWinRate=" +
+            Number((result.baseline && result.baseline.summary && result.baseline.summary.winRate) || 0).toFixed(1) +
+            "% optimizedWinRate=" +
+            Number((result.best && result.best.summary && result.best.summary.winRate) || 0).toFixed(1) +
+            "%"
+        );
+      } catch (e) {
+        setStatus("Optimize failed", "bad");
+        const msg = e && e.message ? e.message : String(e);
+        renderOptimizerReport("Optimizer failed:\n" + msg);
+        log("[ERR] Optimizer failed: " + msg);
+      }
+    }
+
     strategySelect.addEventListener("change", function () {
       resetParamsToDefault();
     });
     btnRun.addEventListener("click", runSelectedStrategyBacktest);
+    btnOptimize.addEventListener("click", runOptimizer);
     btnReset.addEventListener("click", resetParamsToDefault);
 
     updateStrategyInfo();
@@ -326,6 +390,7 @@
       resetParams: resetParamsToDefault,
       setEnabled: function (enabled) {
         btnRun.disabled = !enabled;
+        btnOptimize.disabled = !enabled;
       },
       setStatus
     };

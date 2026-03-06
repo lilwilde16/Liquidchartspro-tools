@@ -64,17 +64,12 @@
     return { fromMs: 0, toMs: end };
   }
 
-  async function buildSmaSignalSet(input) {
-    const instrumentId = input.instrumentId;
-    const timeframeSec = Number(input.timeframeSec);
-    const pullCount = Number(input.lookback);
-    const fastN = Number(input.fastLen);
-    const slowN = Number(input.slowLen);
-    const keepN = Number(input.keepN || 5);
-    const rangePreset = input.rangePreset || "week";
+  function buildSmaSignalSetFromCandles(candles, options) {
+    const fastN = Number(options.fastLen);
+    const slowN = Number(options.slowLen);
+    const keepN = Number(options.keepN || 5);
+    const rangePreset = options.rangePreset || "week";
 
-    const msg = await MarketData.requestCandles(instrumentId, timeframeSec, pullCount);
-    const candles = msg && msg.candles ? msg.candles : null;
     if (!candles || candles.length < slowN + 50) {
       return {
         ok: true,
@@ -154,11 +149,31 @@
     };
   }
 
+  async function buildSmaSignalSet(input) {
+    const instrumentId = input.instrumentId;
+    const timeframeSec = Number(input.timeframeSec);
+    const pullCount = Number(input.lookback);
+    const fastN = Number(input.fastLen);
+    const slowN = Number(input.slowLen);
+    const keepN = Number(input.keepN || 5);
+    const rangePreset = input.rangePreset || "week";
+
+    const msg = await MarketData.requestCandles(instrumentId, timeframeSec, pullCount);
+    const candles = msg && msg.candles ? msg.candles : null;
+    return buildSmaSignalSetFromCandles(candles, {
+      fastLen: fastN,
+      slowLen: slowN,
+      keepN,
+      rangePreset
+    });
+  }
+
   LCPro.Backtest = {
     sma,
     lastCrossSignals,
     candleTimeMs,
     getRangeWindowMs,
-    buildSmaSignalSet
+    buildSmaSignalSet,
+    buildSmaSignalSetFromCandles
   };
 })();

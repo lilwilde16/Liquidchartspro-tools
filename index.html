@@ -36,7 +36,7 @@
   .bad{ background:#ffe8e8; }
   .market-row{ margin-top:8px; }
   #px{ display:block; min-height:34px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
-  #log, #toolsOutput, #btVerification, #btLog{
+  #log, #toolsOutput, #btVerification, #btLog, #btOptimizerReport{
     background:#f7f9fc; color:#17212f; border-radius:14px; border:1px solid #d6dde8;
     padding:10px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
     white-space:pre-wrap; max-height:35vh; overflow:auto;
@@ -190,6 +190,7 @@
     </div>
     <div class="row" style="margin-top:10px;">
       <button id="btnRunStrategyBacktest" class="primary" type="button" disabled>Run Strategy Backtest</button>
+      <button id="btnOptimizeBacktest" type="button" disabled>Optimize To Target Win Rate</button>
       <button id="btnResetBtParams" type="button">Reset Params</button>
       <span class="pill" id="btStatus">Waiting...</span>
       <label style="display:flex;align-items:center;gap:6px;margin:0;">
@@ -197,7 +198,22 @@
         Show verification diagnostics
       </label>
     </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field">
+        <label>Target Win Rate (%)</label>
+        <input id="btTargetWinRate" type="number" min="1" max="99" step="0.1" value="60" />
+      </div>
+      <div class="field">
+        <label>Max Candidates</label>
+        <input id="btMaxCandidates" type="number" min="10" max="300" step="1" value="120" />
+      </div>
+    </div>
     <div id="btInfo" class="small">Choose a strategy and run.</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Optimizer Report</div>
+    <pre id="btOptimizerReport">Run optimizer to get suggested parameter changes and why they were selected.</pre>
   </div>
 
   <div class="card">
