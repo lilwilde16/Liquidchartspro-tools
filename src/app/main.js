@@ -252,6 +252,12 @@
       return fallbackSide;
     }
 
+    function inferOrderSideLabel(orderRaw) {
+      const side = inferOrderSide(orderRaw, "");
+      if (side === "BUY" || side === "SELL") return side;
+      return "UNKNOWN";
+    }
+
     async function runEntryWithTpSlTest(side) {
       if (entrySubmitInFlight) {
         write("Entry already in progress. Please wait.");
@@ -365,8 +371,9 @@
       for (let i = 0; i < orders.length; i++) {
         const id = String(orders[i].orderId || "");
         const instrument = orders[i].instrumentId || "Unknown";
+        const side = inferOrderSideLabel(orders[i].raw);
         if (!id) continue;
-        opts.push('<option value="' + id + '">' + instrument + " | #" + id + "</option>");
+        opts.push('<option value="' + id + '">' + instrument + " | " + side + " | #" + id + "</option>");
       }
       toolOrderId.innerHTML = opts.join("");
       if (prev && orders.some((o) => String(o.orderId) === prev)) toolOrderId.value = prev;
