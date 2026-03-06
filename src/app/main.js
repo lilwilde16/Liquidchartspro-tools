@@ -240,7 +240,12 @@
         write("Closing selected order id #" + id + " ...");
         try {
           const res = await window.LCPro.Trading.closeOrderById(id);
-          write({ action: "close_order_by_id", orderId: id, result: res });
+          write({
+            action: "close_order_by_id",
+            orderId: id,
+            usedFallback: !!(res && res.fallbackUsed),
+            result: res
+          });
           refreshOrderDropdown();
         } catch (e) {
           write({ action: "close_order_by_id", orderId: id, error: e && e.message ? e.message : String(e) });

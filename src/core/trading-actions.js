@@ -249,31 +249,64 @@
   async function closeOrderById(orderId) {
     const id = String(orderId);
     const order = getOrder(id);
-    const payload = {
-      tradingAction: orderType("CLOSETRADE", 4),
-      orderId: id
-    };
+    const instrumentId = order && (order.instrumentId || order.instrument || order.symbol || "");
+    const entryPrice = Number(
+      (order && (order.entryPrice || order.openPrice || order.price || order.rate || order.open)) || NaN
+    );
 
-    if (order) {
-      const instrumentId = order.instrumentId || order.instrument;
-      if (instrumentId) payload.instrumentId = instrumentId;
+    const attempts = [];
+    const closeTradeAction = orderType("CLOSETRADE", 4);
+
+    // Some brokers require extra fields (like entry/close price) for close-by-id.
+    const payloads = [];
+
+    const p1 = { tradingAction: closeTradeAction, orderId: id };
+    if (instrumentId) p1.instrumentId = String(instrumentId);
+    payloads.push(p1);
+
+    if (Number.isFinite(entryPrice) && entryPrice > 0) {
+      const p2 = { tradingAction: closeTradeAction, orderId: id };
+      if (instrumentId) p2.instrumentId = String(instrumentId);
+      p2.entryPrice = entryPrice;
+      p2.price = entryPrice;
+      payloads.push(p2);
     }
 
-    try {
-      const response = await sendOrder(payload);
-      return { payload, response, fallbackUsed: false };
-    } catch (e) {
-      // If direct close-by-id fails, fallback to closing both sides on this instrument.
-      const instrumentId = payload.instrumentId || (order && (order.instrumentId || order.instrument));
-      if (!instrumentId) throw e;
+    for (let i = 0; i < payloads.length; i++) {
+      const payload = payloads[i];
+      try {
+        const response = await sendOrder(payload);
+        attempts.push({ payload, response });
+        if (
+          response &&
+          (response.okay === true || response.success === true || response.code === 0 || response.ResultCode === 0)
+        ) {
+          return { ok: true, fallbackUsed: false, payload, response, attempts };
+        }
+      } catch (e) {
+        attempts.push({ payload, error: e.message || String(e) });
+      }
+    }
+
+    // Fallback: close by side on selected instrument.
+    if (instrumentId) {
       const fallback = await closeAllOnInstrument(String(instrumentId));
       return {
-        payload,
-        response: { error: e.message || String(e) },
+        ok: true,
         fallbackUsed: true,
+        reason: "Direct close-by-id did not succeed; used instrument side close fallback.",
+        instrumentId: String(instrumentId),
+        attempts,
         fallback
       };
     }
+
+    return {
+      ok: false,
+      fallbackUsed: false,
+      reason: "Unable to close selected order. Missing instrument context and close-by-id variants failed.",
+      attempts
+    };
   }
 
   LCPro.Trading = {
