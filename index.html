@@ -55,6 +55,7 @@
 <div class="tabs">
   <button id="tabHome" class="tab active" type="button">Home</button>
   <button id="tabStrategy" class="tab" type="button">Strategy</button>
+  <button id="tabBacktester" class="tab" type="button">Backtester</button>
   <button id="tabTools" class="tab" type="button">Tools</button>
 </div>
 
@@ -130,6 +131,67 @@
       </div>
     </div>
     <div id="strategyInfo" class="small">No strategy selected.</div>
+  </div>
+</div>
+
+<div id="pageBacktester" class="page hidden">
+  <div class="card">
+    <div class="title">Strategy Backtester</div>
+    <div class="row">
+      <div class="field">
+        <label>Strategy</label>
+        <select id="btStrategySelect"></select>
+      </div>
+      <div class="field">
+        <label>Instrument</label>
+        <select id="btSym">
+          <option value="NAS100" selected>NAS100</option>
+          <option value="EUR/USD">EUR/USD</option>
+          <option value="GBP/USD">GBP/USD</option>
+          <option value="USD/JPY">USD/JPY</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Timeframe</label>
+        <select id="btTfSec">
+          <option value="60">M1</option>
+          <option value="300">M5</option>
+          <option value="900" selected>M15</option>
+          <option value="1800">M30</option>
+          <option value="3600">H1</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Lookback candles</label>
+        <input id="btLookback" type="number" min="200" max="5000" value="900" />
+      </div>
+      <div class="field">
+        <label>Signals to keep</label>
+        <input id="btKeepN" type="number" min="1" max="100" value="5" />
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field" style="min-width:280px;">
+        <label>Strategy params (JSON)</label>
+        <textarea id="btParams" rows="3">{"fastLen":9,"slowLen":21}</textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button id="btnRunStrategyBacktest" class="primary" type="button" disabled>Run Strategy Backtest</button>
+      <button id="btnResetBtParams" type="button">Reset Params</button>
+      <span class="pill" id="btStatus">Waiting...</span>
+    </div>
+    <div id="btInfo" class="small">Choose a strategy and run.</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Backtester Results</div>
+    <div id="btResults" class="small">Run the strategy to see signals.</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Backtester Log</div>
+    <div id="btLog"></div>
   </div>
 </div>
 

@@ -25,7 +25,7 @@
   }
 
   function setTab(tabName) {
-    const tabs = ["Home", "Strategy", "Tools"];
+    const tabs = ["Home", "Strategy", "Backtester", "Tools"];
     tabs.forEach((name) => {
       const tabEl = $("tab" + name);
       const pageEl = $("page" + name);
@@ -35,7 +35,7 @@
   }
 
   function initTabs() {
-    ["Home", "Strategy", "Tools"].forEach((name) => {
+    ["Home", "Strategy", "Backtester", "Tools"].forEach((name) => {
       const tabEl = $("tab" + name);
       if (tabEl) {
         tabEl.addEventListener("click", function () {
@@ -69,6 +69,139 @@
 
     strategySelect.addEventListener("change", renderStrategyInfo);
     renderStrategyInfo();
+  }
+
+  function renderSignals(signals, targetId) {
+    const target = $(targetId || "results");
+    if (!target) return;
+
+    if (!signals.length) {
+      target.innerHTML = '<div class="small">No signals found. Try increasing lookback or adjusting strategy params.</div>';
+      return;
+    }
+
+    let html =
+      '<div style="overflow-x:auto;"><table><thead><tr><th>#</th><th>Signal</th><th>Time</th><th>Price</th></tr></thead><tbody>';
+
+    signals.forEach((s, i) => {
+      const cls = s.type === "BUY" ? "buy" : "sell";
+      html +=
+        "<tr><td>" +
+        (i + 1) +
+        '</td><td class="' +
+        cls +
+        '">' +
+        s.type +
+        "</td><td>" +
+        fmtTime(s.time) +
+        "</td><td>" +
+        Number(s.price).toFixed(2) +
+        "</td></tr>";
+    });
+
+    html += "</tbody></table></div>";
+    target.innerHTML = html;
+  }
+
+  function initBacktesterTab() {
+    const strategySelect = $("btStrategySelect");
+    const strategyInfo = $("btInfo");
+    const paramsInput = $("btParams");
+    const btnRun = $("btnRunStrategyBacktest");
+    const btnReset = $("btnResetBtParams");
+    const statusEl = $("btStatus");
+    const log = window.LCPro.Debug.createLogger($("btLog"));
+    const setStatus = (text, cls) => window.LCPro.Debug.setStatus(statusEl, text, cls);
+
+    const strategyApi = window.LCPro.Strategy;
+    const registry = strategyApi && strategyApi.STRATEGIES;
+    if (!strategySelect || !strategyInfo || !paramsInput || !btnRun || !btnReset || !registry) return;
+
+    const items = Object.keys(registry).map((k) => registry[k]);
+    strategySelect.innerHTML = items
+      .map((s) => '<option value="' + s.id + '">' + s.name + "</option>")
+      .join("");
+
+    function getBacktestInputs() {
+      let params = {};
+      const raw = paramsInput.value || "{}";
+      try {
+        params = JSON.parse(raw);
+      } catch (e) {
+        throw new Error("Params JSON is invalid");
+      }
+
+      return {
+        strategyId: strategySelect.value,
+        instrumentId: $("btSym") ? $("btSym").value : "NAS100",
+        timeframeSec: parseInt($("btTfSec") ? $("btTfSec").value : "900", 10),
+        lookback: Math.max(200, parseInt($("btLookback") ? $("btLookback").value || "900" : "900", 10)),
+        keepN: Math.max(1, parseInt($("btKeepN") ? $("btKeepN").value || "5" : "5", 10)),
+        params
+      };
+    }
+
+    function updateStrategyInfo() {
+      const s = strategyApi.getStrategy(strategySelect.value);
+      if (!s) {
+        strategyInfo.textContent = "No strategy selected.";
+        return;
+      }
+
+      strategyInfo.textContent =
+        "ID: " + s.id + " | " + (s.notes || "No notes") + " | defaultParams=" + JSON.stringify(s.defaultParams || {});
+    }
+
+    function resetParamsToDefault() {
+      const s = strategyApi.getStrategy(strategySelect.value);
+      paramsInput.value = JSON.stringify((s && s.defaultParams) || {}, null, 0);
+      updateStrategyInfo();
+    }
+
+    async function runSelectedStrategyBacktest() {
+      setStatus("Running...", "warn");
+      try {
+        const input = getBacktestInputs();
+        log(
+          "Backtest run: " +
+            input.strategyId +
+            " " +
+            input.instrumentId +
+            " tf=" +
+            input.timeframeSec +
+            " lookback=" +
+            input.lookback +
+            " keep=" +
+            input.keepN
+        );
+
+        const signals = await strategyApi.runSignals(input.strategyId, input);
+        renderSignals(signals, "btResults");
+        setStatus("Done", "ok");
+        log("Backtest done. Found " + signals.length + " signals.");
+      } catch (e) {
+        setStatus("Failed", "bad");
+        log("[ERR] " + (e && e.message ? e.message : String(e)));
+      }
+    }
+
+    strategySelect.addEventListener("change", function () {
+      resetParamsToDefault();
+    });
+    btnRun.addEventListener("click", runSelectedStrategyBacktest);
+    btnReset.addEventListener("click", resetParamsToDefault);
+
+    updateStrategyInfo();
+    if (!paramsInput.value || paramsInput.value.trim() === "") resetParamsToDefault();
+
+    window.LCPro.AppBacktester = {
+      run: runSelectedStrategyBacktest,
+      resetParams: resetParamsToDefault,
+      setEnabled: function (enabled) {
+        btnRun.disabled = !enabled;
+      },
+      setStatus
+    };
   }
 
   function initToolsTab() {
@@ -126,11 +259,11 @@
         window.LCPro.MarketData.requestPrices([input.instrument]);
       } catch (e) {}
 
-      write("Submitting " + side + " entry with TP/SL in payload...");
+      write("Submitting " + side + " entry, then applying TP/SL via CHANGE 101...");
       try {
         // Ensure framework exists at click time so failures are visible to user.
         window.LCPro.Core.ensureFramework();
-        const res = await window.LCPro.Trading.sendMarketOrderWithTpSl(
+        const res = await window.LCPro.Trading.entryThenModify(
           input.instrument,
           side,
           input.lots,
@@ -139,7 +272,7 @@
           input.tickSize
         );
         write({
-          action: side + " entry_with_tpsl",
+          action: side + " entry_then_change_101",
           instrument: input.instrument,
           lots: input.lots,
           tpTicks: input.tpTicks,
@@ -150,7 +283,7 @@
         setTimeout(refreshOrderDropdown, 700);
       } catch (e) {
         write({
-          action: side + " entry_with_tpsl",
+          action: side + " entry_then_change_101",
           error: e && e.message ? e.message : String(e)
         });
       }
@@ -263,19 +396,25 @@
     }
 
     if (btnTestBuyTpSl) {
-      const onBuyClick = function () {
-        runEntryWithTpSlTest("BUY");
+      btnTestBuyTpSl.onclick = async function () {
+        btnTestBuyTpSl.disabled = true;
+        try {
+          await runEntryWithTpSlTest("BUY");
+        } finally {
+          btnTestBuyTpSl.disabled = false;
+        }
       };
-      btnTestBuyTpSl.addEventListener("click", onBuyClick);
-      btnTestBuyTpSl.onclick = onBuyClick;
     }
 
     if (btnTestSellTpSl) {
-      const onSellClick = function () {
-        runEntryWithTpSlTest("SELL");
+      btnTestSellTpSl.onclick = async function () {
+        btnTestSellTpSl.disabled = true;
+        try {
+          await runEntryWithTpSlTest("SELL");
+        } finally {
+          btnTestSellTpSl.disabled = false;
+        }
       };
-      btnTestSellTpSl.addEventListener("click", onSellClick);
-      btnTestSellTpSl.onclick = onSellClick;
     }
 
     if (btnChangeTpSlSelected) {
@@ -324,35 +463,6 @@
     setInterval(refreshOrderDropdown, 5000);
   }
 
-  function renderSignals(signals) {
-    if (!signals.length) {
-      $("results").innerHTML = '<div class="small">No signals found. Try increasing lookback or adjusting SMA lengths.</div>';
-      return;
-    }
-
-    let html =
-      '<div style="overflow-x:auto;"><table><thead><tr><th>#</th><th>Signal</th><th>Time</th><th>Price</th></tr></thead><tbody>';
-
-    signals.forEach((s, i) => {
-      const cls = s.type === "BUY" ? "buy" : "sell";
-      html +=
-        "<tr><td>" +
-        (i + 1) +
-        '</td><td class="' +
-        cls +
-        '">' +
-        s.type +
-        "</td><td>" +
-        fmtTime(s.time) +
-        "</td><td>" +
-        Number(s.price).toFixed(2) +
-        "</td></tr>";
-    });
-
-    html += "</tbody></table></div>";
-    $("results").innerHTML = html;
-  }
-
   function refreshPx() {
     const MarketData = window.LCPro.MarketData;
     const input = getInputs();
@@ -382,16 +492,19 @@
         window.LCPro.MarketData.requestPrices([input.instrumentId]);
       } catch (e) {}
 
-      const signals = await window.LCPro.Backtest.lastCrossSignals(
-        input.instrumentId,
-        input.timeframeSec,
-        input.lookback,
-        input.fastLen,
-        input.slowLen,
-        5
-      );
+      const signals = await window.LCPro.Strategy.runSignals("sma_crossover", {
+        strategyId: "sma_crossover",
+        instrumentId: input.instrumentId,
+        timeframeSec: input.timeframeSec,
+        lookback: input.lookback,
+        keepN: 5,
+        params: {
+          fastLen: input.fastLen,
+          slowLen: input.slowLen
+        }
+      });
 
-      renderSignals(signals);
+      renderSignals(signals, "results");
       setStatus("Done", "ok");
       log("Run done. Found " + signals.length + " signals.");
       if (signals.length) {
@@ -430,6 +543,7 @@
     if (!uiInitialized) {
       initTabs();
       initStrategyTab();
+      initBacktesterTab();
       initToolsTab();
       setTab("Home");
       uiInitialized = true;
@@ -452,6 +566,10 @@
       $("btnRun").disabled = false;
       $("btnDumpCandle").disabled = false;
       $("btnClearLog").disabled = false;
+      if (window.LCPro.AppBacktester) {
+        window.LCPro.AppBacktester.setEnabled(true);
+        window.LCPro.AppBacktester.setStatus("Connected", "ok");
+      }
 
       $("btnRun").onclick = function () {
         runBacktest(log, setStatus);
