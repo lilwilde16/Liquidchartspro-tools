@@ -2,6 +2,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  let uiInitialized = false;
 
   function fmtTime(x) {
     try {
@@ -81,6 +82,8 @@
       }
     };
 
+    write("Tools ready. Use buttons to run checks or test orders.");
+
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
     const btnTestCalc = $("btnTestCalc");
@@ -107,6 +110,8 @@
 
       write("Submitting " + side + " test order with entry-then-modify flow...");
       try {
+        // Ensure framework exists at click time so failures are visible to user.
+        window.LCPro.Core.ensureFramework();
         const res = await window.LCPro.Trading.entryThenModify(
           input.instrument,
           side,
@@ -157,15 +162,19 @@
     }
 
     if (btnTestBuyTpSl) {
-      btnTestBuyTpSl.addEventListener("click", function () {
+      const onBuyClick = function () {
         runEntryTpSlTest("BUY");
-      });
+      };
+      btnTestBuyTpSl.addEventListener("click", onBuyClick);
+      btnTestBuyTpSl.onclick = onBuyClick;
     }
 
     if (btnTestSellTpSl) {
-      btnTestSellTpSl.addEventListener("click", function () {
+      const onSellClick = function () {
         runEntryTpSlTest("SELL");
-      });
+      };
+      btnTestSellTpSl.addEventListener("click", onSellClick);
+      btnTestSellTpSl.onclick = onSellClick;
     }
   }
 
@@ -269,14 +278,26 @@
   }
 
   function setup() {
-    const Framework = window.LCPro.Core.ensureFramework();
     const log = window.LCPro.Debug.createLogger($("log"));
     const setStatus = (text, cls) => window.LCPro.Debug.setStatus($("status"), text, cls);
 
-    initTabs();
-    initStrategyTab();
-    initToolsTab();
-    setTab("Home");
+    if (!uiInitialized) {
+      initTabs();
+      initStrategyTab();
+      initToolsTab();
+      setTab("Home");
+      uiInitialized = true;
+    }
+
+    let Framework = null;
+    try {
+      Framework = window.LCPro.Core.ensureFramework();
+    } catch (e) {
+      setStatus("Waiting for framework...", "warn");
+      log("[WARN] Framework not ready yet: " + (e.message || String(e)));
+      setTimeout(setup, 1000);
+      return;
+    }
 
     Framework.OnLoad = function () {
       setStatus("Connected", "ok");
