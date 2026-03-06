@@ -237,6 +237,28 @@
     return out;
   }
 
+  async function closeSideOnInstrument(instrumentId, side) {
+    const s = String(side || "").toUpperCase();
+    const action = s === "SELL" ? orderType("CLOSEPOSSHORT", 6) : orderType("CLOSEPOSLONG", 5);
+    const payload = { instrumentId, tradingAction: action };
+    const response = await sendOrder(payload);
+    return { payload, response };
+  }
+
+  function inferOrderSide(order) {
+    if (!order || typeof order !== "object") return null;
+
+    const sideRaw = String(order.side || order.direction || "").toUpperCase();
+    if (sideRaw === "BUY" || sideRaw === "LONG") return "BUY";
+    if (sideRaw === "SELL" || sideRaw === "SHORT") return "SELL";
+
+    const action = Number(order.tradingAction || order.orderType || NaN);
+    if (action === 1) return "BUY";
+    if (action === 2) return "SELL";
+
+    return null;
+  }
+
   async function closeAllPositions() {
     const instrumentIds = listOpenPositionsDetailed().map((p) => p.instrumentId);
     if (!instrumentIds.length) {
@@ -278,6 +300,15 @@
     if (instrumentId) p1.instrumentId = String(instrumentId);
     payloads.push(p1);
 
+    // Some implementations use alternate key names for the trade identifier.
+    const p1b = { tradingAction: closeTradeAction, tradeId: id };
+    if (instrumentId) p1b.instrumentId = String(instrumentId);
+    payloads.push(p1b);
+
+    const p1c = { tradingAction: closeTradeAction, ticket: id };
+    if (instrumentId) p1c.instrumentId = String(instrumentId);
+    payloads.push(p1c);
+
     if (Number.isFinite(entryPrice) && entryPrice > 0) {
       const p2 = { tradingAction: closeTradeAction, orderId: id };
       if (instrumentId) p2.instrumentId = String(instrumentId);
@@ -302,13 +333,27 @@
       }
     }
 
-    // Fallback: close by side on selected instrument.
+    // Fallback: close selected side on selected instrument.
     if (instrumentId) {
+      const side = inferOrderSide(order);
+      if (side) {
+        const fallbackSide = await closeSideOnInstrument(String(instrumentId), side);
+        return {
+          ok: true,
+          fallbackUsed: true,
+          reason: "Direct close-by-id did not succeed; used side close fallback.",
+          instrumentId: String(instrumentId),
+          side,
+          attempts,
+          fallback: fallbackSide
+        };
+      }
+
       const fallback = await closeAllOnInstrument(String(instrumentId));
       return {
         ok: true,
         fallbackUsed: true,
-        reason: "Direct close-by-id did not succeed; used instrument side close fallback.",
+        reason: "Direct close-by-id did not succeed; side unknown so used close-all-on-instrument fallback.",
         instrumentId: String(instrumentId),
         attempts,
         fallback
@@ -338,6 +383,7 @@
     modifyOrderTpSl,
     entryThenModify,
     closeAllOnInstrument,
+    closeSideOnInstrument,
     closeAllPositions,
     closeOrderById
   };
