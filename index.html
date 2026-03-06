@@ -1,517 +1,273 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <title>LiquidChartsPro Tools</title>
-
-  <!-- LiquidCharts widget must load first -->
-  <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
-  <link rel="stylesheet" href="https://pro.liquidcharts.com/scripts/widget-css">
-  <link rel="stylesheet" href="./src/ui/css/app.css">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>LiquidCharts Backtest: Last 5 MA-Crossover Signals</title>
+<link rel="stylesheet" type="text/css" href="https://pro.liquidcharts.com/css/widget-css"/>
+<script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
+<style>
+  body.Widget{ margin:0; font-family:-apple-system, Segoe UI, Roboto, Arial; background:#0d47ff; color:#e9ecff; }
+   #app{ height:100vh; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; box-sizing:border-box; }
+  .card{ background:#0b2ea8; border:1px solid rgba(255,255,255,.22); border-radius:16px; padding:12px; margin-bottom:10px; }
+   .title{ font-size:16px; font-weight:950; margin:0 0 10px 0; }
+   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+   .field{ flex:1; min-width:160px; }
+   label{ display:block; font-size:12px; opacity:.75; margin:0 0 6px 0; }
+   input,select{
+     width:100%; box-sizing:border-box; padding:11px 12px; font-size:15px;
+     border-radius:14px; border:1px solid rgba(255,255,255,.14);
+     background:rgba(255,255,255,.06); color:#e9ecff; outline:none;
+   }
+   button{
+     padding:11px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.14);
+     background:rgba(255,255,255,.08); color:#e9ecff; font-weight:900; cursor:pointer;
+   }
+   button.primary{ background:#2d6cdf; border-color:rgba(255,255,255,.18); }
+   button:disabled{ opacity:.55; cursor:not-allowed; }
+   .pill{ display:inline-block; padding:7px 10px; border-radius:999px; background:rgba(255,255,255,.08);
+     border:1px solid rgba(255,255,255,.10); font-weight:900; font-size:12px; }
+   .ok{ background:rgba(23,212,122,.16); }
+   .warn{ background:rgba(255,176,32,.16); }
+   .bad{ background:rgba(255,59,59,.16); }
+   #log{
+     background:#05060b; color:#31ff3a; border-radius:14px; border:1px solid rgba(255,255,255,.10);
+     padding:10px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+     white-space:pre-wrap; max-height:35vh; overflow:auto;
+   }
+   table{ width:100%; border-collapse:collapse; font-size:13px; }
+   th, td{ padding:9px 8px; border-bottom:1px solid rgba(255,255,255,.08); text-align:left; }
+   th{ background:rgba(255,255,255,.06); position:sticky; top:0; z-index:2; }
+   .buy{ color:#17d47a; font-weight:950; }
+   .sell{ color:#ff3b3b; font-weight:950; }
+   .small{ font-size:12px; opacity:.75; line-height:1.35; margin-top:6px; }
+   code{ font-family:ui-monospace, Menlo, Consolas, monospace; }
+</style>
 </head>
-
 <body class="Widget">
-  <!-- Hidden context fields required by lc-framework.js -->
-  <input id="ctxInstrument" type="hidden" value="Unknown" />
-  <input id="ctxTf" type="hidden" value="Unknown" />
-
-  <div id="app">
-
-    <!-- Tab Navigation -->
-    <div class="tabs">
-      <button class="tabBtn active" data-tab="Home">🏠 Home</button>
-      <button class="tabBtn" data-tab="Strategy">📊 Strategy</button>
-      <button class="tabBtn" data-tab="Tools">🔧 Tools</button>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════
-         HOME TAB — Dashboard & Controls
-         ═══════════════════════════════════════════════ -->
-    <div id="pageHome" class="page">
-
-      <!-- Controls Card -->
-      <div class="card">
-        <h2 class="title">Trading Controls</h2>
-        <div class="row">
-          <div class="field">
-            <label>ARM &mdash; Live Order Execution</label>
-            <select id="homeArm">
-              <option value="off" selected>OFF (Ticket only)</option>
-              <option value="on">ON (SendOrder &mdash; LIVE)</option>
-            </select>
-            <small>Mirrors the ARM setting in the Tools tab.</small>
-          </div>
-          <div class="field">
-            <label>AutoTrader</label>
-            <div class="btnRow" style="margin-top:4px">
-              <button id="btnHomeAutoStart" disabled>&#9654; Start</button>
-              <button id="btnHomeAutoStop" disabled>&#9632; Stop</button>
-            </div>
-            <span id="homeAtStatus" class="status">Stopped</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Profit Goals Card -->
-      <div class="card">
-        <h2 class="title">Profit Goals</h2>
-        <div class="row">
-          <div class="field">
-            <label>Daily Goal ($)</label>
-            <input id="goalDaily" type="number" value="0" min="0" step="10" />
-          </div>
-          <div class="field">
-            <label>Weekly Goal ($)</label>
-            <input id="goalWeekly" type="number" value="0" min="0" step="50" />
-          </div>
-        </div>
-        <div class="btnRow">
-          <button id="btnSaveGoals" class="primary">&#128190; Save Goals</button>
-          <span id="goalsStatus" class="status"></span>
-        </div>
-      </div>
-
-      <!-- Active Strategy Card -->
-      <div class="card">
-        <h2 class="title">Active Strategy &amp; Signals</h2>
-        <p id="homeStrategyName" class="subtitle">No strategy selected &mdash; go to Strategy tab to confirm one</p>
-        <div class="field" style="margin-bottom:16px">
-          <label>Pairs Being Monitored</label>
-          <div id="homePairsList" class="pairTagsBox">&mdash;</div>
-        </div>
-        <div class="btnRow">
-          <button id="btnLastSignals" disabled>&#128269; Show Last 5 Signals (by Pair)</button>
-          <button id="btnRefreshHome" disabled>&#128260; Refresh Markets</button>
-        </div>
-        <div class="field" style="margin-top:8px">
-          <label>
-            <input type="checkbox" id="useChartCandlesForSignals" />
-            Use chart provider candles for signals
-          </label>
-          <small>Enable if signal entry prices differ from what you see on the chart &mdash; routes candle requests explicitly through the chart provider API.</small>
-        </div>
-        <div class="field" style="margin-top:8px">
-          <label>
-            <input type="checkbox" id="showSignalDebug" />
-            Show signal debug info (current market price &amp; raw data)
-          </label>
-          <button id="btnCopySignalDebug" disabled style="margin-left:8px" aria-label="Copy Debug Data">&#128203; Copy Debug Data</button>
-          <pre id="signalDebugDump" style="display:none" aria-hidden="true"></pre>
-        </div>
-        <div id="lastSignalsResult" class="signalsBox hidden"></div>
-        <p class="note" style="margin-top:8px">
-          <strong>Signal Scan</strong>: scans all configured pairs and shows the last 5 SMA crossover signals from candle history &mdash; the exact candles where the fast MA crossed the slow MA. <strong>Entry price shown is the historical close price at the crossover candle, not the current market price.</strong> No confidence threshold applied; use this to verify the strategy is detecting entry points correctly.
-        </p>
-      </div>
-
-    </div><!-- end #pageHome -->
-
-    <!-- ═══════════════════════════════════════════════
-         STRATEGY TAB — Configuration & Analysis
-         ═══════════════════════════════════════════════ -->
-    <div id="pageStrategy" class="page hidden">
-
-      <!-- Strategy Preset Card -->
-      <div class="card">
-        <h2 class="title">Strategy</h2>
-        <div class="row">
-          <div class="field">
-            <label>Strategy</label>
-            <select id="btStrategyPreset">
-              <option value="">Loading&hellip;</option>
-            </select>
-          </div>
-        </div>
-        <pre id="btStrategy-display" class="note" style="white-space:pre-wrap;font-family:inherit;margin-top:8px"></pre>
-        <textarea id="btStrategy" style="display:none" readonly></textarea>
-
-        <!-- Individual Strategy Settings (SMA Crossover) -->
-        <div class="row" style="margin-top:12px">
-          <div class="field">
-            <label>Fast MA Period</label>
-            <input id="stratFastMa" type="number" value="10" min="2" max="100" />
-          </div>
-          <div class="field">
-            <label>Slow MA Period</label>
-            <input id="stratSlowMa" type="number" value="30" min="3" max="500" />
-          </div>
-          <div class="field">
-            <label>ATR Length</label>
-            <input id="stratAtrLen" type="number" value="14" min="5" max="100" />
-          </div>
-        </div>
-        <div class="btnRow" style="margin-top:12px">
-          <button id="btnConfirmStrategy" class="primary">&#10003; Confirm Strategy</button>
-          <span id="strategyConfirmStatus" class="status"></span>
-        </div>
-      </div>
-
-      <!-- Pairs to Trade Card -->
-      <div class="card">
-        <h2 class="title">Pairs to Trade</h2>
-        <p class="subtitle">One pair per line (e.g. EUR/USD). These pairs are monitored by the AutoTrader and Strength Meter.</p>
-        <div class="field">
-          <textarea id="pairs" rows="12">EUR/USD
-GBP/USD
-USD/JPY
-AUD/USD
-NZD/USD
-USD/CAD
-USD/CHF
-EUR/GBP
-EUR/JPY
-GBP/JPY</textarea>
-        </div>
-        <div class="btnRow">
-          <button id="saveSettings" class="primary">&#128190; Save Pairs</button>
-          <span id="settingsStatus" class="status"></span>
-        </div>
-      </div>
-
-      <!-- AutoTrader Config Card -->
-      <div class="card">
-        <h2 class="title">AutoTrader Configuration</h2>
-        <div class="row">
-          <div class="field">
-            <label>Signal Timeframe</label>
-            <select id="atTf">
-              <option value="M5">M5</option>
-              <option value="M15" selected>M15</option>
-              <option value="M30">M30</option>
-              <option value="H1">H1</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Candles</label>
-            <input id="atCandles" type="number" value="500" min="200" max="3000" step="100" />
-          </div>
-          <div class="field">
-            <label>Poll Interval (sec)</label>
-            <input id="atPollSec" type="number" value="60" min="10" max="3600" />
-          </div>
-          <div class="field">
-            <label>Lot Size</label>
-            <input id="atLots" type="number" value="0.01" min="0.01" step="0.01" />
-          </div>
-          <div class="field">
-            <label>SL ATR Multiplier</label>
-            <input id="atSlAtr" type="number" value="1.1" min="0.5" step="0.1" />
-          </div>
-          <div class="field">
-            <label>Min Confidence</label>
-            <input id="atMinConfidence" type="number" value="0.58" min="0.4" max="0.9" step="0.01" />
-          </div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label>Trading Days</label>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
-              <label><input type="checkbox" id="atDayMon" checked /> Mon</label>
-              <label><input type="checkbox" id="atDayTue" checked /> Tue</label>
-              <label><input type="checkbox" id="atDayWed" checked /> Wed</label>
-              <label><input type="checkbox" id="atDayThu" checked /> Thu</label>
-              <label><input type="checkbox" id="atDayFri" checked /> Fri</label>
-              <label><input type="checkbox" id="atDaySat" /> Sat</label>
-              <label><input type="checkbox" id="atDaySun" /> Sun</label>
-            </div>
-          </div>
-          <div class="field">
-            <label>Use Schedule</label>
-            <select id="atUseSchedule">
-              <option value="yes" selected>Yes (days &amp; hours above)</option>
-              <option value="no">No (trade anytime)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Session Start Hour (UTC)</label>
-            <input id="atStartHour" type="number" value="6" min="0" max="23" />
-          </div>
-          <div class="field">
-            <label>Session End Hour (UTC)</label>
-            <input id="atEndHour" type="number" value="20" min="0" max="23" />
-          </div>
-          <div class="field">
-            <label>Max Trades/Day</label>
-            <input id="atMaxTradesDay" type="number" value="4" min="1" max="20" />
-          </div>
-          <div class="field">
-            <label>Cooldown (min)</label>
-            <input id="atCooldownMin" type="number" value="45" min="1" max="240" />
-          </div>
-          <div class="field">
-            <label>Adaptive Learning</label>
-            <select id="atLearning">
-              <option value="on" selected>On</option>
-              <option value="off">Off</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Strength Meter Card -->
-      <div class="card">
-        <h2 class="title">Currency Strength Meter</h2>
-        <p class="subtitle">Analyse multi-timeframe strength across configured pairs. Run this before enabling the AutoTrader.</p>
-        <div class="row">
-          <div class="field">
-            <label>Timeframe</label>
-            <select id="strengthTf">
-              <option value="300">M5</option>
-              <option value="900" selected>M15</option>
-              <option value="1800">M30</option>
-              <option value="3600">H1</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Candles</label>
-            <input id="strengthCount" type="number" value="500" min="100" max="2000" step="100" />
-          </div>
-          <div class="field">
-            <label>Auto-refresh (sec)</label>
-            <input id="strengthAutoSec" type="number" value="60" min="10" max="3600" />
-          </div>
-        </div>
-        <div class="btnRow">
-          <button id="btnStrengthRun" disabled>&#128202; Run Strength Scan</button>
-          <button id="btnStrengthAuto" disabled>&#9654; Start Auto Refresh</button>
-          <button id="btnStrengthStop" disabled>&#9632; Stop Auto Refresh</button>
-        </div>
-        <p id="strengthStatus" class="note" style="margin-top:8px">&nbsp;</p>
-        <div class="tableContainer">
-          <div id="strengthTable"></div>
-        </div>
-        <div id="strengthBestPairs" class="bestPairs"></div>
-      </div>
-
-    </div><!-- end #pageStrategy -->
-
-    <!-- ═══════════════════════════════════════════════
-         TOOLS TAB — Manual Trading, Backtest & Log
-         ═══════════════════════════════════════════════ -->
-    <div id="pageTools" class="page hidden">
-
-      <!-- Trading Functions Card -->
-      <div class="card">
-        <h2 class="title">Trading Functions &mdash; Entry &rarr; CHANGE(101) TP/SL</h2>
-        <div class="row">
-          <div class="field">
-            <label>Instrument</label>
-            <select id="toolPair">
-              <option>EUR/USD</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Lots</label>
-            <input id="toolQty" type="number" value="0.01" min="0.01" step="0.01" />
-          </div>
-          <div class="field">
-            <label>TP distance (price points)</label>
-            <input id="toolTpPips" type="number" value="55" step="5" />
-          </div>
-          <div class="field">
-            <label>SL distance (price points)</label>
-            <input id="toolSlPips" type="number" value="55" step="5" />
-          </div>
-          <div class="field">
-            <label>ARM</label>
-            <select id="toolArm">
-              <option value="off" selected>OFF (Ticket only)</option>
-              <option value="on">ON (SendOrder)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>
-              Open Order
-              <button id="btnRefreshOrders" class="inlineBtn" title="Refresh order list" aria-label="Refresh order list">&#8635;</button>
-            </label>
-            <select id="toolOrderId">
-              <option value="">&#8212; select open order &#8212;</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="btnRow">
-          <button id="btnTicket" disabled>Open Ticket</button>
-          <button id="btnBuyTPSL" class="primary" disabled>BUY Entry &rarr; CHANGE TP/SL</button>
-          <button id="btnSellTPSL" disabled>SELL Entry &rarr; CHANGE TP/SL</button>
-          <button id="btnDumpTrades" disabled>Dump Orders</button>
-          <button id="btnCloseAll" disabled>Close All (Instrument)</button>
-          <button id="btnCloseOne" disabled>Close One (by Order ID)</button>
-          <button id="btnClearLog">Clear Log</button>
-        </div>
-
-        <div class="statusBar">
-          <label id="toolPx">bid/ask: &hellip; / &hellip;</label>
-          <div class="pill" id="statusPill">Loading&hellip;</div>
-          <button id="btnRefreshTool" disabled>&#128260; Refresh</button>
-        </div>
-
-        <p class="note">
-          <strong>BUY / SELL Entry &rarr; CHANGE TP/SL</strong>: places the market order first, then applies TP/SL via <strong>CHANGE (101)</strong>. TP and SL are placed on the correct side automatically.<br>
-          <strong>Close All</strong>: closes all open long and short positions for the selected instrument.<br>
-          <strong>Close One</strong>: closes the order selected from the dropdown. Use the &#8635; button to refresh the order list. ARM must be ON.
-        </p>
-      </div>
-
-      <!-- Backtest Card -->
-      <div class="card">
-        <h2 class="title">Backtest Engine</h2>
-        <p class="subtitle">Validate the active strategy against historical data. Fetches live candle data from the platform.</p>
-        <div class="row">
-          <div class="field">
-            <label>Instrument</label>
-            <select id="btInstrument">
-              <option>EUR/USD</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Timeframe</label>
-            <select id="btTf">
-              <option value="M5">M5</option>
-              <option value="M15" selected>M15</option>
-              <option value="M30">M30</option>
-              <option value="H1">H1</option>
-              <option value="H4">H4</option>
-              <option value="D1">D1</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Candles to Fetch</label>
-            <input id="btCandleCount" type="number" value="2500" min="300" max="20000" step="100" />
-          </div>
-          <div class="field">
-            <label>Trades to Simulate</label>
-            <input id="btCount" type="number" value="100" min="5" max="5000" />
-          </div>
-          <div class="field">
-            <label>Fast MA</label>
-            <input id="btFastMa" type="number" value="10" min="2" max="100" />
-          </div>
-          <div class="field">
-            <label>Slow MA</label>
-            <input id="btSlowMa" type="number" value="30" min="3" max="500" />
-          </div>
-          <div class="field">
-            <label>ATR Length</label>
-            <input id="btAtrLen" type="number" value="14" min="5" max="100" />
-          </div>
-          <div class="field">
-            <label>Risk:Reward</label>
-            <input id="btRr" type="number" value="1.5" min="0.1" step="0.1" />
-          </div>
-          <div class="field">
-            <label>SL ATR Multiple</label>
-            <input id="btSlAtr" type="number" value="1.1" min="0.2" max="5" step="0.1" />
-          </div>
-          <div class="field">
-            <label>Allow Short</label>
-            <select id="btAllowShort">
-              <option value="yes" selected>Yes</option>
-              <option value="no">No (long only)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Starting Balance ($)</label>
-            <input id="btStartBalance" type="number" value="1000" min="100" />
-          </div>
-          <div class="field">
-            <label>Risk per Trade (%)</label>
-            <input id="btRiskPct" type="number" value="1" min="0.1" max="10" step="0.1" />
-          </div>
-          <div class="field">
-            <label>Trading Cost (R)</label>
-            <input id="btCostR" type="number" value="0.05" min="0" max="2" step="0.01" />
-          </div>
-          <div class="field">
-            <label>Session Filter</label>
-            <select id="btSession">
-              <option value="all" selected>All hours</option>
-              <option value="london">London (7&ndash;16 UTC)</option>
-              <option value="newyork">New York (12&ndash;21 UTC)</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Start Hour (UTC)</label>
-            <input id="btStartHour" type="number" value="0" min="0" max="23" />
-          </div>
-          <div class="field">
-            <label>End Hour (UTC)</label>
-            <input id="btEndHour" type="number" value="23" min="0" max="23" />
-          </div>
-          <div class="field">
-            <label>Start Date</label>
-            <input id="btStartDate" type="date" />
-          </div>
-          <div class="field">
-            <label>End Date</label>
-            <input id="btEndDate" type="date" />
-          </div>
-          <div class="field">
-            <label>Intrabar Conflict</label>
-            <select id="btConflictModel">
-              <option value="conservative" selected>Conservative</option>
-              <option value="optimistic">Optimistic</option>
-              <option value="skip">Skip</option>
-            </select>
-          </div>
-        </div>
-        <div class="btnRow">
-          <button id="btnRunBt" class="primary" disabled>&#9654; Run Backtest</button>
-          <button id="btnStopBt" disabled>&#9632; Stop</button>
-          <button id="btnClearBt" disabled>&#128465; Clear Results</button>
-          <button id="btnExportBt" disabled>&#8681; Export CSV</button>
-        </div>
-        <div id="btSummary" class="note" style="margin-top:12px">No results yet.</div>
-        <div id="btTrades" class="log" style="margin-top:8px;max-height:300px"></div>
-        <div id="btResults" style="display:none"></div>
-      </div>
-
-      <!-- Diagnostics Card -->
-      <div class="card">
-        <h2 class="title">Diagnostics</h2>
-        <div class="btnRow">
-          <button id="btnDiagRun" disabled>&#129050; Run Diagnostics</button>
-          <button id="btnHealth" disabled>&#128138; Health Check</button>
-          <button id="btnAutoStart" disabled>&#9654; AT Start</button>
-          <button id="btnAutoStop" disabled>&#9632; AT Stop</button>
-        </div>
-        <span id="atStatus" class="status"></span>
-      </div>
-
-      <!-- Log Card -->
-      <div class="card">
-        <h2 class="title">
-          Log
-          <small class="logHint">&mdash; copy &amp; paste to share for debugging</small>
-        </h2>
-        <div id="log" class="log"></div>
-        <div class="btnRow" style="margin-top:8px">
-          <button id="btnCopyLog">&#128203; Copy Log</button>
-        </div>
-      </div>
-
-    </div><!-- end #pageTools -->
-
-  </div><!-- end #app -->
-
-  <!-- Scripts: load order matters — functions → integrations → strategies → backtest → ui → app -->
-  <script src="./src/functions/candle-utils.js"></script>
-  <script src="./src/functions/util-indicators.js"></script>
-  <script src="./src/functions/util-format.js"></script>
-  <script src="./src/functions/util-backtest.js"></script>
-  <script src="./src/functions/util-export.js"></script>
-  <script src="./src/integrations/lc-framework.js"></script>
-  <script src="./src/integrations/trading-api.js"></script>
-  <script src="./src/strategies/strategy-registry.js"></script>
-  <script src="./src/backtest/engine-backtest.js"></script>
-  <script src="./src/backtest/engine-backtest-signals.js"></script>
-  <script src="./src/strategies/engine-strength.js"></script>
-  <script src="./src/strategies/engine-autotrader.js"></script>
-  <script src="./src/ui/ui-tabs.js"></script>
-  <script src="./src/ui/signals-display.js"></script>
-  <script src="./src/ui/app.js"></script>
+<div id="app">
+<div class="card">
+<div class="title">Backtest - Last 5 MA Crossover Signals</div>
+<div class="row">
+<div class="field">
+<label>Instrument</label>
+<select id="sym">
+<option value="NAS100" selected>NAS100</option>
+<option value="EUR/USD">EUR/USD</option>
+<option value="GBP/USD">GBP/USD</option>
+<option value="USD/JPY">USD/JPY</option>
+</select>
+</div>
+<div class="field">
+<label>Timeframe</label>
+<select id="tfSec">
+<option value="60">M1</option>
+<option value="300">M5</option>
+<option value="900" selected>M15</option>
+<option value="1800">M30</option>
+<option value="3600">H1</option>
+</select>
+</div>
+<div class="field">
+<label>Lookback candles (pull)</label>
+<input id="lookback" type="number" min="200" max="5000" value="900" />
+</div>
+<div class="field">
+<label>Fast SMA</label>
+<input id="fastLen" type="number" min="2" max="300" value="9" />
+</div>
+<div class="field">
+<label>Slow SMA</label>
+<input id="slowLen" type="number" min="3" max="500" value="21" />
+</div>
+</div>
+<div class="row" style="margin-top:10px;">
+<button id="btnRun" class="primary" disabled>Run (Last 5 Signals)</button>
+<button id="btnDumpCandle" disabled>Dump Sample Candle</button>
+<button id="btnClearLog" disabled>Clear Log</button>
+<span class="pill" id="status">Loading...</span>
+<span class="pill" id="px">bid/ask: ...</span>
+</div>
+<div class="small">
+     Uses historical candles from <code>Framework.pRequestCandles</code> or <code>Framework.RequestCandles</code>.<br>
+     Uses <b>closed candles only</b> (skips the forming bar at index 0). Signals are detected on closed candles.
+</div>
+</div>
+<div class="card">
+<div class="title">Results</div>
+<div id="results" class="small">Run the backtest to see the last 5 crossover signals.</div>
+</div>
+<div class="card">
+<div class="title">Log</div>
+<div id="log"></div>
+</div>
+</div>
+<script>
+ // ---------------------------
+ // Framework
+ // ---------------------------
+ var Framework = new Sway.Framework();
+ const $ = (id)=>document.getElementById(id);
+ function ts(){
+   const d=new Date(), pad=n=>(n<10?"0":"")+n;
+   let h=d.getHours(), m=d.getMinutes(), s=d.getSeconds();
+   const ampm=h>=12?"PM":"AM"; h=h%12; if(h===0) h=12;
+   return `[${h}:${pad(m)}:${pad(s)} ${ampm}]`;
+ }
+ function log(msg){
+   $("log").textContent = `${ts()} ${msg}\n` + $("log").textContent;
+ }
+ function safeJson(x){ try{return JSON.stringify(x);}catch(e){return "(unstringifiable)";} }
+ function setStatus(text, cls){
+   $("status").textContent = text;
+   $("status").className = "pill " + (cls||"warn");
+ }
+ function sym(){ return $("sym").value; }
+ function tfSec(){ return parseInt($("tfSec").value,10); }
+ function lookback(){ return Math.max(200, parseInt($("lookback").value||"900",10)); }
+ function fastLen(){ return Math.max(2, parseInt($("fastLen").value||"9",10)); }
+ function slowLen(){ return Math.max(3, parseInt($("slowLen").value||"21",10)); }
+ function market(id){
+   return Framework.Instruments.getOrBlank(id);
+ }
+ function refreshPx(){
+   const m = market(sym());
+   $("px").textContent = `bid/ask: ${m.bid} / ${m.ask}`;
+ }
+ // ---------------------------
+ // Candles
+ // ---------------------------
+ async function requestCandles(instrumentId, timeframeSec, count){
+   if (Framework.pRequestCandles){
+     return await Framework.pRequestCandles({ instrumentId, timeframe: timeframeSec, count, streaming:false });
+   }
+   return await new Promise((resolve)=>{
+     Framework.RequestCandles({ instrumentId, timeframe: timeframeSec, count, streaming:false }, (m)=>resolve(m));
+   });
+ }
+ // newest->oldest to chronological (oldest->newest)
+ function toChron(arr){ return arr.slice().reverse(); }
+ function fmtTime(x){
+   try{
+     // some builds use ms epoch, some use ISO/number-ish; handle both
+     const d = new Date(x);
+     if(!isNaN(d.getTime())) return d.toLocaleString();
+   }catch(e){}
+   return String(x);
+ }
+ // ---------------------------
+ // SMA
+ // ---------------------------
+ function sma(series, len){
+   const out = new Array(series.length).fill(null);
+   let sum = 0;
+   for(let i=0;i<series.length;i++){
+     sum += series[i];
+     if(i >= len) sum -= series[i-len];
+     if(i >= len-1) out[i] = sum / len;
+   }
+   return out;
+ }
+ // ---------------------------
+ // Backtest: last N crossover signals
+ // ---------------------------
+ async function lastCrossSignals(instrumentId, timeframeSec, pullCount, fastN, slowN, keepN){
+   const msg = await requestCandles(instrumentId, timeframeSec, pullCount);
+   const candles = msg && msg.candles ? msg.candles : null;
+   if(!candles || candles.length < (slowN + 50)) return [];
+   // closed candles only (skip forming bar index 0)
+   const closed = candles.slice(1);
+   const cChron = toChron(closed);
+   const close = cChron.map(c=>c.c);
+   const date  = cChron.map(c=>c.date);
+   const f = sma(close, fastN);
+   const s = sma(close, slowN);
+   const signals = [];
+   for(let i=1;i<cChron.length;i++){
+     if(f[i]==null || s[i]==null || f[i-1]==null || s[i-1]==null) continue;
+     const prevDiff = f[i-1] - s[i-1];
+     const diff     = f[i]   - s[i];
+     // cross up = BUY, cross down = SELL
+     if(prevDiff <= 0 && diff > 0){
+       signals.push({ type:"BUY", time: date[i], price: close[i], idx:i });
+     } else if(prevDiff >= 0 && diff < 0){
+       signals.push({ type:"SELL", time: date[i], price: close[i], idx:i });
+     }
+   }
+   return signals.slice(-keepN).reverse();
+ }
+ function renderSignals(signals){
+   if(!signals.length){
+     $("results").innerHTML = `<div class="small">No signals found. Try increasing lookback or adjusting SMA lengths.</div>`;
+     return;
+   }
+   let html = `<div style="overflow-x:auto;"><table>
+<thead><tr>
+<th>#</th><th>Signal</th><th>Time</th><th>Price</th>
+</tr></thead><tbody>`;
+   signals.forEach((s, i)=>{
+     const cls = s.type === "BUY" ? "buy" : "sell";
+     html += `<tr>
+<td>${i+1}</td>
+<td class="${cls}">${s.type}</td>
+<td>${fmtTime(s.time)}</td>
+<td>${Number(s.price).toFixed(2)}</td>
+</tr>`;
+   });
+   html += `</tbody></table></div>`;
+   $("results").innerHTML = html;
+ }
+ // ---------------------------
+ // Buttons
+ // ---------------------------
+ async function run(){
+   setStatus("Pulling candles...", "warn");
+   log(`Run start: ${sym()} tf=${tfSec()} lookback=${lookback()} fast=${fastLen()} slow=${slowLen()}`);
+   try{
+     // warm up prices (optional)
+     try{ Framework.RequestPrices([sym()]); }catch(e){}
+     const signals = await lastCrossSignals(sym(), tfSec(), lookback(), fastLen(), slowLen(), 5);
+     renderSignals(signals);
+     setStatus("Done", "ok");
+     log(`Run done. Found ${signals.length} signals.`);
+     if(signals.length){
+       log(`Most recent: ${signals[0].type} @ ${fmtTime(signals[0].time)} price=${signals[0].price}`);
+     }
+   }catch(e){
+     setStatus("Failed (see log)", "bad");
+     log("[ERR] Error: " + (e.message||String(e)));
+   }
+ }
+ async function dumpSampleCandle(){
+   try{
+     const msg = await requestCandles(sym(), tfSec(), Math.min(300, lookback()));
+     const candles = msg && msg.candles ? msg.candles : null;
+     if(!candles || !candles.length){ log("No candles returned"); return; }
+     log("Sample candle[0] (forming/newest): " + safeJson(candles[0]));
+     if(candles[1]) log("Sample candle[1] (last closed): " + safeJson(candles[1]));
+   }catch(e){
+     log("Dump candle failed: " + (e.message||String(e)));
+   }
+ }
+ // ---------------------------
+ // OnLoad
+ // ---------------------------
+ Framework.OnLoad = function(){
+   setStatus("Connected", "ok");
+   log("[OK] Framework loaded");
+   $("btnRun").disabled = false;
+   $("btnDumpCandle").disabled = false;
+   $("btnClearLog").disabled = false;
+   $("btnRun").onclick = run;
+   $("btnDumpCandle").onclick = dumpSampleCandle;
+   $("btnClearLog").onclick = ()=>{ $("log").textContent=""; };
+   // keep bid/ask visible
+   try{ Framework.RequestPrices([sym()]); }catch(e){}
+   refreshPx();
+   setInterval(()=>{ try{ Framework.RequestPrices([sym()]); refreshPx(); }catch(e){} }, 1000);
+   $("sym").addEventListener("change", ()=>{ try{ Framework.RequestPrices([sym()]); }catch(e){} refreshPx(); });
+ };
+ Framework.OnPriceChange = function(){ refreshPx(); };
+</script>
 </body>
 </html>
