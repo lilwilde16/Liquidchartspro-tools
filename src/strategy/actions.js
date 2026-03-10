@@ -153,6 +153,138 @@
     return rrTarget;
   }
 
+  function parseHmToMinutes(hhmm, fallback) {
+    const src = String(hhmm || fallback || "08:30").trim();
+    const m = /^(\d{1,2}):(\d{2})$/.exec(src);
+    if (!m) return parseHmToMinutes(fallback || "08:30", "08:30");
+    const h = Math.max(0, Math.min(23, Number(m[1])));
+    const min = Math.max(0, Math.min(59, Number(m[2])));
+    return h * 60 + min;
+  }
+
+  function chicagoMinutesOfDay(ms, timeZone) {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: timeZone || "America/Chicago",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    });
+    const parts = dtf.formatToParts(new Date(ms));
+    let h = 0;
+    let m = 0;
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].type === "hour") h = Number(parts[i].value || 0);
+      if (parts[i].type === "minute") m = Number(parts[i].value || 0);
+    }
+    return h * 60 + m;
+  }
+
+  function emaSeries(values, len) {
+    const out = new Array(values.length).fill(null);
+    if (!values.length || len < 1) return out;
+    const alpha = 2 / (len + 1);
+    let prev = Number(values[0]);
+    if (!Number.isFinite(prev)) return out;
+    out[0] = prev;
+    for (let i = 1; i < values.length; i++) {
+      const v = Number(values[i]);
+      if (!Number.isFinite(v)) {
+        out[i] = out[i - 1];
+        continue;
+      }
+      prev = alpha * v + (1 - alpha) * prev;
+      out[i] = prev;
+    }
+    return out;
+  }
+
+  function avgAbsBody(candles, idx, lookback) {
+    const start = Math.max(0, idx - lookback + 1);
+    let sum = 0;
+    let n = 0;
+    for (let i = start; i <= idx; i++) {
+      const o = Number(candles[i].o);
+      const c = Number(candles[i].c);
+      if (!Number.isFinite(o) || !Number.isFinite(c)) continue;
+      sum += Math.abs(c - o);
+      n += 1;
+    }
+    return n ? sum / n : 0;
+  }
+
+  function avgRange(candles, idx, lookback) {
+    const start = Math.max(0, idx - lookback + 1);
+    let sum = 0;
+    let n = 0;
+    for (let i = start; i <= idx; i++) {
+      const h = Number(candles[i].h);
+      const l = Number(candles[i].l);
+      if (!Number.isFinite(h) || !Number.isFinite(l)) continue;
+      sum += Math.max(0, h - l);
+      n += 1;
+    }
+    return n ? sum / n : 0;
+  }
+
+  function avgVolume(candles, idx, lookback) {
+    const start = Math.max(0, idx - lookback + 1);
+    let sum = 0;
+    let n = 0;
+    for (let i = start; i <= idx; i++) {
+      const v = Number(candles[i].v != null ? candles[i].v : candles[i].volume != null ? candles[i].volume : candles[i].tickVolume);
+      if (!Number.isFinite(v)) continue;
+      sum += v;
+      n += 1;
+    }
+    return n ? sum / n : 0;
+  }
+
+  function trendStructureState(candles, idx, bars) {
+    if (idx - bars < 2) return "flat";
+    let hh = 0;
+    let hl = 0;
+    let lh = 0;
+    let ll = 0;
+    for (let i = idx - bars + 1; i <= idx; i++) {
+      const ph = Number(candles[i - 1].h);
+      const pl = Number(candles[i - 1].l);
+      const h = Number(candles[i].h);
+      const l = Number(candles[i].l);
+      if (h > ph) hh += 1;
+      if (l > pl) hl += 1;
+      if (h < ph) lh += 1;
+      if (l < pl) ll += 1;
+    }
+    if (hh >= Math.ceil(bars * 0.6) && hl >= Math.ceil(bars * 0.6)) return "bull";
+    if (lh >= Math.ceil(bars * 0.6) && ll >= Math.ceil(bars * 0.6)) return "bear";
+    return "flat";
+  }
+
+  function chopScore(candles, idx, lookback, minRange) {
+    if (idx - lookback < 2) return { isChop: false, alternationRatio: 0, avgR: 0 };
+    let alternations = 0;
+    let comps = 0;
+    let prevDir = 0;
+    for (let i = idx - lookback + 1; i <= idx; i++) {
+      const o = Number(candles[i].o);
+      const c = Number(candles[i].c);
+      if (!Number.isFinite(o) || !Number.isFinite(c)) continue;
+      const dir = c > o ? 1 : c < o ? -1 : 0;
+      if (dir !== 0 && prevDir !== 0) {
+        comps += 1;
+        if (dir !== prevDir) alternations += 1;
+      }
+      if (dir !== 0) prevDir = dir;
+    }
+    const avgR = avgRange(candles, idx, lookback);
+    const alternationRatio = comps > 0 ? alternations / comps : 0;
+    return {
+      isChop: avgR < minRange || alternationRatio > 0.6,
+      alternationRatio,
+      avgR
+    };
+  }
+
   function evaluateNas100VwapLiquiditySweepFromSignalSet(set, strategy, strategyParams, tradeManagement) {
     const p = strategyParams || {};
     const tm = tradeManagement || {};
@@ -180,9 +312,50 @@
     const timeZone = p.timeZone || "America/Chicago";
     const bothHitModel = tm.bothHitModel === "tp_first" ? "tp_first" : "sl_first";
 
+    const strategyMode = String(p.strategy_execution_mode || "both");
+    const runMain = strategyMode === "both" || strategyMode === "main_only";
+    const runBurst = strategyMode === "both" || strategyMode === "burst_only";
+    const allowSameCandleDualEntry = !!p.allow_same_candle_main_and_burst;
+
+    const enableBurstMode = p.enable_burst_mode !== false;
+    const burstModeRequiresMainBias = p.burst_mode_requires_main_bias !== false;
+    const burstSessionStartMin = parseHmToMinutes(p.burst_session_start || p.session_start || "08:30", "08:30");
+    const burstSessionEndMin = parseHmToMinutes(p.burst_session_end || p.session_end || "11:30", "11:30");
+    const burstRiskPerTradePct = Math.max(0.01, toNum(p.burst_risk_per_trade, 0.25));
+    const burstStopBufferPoints = Math.max(0, toNum(p.burst_stop_buffer_points, 3));
+    const burstTp1Points = Math.max(1, toNum(p.burst_tp1_points, 8));
+    const burstTp2Points = Math.max(burstTp1Points, toNum(p.burst_tp2_points, 12));
+    const burstTpMode = String(p.burst_tp_mode || "points_partial");
+    const burstTp1Rr = Math.max(0.2, toNum(p.burst_tp1_rr, 0.8));
+    const burstTp2Rr = Math.max(burstTp1Rr, toNum(p.burst_tp2_rr, 1.2));
+    const burstMoveToBeAfterTp1 = p.burst_move_sl_to_breakeven_after_tp1 !== false;
+    const burstUseEmaFilter = p.burst_use_ema_filter !== false;
+    const burstFastEmaLen = Math.max(2, toPosInt(p.burst_fast_ema, 9, 2));
+    const burstSlowEmaLen = Math.max(3, toPosInt(p.burst_slow_ema, 20, 3));
+    const burstDispMultiplier = Math.max(0.8, toNum(p.burst_displacement_multiplier, 1.2));
+    const burstMaxEntriesPerLeg = Math.max(1, toPosInt(p.burst_max_entries_per_leg, 3, 1));
+    const burstCooldownMinutes = Math.max(0, toPosInt(p.burst_cooldown_minutes, 1, 0));
+    const burstDisableAfterConsecutiveLosses = Math.max(1, toPosInt(p.burst_disable_after_consecutive_losses, 2, 1));
+    const burstPauseMinutesAfterLossStreak = Math.max(1, toPosInt(p.burst_pause_minutes_after_loss_streak, 30, 1));
+    const burstRequireVolumeConfirmation = !!p.burst_require_volume_confirmation;
+    const burstVolumeMultiplier = Math.max(0.5, toNum(p.burst_volume_multiplier, 1.1));
+    const burstMaxOpenTrades = Math.max(1, toPosInt(p.burst_max_open_trades, 1, 1));
+    const burstMinMomentumScore = Math.max(0, toNum(p.burst_min_momentum_score, 2.0));
+    const burstMinCandleRangePoints = Math.max(0, toNum(p.burst_min_candle_range_points, 3));
+    const burstMinPullbackQualityScore = Math.max(0, toNum(p.burst_min_pullback_quality_score, 1.0));
+    const burstEmaDistanceMaxPoints = Math.max(0.5, toNum(p.burst_ema_distance_max_points, 6));
+    const burstVolumeSpikeMultiplier = Math.max(0.5, toNum(p.burst_volume_spike_multiplier, 1.0));
+    const burstMaxSpreadPoints = toNum(p.burst_max_spread_points, maxSpreadPoints);
+    const burstPullbackRetraceMax = Math.max(0.1, Math.min(0.9, toNum(p.burst_pullback_retrace_max, 0.45)));
+    const burstTrendLookback = Math.max(3, toPosInt(p.burst_trend_lookback, 5, 3));
+    const burstChopLookback = Math.max(5, toPosInt(p.burst_chop_lookback, 8, 5));
+
     const candles = set.candlesChron || [];
     const vwap = set.vwap || [];
     const signals = set.allSignals || [];
+    const closeSeries = candles.map((c) => Number(c.c));
+    const emaFast = emaSeries(closeSeries, burstFastEmaLen);
+    const emaSlow = emaSeries(closeSeries, burstSlowEmaLen);
 
     const signalsByIdx = {};
     for (let i = 0; i < signals.length; i++) {
@@ -195,17 +368,47 @@
     let dayKey = "";
     let dayStartEquity = initialEquity;
     let dayLocked = false;
-    let consecutiveLosses = 0;
-    let pauseUntilMs = 0;
-    let lastFlatExitMs = 0;
+    let mainConsecutiveLosses = 0;
+    let mainPauseUntilMs = 0;
+    let lastMainExitMs = 0;
+    let lastBurstExitMs = 0;
+
+    let burstConsecutiveLosses = 0;
+    let burstPauseUntilMs = 0;
+    let burstModeActive = false;
+    let burstModeSide = "";
+    let burstLegId = 0;
+    let burstEntriesThisLeg = 0;
+    let lastMainQualifiedSignalIdx = -9999;
+    let lastMainQualifiedSignalSide = "";
 
     const pending = [];
     const openTrades = [];
     const trades = [];
     const decisionLog = [];
+    const burstDecisionLog = [];
+
+    function hasOpenTradeForSystem(systemName) {
+      for (let i = 0; i < openTrades.length; i++) {
+        if (openTrades[i].system === systemName) return true;
+      }
+      return false;
+    }
 
     function logDecision(payload) {
       if (debugMode) decisionLog.push(payload);
+    }
+
+    function logBurst(payload) {
+      if (debugMode) burstDecisionLog.push(payload);
+    }
+
+    function deactivateBurst(reason, t, idx) {
+      if (burstModeActive) {
+        logBurst({ time: t, idx, burstModeActive: false, deactivated: true, reason, side: burstModeSide, legId: burstLegId });
+      }
+      burstModeActive = false;
+      burstModeSide = "";
     }
 
     function closeTrade(trade, exitPrice, exitTime, exitReason) {
@@ -220,9 +423,12 @@
       trade.exitTime = exitTime;
       trade.exitReason = exitReason;
       equity += pnlCurrency;
-      trades.push({
+
+      const tradeRow = {
         trade: trades.length + 1,
         side: trade.side,
+        system: trade.system,
+        entryLabel: trade.system === "BURST" ? "BURST_MODE_ENTRY" : "MAIN_STRATEGY_ENTRY",
         entryTime: trade.entryTime,
         entryPrice: trade.entryPrice,
         exitTime,
@@ -232,19 +438,33 @@
         pnlR: trade.riskPoints > 0 ? trade.realizedPnlTicks / (trade.riskPoints / tickSize) : 0,
         qty: trade.qty,
         tp1Hit: !!trade.tp1Hit,
-        signalReason: trade.entryReason
-      });
+        signalReason: trade.entryReason,
+        burstLegId: trade.burstLegId || null
+      };
+      trades.push(tradeRow);
 
-      if (trade.realizedPnlCurrency < 0) {
-        consecutiveLosses += 1;
-        if (consecutiveLosses >= maxConsecutiveLosses) {
-          pauseUntilMs = exitTime + pauseMinutesAfterLosses * 60 * 1000;
+      if (trade.system === "MAIN") {
+        if (trade.realizedPnlCurrency < 0) {
+          mainConsecutiveLosses += 1;
+          if (mainConsecutiveLosses >= maxConsecutiveLosses) {
+            mainPauseUntilMs = exitTime + pauseMinutesAfterLosses * 60 * 1000;
+          }
+        } else {
+          mainConsecutiveLosses = 0;
         }
+        lastMainExitMs = exitTime;
       } else {
-        consecutiveLosses = 0;
+        if (trade.realizedPnlCurrency < 0) {
+          burstConsecutiveLosses += 1;
+          if (burstConsecutiveLosses >= burstDisableAfterConsecutiveLosses) {
+            burstPauseUntilMs = exitTime + burstPauseMinutesAfterLossStreak * 60 * 1000;
+            deactivateBurst("burst_loss_streak_pause", exitTime, trade.entryIdx);
+          }
+        } else {
+          burstConsecutiveLosses = 0;
+        }
+        lastBurstExitMs = exitTime;
       }
-
-      lastFlatExitMs = exitTime;
     }
 
     for (let i = 0; i < candles.length; i++) {
@@ -255,6 +475,10 @@
       const l = Number(c.l);
       const cl = Number(c.c);
       const vw = Number(vwap[i]);
+      const ef = Number(emaFast[i]);
+      const es = Number(emaSlow[i]);
+      const minOfDay = chicagoMinutesOfDay(t, timeZone);
+      const inBurstSession = minOfDay >= burstSessionStartMin && minOfDay <= burstSessionEndMin;
 
       if (!Number.isFinite(t) || !Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(cl)) {
         continue;
@@ -265,11 +489,18 @@
         dayKey = currentDay;
         dayStartEquity = equity;
         dayLocked = false;
-        consecutiveLosses = 0;
+        mainConsecutiveLosses = 0;
+        burstConsecutiveLosses = 0;
+        deactivateBurst("new_session_day", t, i);
       }
 
       const dayPnLPct = dayStartEquity > 0 ? ((equity - dayStartEquity) / dayStartEquity) * 100 : 0;
-      if (dayPnLPct <= -dailyLossLimitPct || dayPnLPct >= dailyProfitLockPct) dayLocked = true;
+      if (dayPnLPct <= -dailyLossLimitPct || dayPnLPct >= dailyProfitLockPct) {
+        dayLocked = true;
+        deactivateBurst("daily_lock", t, i);
+      }
+
+      const openedThisCandle = { MAIN: 0, BURST: 0 };
 
       for (let k = openTrades.length - 1; k >= 0; k--) {
         const tr = openTrades[k];
@@ -286,7 +517,7 @@
               tr.realizedPnlTicks += gainPoints / tickSize;
               tr.qtyRemaining = tr.qty - takeQty;
               tr.tp1Hit = true;
-              if (moveToBeAfterTp1) tr.stopPrice = tr.entryPrice;
+              if (tr.moveToBeAfterTp1) tr.stopPrice = tr.entryPrice;
             } else {
               closeTrade(tr, tr.stopPrice, t, "sl_before_tp1");
               openTrades.splice(k, 1);
@@ -299,7 +530,7 @@
             tr.realizedPnlTicks += gainPoints / tickSize;
             tr.qtyRemaining = tr.qty - takeQty;
             tr.tp1Hit = true;
-            if (moveToBeAfterTp1) tr.stopPrice = tr.entryPrice;
+            if (tr.moveToBeAfterTp1) tr.stopPrice = tr.entryPrice;
           } else if (slHit) {
             closeTrade(tr, tr.stopPrice, t, "sl");
             openTrades.splice(k, 1);
@@ -339,64 +570,132 @@
       if (signalsByIdx[i] && signalsByIdx[i].length) {
         for (let s = 0; s < signalsByIdx[i].length; s++) {
           pending.push({ signal: signalsByIdx[i][s], expiresAt: i + entryWindowBars, entered: false });
+          lastMainQualifiedSignalIdx = i;
+          lastMainQualifiedSignalSide = signalsByIdx[i][s].type;
         }
       }
 
-      for (let q = pending.length - 1; q >= 0; q--) {
-        const pnd = pending[q];
-        if (pnd.entered || i > pnd.expiresAt) {
-          pending.splice(q, 1);
-          continue;
-        }
-
-        const sig = pnd.signal;
-        const setup = sig && sig.setup ? sig.setup : null;
-        if (!setup) {
-          pending.splice(q, 1);
-          continue;
-        }
-
-        if (openTrades.length >= maxOpenTrades) {
-          logDecision({ time: t, idx: i, blocked: true, reason: "max_open_trades", side: sig.type });
-          continue;
-        }
-        if (dayLocked) {
-          logDecision({ time: t, idx: i, blocked: true, reason: "daily_lock", side: sig.type });
-          continue;
-        }
-        if (t < pauseUntilMs) {
-          logDecision({ time: t, idx: i, blocked: true, reason: "loss_pause", side: sig.type });
-          continue;
-        }
-        if (lastFlatExitMs && t - lastFlatExitMs < cooldownMinutes * 60 * 1000) {
-          logDecision({ time: t, idx: i, blocked: true, reason: "cooldown", side: sig.type });
-          continue;
-        }
-
-        const spreadPoints = Number(c.spreadPoints || c.spread || 0);
-        if (Number.isFinite(maxSpreadPoints) && Number.isFinite(spreadPoints) && spreadPoints > maxSpreadPoints) {
-          logDecision({ time: t, idx: i, blocked: true, reason: "spread_filter", spreadPoints, side: sig.type });
-          continue;
-        }
-
-        if (newsFilterEnabled) {
-          // Placeholder hook: connect broker/news calendar feed here.
-          const newsBlocked = false;
-          if (newsBlocked) {
-            logDecision({ time: t, idx: i, blocked: true, reason: "news_filter", side: sig.type });
+      if (runMain) {
+        for (let q = pending.length - 1; q >= 0; q--) {
+          const pnd = pending[q];
+          if (pnd.entered || i > pnd.expiresAt) {
+            pending.splice(q, 1);
             continue;
           }
-        }
 
-        const biasOk = sig.type === "BUY" ? cl > vw : cl < vw;
-        const entry = getEntryFromMode(entryMode, setup, c, sig.type, biasOk);
-        if (!entry.ok) {
+          const sig = pnd.signal;
+          const setup = sig && sig.setup ? sig.setup : null;
+          if (!setup) {
+            pending.splice(q, 1);
+            continue;
+          }
+
+          if (openTrades.length >= maxOpenTrades) {
+            logDecision({ time: t, idx: i, blocked: true, reason: "max_open_trades", side: sig.type, system: "MAIN" });
+            continue;
+          }
+          if (dayLocked) {
+            logDecision({ time: t, idx: i, blocked: true, reason: "daily_lock", side: sig.type, system: "MAIN" });
+            continue;
+          }
+          if (t < mainPauseUntilMs) {
+            logDecision({ time: t, idx: i, blocked: true, reason: "loss_pause", side: sig.type, system: "MAIN" });
+            continue;
+          }
+          if (lastMainExitMs && t - lastMainExitMs < cooldownMinutes * 60 * 1000) {
+            logDecision({ time: t, idx: i, blocked: true, reason: "cooldown", side: sig.type, system: "MAIN" });
+            continue;
+          }
+
+          const spreadPoints = Number(c.spreadPoints || c.spread || 0);
+          if (Number.isFinite(maxSpreadPoints) && Number.isFinite(spreadPoints) && spreadPoints > maxSpreadPoints) {
+            logDecision({ time: t, idx: i, blocked: true, reason: "spread_filter", spreadPoints, side: sig.type, system: "MAIN" });
+            continue;
+          }
+          if (newsFilterEnabled) {
+            const newsBlocked = false;
+            if (newsBlocked) {
+              logDecision({ time: t, idx: i, blocked: true, reason: "news_filter", side: sig.type, system: "MAIN" });
+              continue;
+            }
+          }
+
+          const biasOk = sig.type === "BUY" ? cl > vw : cl < vw;
+          const entry = getEntryFromMode(entryMode, setup, c, sig.type, biasOk);
+          if (!entry.ok) {
+            logDecision({
+              time: t,
+              idx: i,
+              blocked: true,
+              reason: entry.reason,
+              side: sig.type,
+              system: "MAIN",
+              vwapBias: sig.type === "BUY" ? "above" : "below",
+              vwap: vw,
+              lastSwingHigh: setup.swingHigh,
+              lastSwingLow: setup.swingLow,
+              sweepDetected: true,
+              displacementPassed: true,
+              fvgFound: !!setup.fvg
+            });
+            continue;
+          }
+
+          const stopPrice = sig.type === "BUY" ? Number(setup.sweepWick) - stopBufferPoints : Number(setup.sweepWick) + stopBufferPoints;
+          const riskPoints = Math.abs(entry.entryPrice - stopPrice);
+          if (!Number.isFinite(riskPoints) || riskPoints <= 0) {
+            logDecision({ time: t, idx: i, blocked: true, reason: "invalid_risk", side: sig.type, system: "MAIN" });
+            pending.splice(q, 1);
+            continue;
+          }
+          const riskAmount = equity * (riskPerTradePct / 100);
+          const qty = riskAmount / (riskPoints * pointValue);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            logDecision({ time: t, idx: i, blocked: true, reason: "position_size_failed", side: sig.type, system: "MAIN" });
+            pending.splice(q, 1);
+            continue;
+          }
+
+          if (!allowSameCandleDualEntry && openedThisCandle.BURST > 0) {
+            logDecision({ time: t, idx: i, blocked: true, reason: "same_candle_burst_conflict", side: sig.type, system: "MAIN" });
+            continue;
+          }
+
+          const tp1Price = sig.type === "BUY" ? entry.entryPrice + riskPoints * tp1Rr : entry.entryPrice - riskPoints * tp1Rr;
+          const modeTarget = targetByMode(tpMode, sig.type, entry.entryPrice, riskPoints, vw, setup, tp2Rr);
+          const tp2Price =
+            tpMode === "partial_rr"
+              ? targetByMode("next_liquidity", sig.type, entry.entryPrice, riskPoints, vw, setup, tp2Rr)
+              : modeTarget;
+
+          openTrades.push({
+            system: "MAIN",
+            side: sig.type,
+            entryIdx: i,
+            entryTime: t,
+            entryPrice: Number(entry.entryPrice),
+            stopPrice: Number(stopPrice),
+            tp1Price: Number(tp1Price),
+            tp2Price: Number(tp2Price),
+            qty: Number(qty),
+            qtyRemaining: Number(qty),
+            riskPoints,
+            tp1Hit: false,
+            moveToBeAfterTp1,
+            entryReason: entry.reason,
+            realizedPnlCurrency: 0,
+            realizedPnlTicks: 0,
+            closed: false
+          });
+          openedThisCandle.MAIN += 1;
+
           logDecision({
             time: t,
             idx: i,
-            blocked: true,
+            allowed: true,
             reason: entry.reason,
             side: sig.type,
+            system: "MAIN",
             vwapBias: sig.type === "BUY" ? "above" : "below",
             vwap: vw,
             lastSwingHigh: setup.swingHigh,
@@ -405,70 +704,258 @@
             displacementPassed: true,
             fvgFound: !!setup.fvg
           });
-          continue;
-        }
 
-        const stopPrice =
-          sig.type === "BUY"
-            ? Number(setup.sweepWick) - stopBufferPoints
-            : Number(setup.sweepWick) + stopBufferPoints;
-        const riskPoints = Math.abs(entry.entryPrice - stopPrice);
-        if (!Number.isFinite(riskPoints) || riskPoints <= 0) {
-          logDecision({ time: t, idx: i, blocked: true, reason: "invalid_risk", side: sig.type });
+          pnd.entered = true;
           pending.splice(q, 1);
-          continue;
+        }
+      }
+
+      if (runBurst && enableBurstMode) {
+        const bias = cl > vw ? "BUY" : cl < vw ? "SELL" : "FLAT";
+        const trendState = trendStructureState(candles, i, burstTrendLookback);
+        const bodyNow = Math.abs(cl - o);
+        const bodyAvg10 = avgAbsBody(candles, i - 1, 10);
+        const dispStrength = bodyAvg10 > 0 ? bodyNow / bodyAvg10 : 0;
+        const chop = chopScore(candles, i, burstChopLookback, burstMinCandleRangePoints * tickSize);
+        const volNow = Number(c.v != null ? c.v : c.volume != null ? c.volume : c.tickVolume);
+        const volAvg10 = avgVolume(candles, i - 1, 10);
+        const volumeOk = !burstRequireVolumeConfirmation || (volAvg10 > 0 && volNow >= volAvg10 * burstVolumeMultiplier);
+        const momentumScore = (dispStrength >= burstDispMultiplier ? 1 : 0) + (trendState !== "flat" ? 1 : 0) + (chop.isChop ? 0 : 1);
+
+        const spreadPoints = Number(c.spreadPoints || c.spread || 0);
+        const spreadOk = !Number.isFinite(burstMaxSpreadPoints) || !Number.isFinite(spreadPoints) || spreadPoints <= burstMaxSpreadPoints;
+        const inBurstBias = bias === "BUY" || bias === "SELL";
+        const trendBiasOk = (bias === "BUY" && trendState === "bull") || (bias === "SELL" && trendState === "bear");
+        const recentMainSignalOk =
+          i - lastMainQualifiedSignalIdx <= 20 &&
+          (lastMainQualifiedSignalSide === bias || hasOpenTradeForSystem("MAIN"));
+        const mainBiasOk = !burstModeRequiresMainBias || recentMainSignalOk;
+        const canActivate =
+          inBurstSession &&
+          inBurstBias &&
+          trendBiasOk &&
+          dispStrength >= burstDispMultiplier &&
+          volumeOk &&
+          !chop.isChop &&
+          momentumScore >= burstMinMomentumScore &&
+          spreadOk &&
+          mainBiasOk;
+
+        if (signalsByIdx[i] && signalsByIdx[i].some((s0) => s0.type !== bias && s0.type !== "FLAT")) {
+          deactivateBurst("opposite_liquidity_sweep", t, i);
         }
 
-        const riskAmount = equity * (riskPerTradePct / 100);
-        const qty = riskAmount / (riskPoints * pointValue);
-        if (!Number.isFinite(qty) || qty <= 0) {
-          logDecision({ time: t, idx: i, blocked: true, reason: "position_size_failed", side: sig.type });
-          pending.splice(q, 1);
-          continue;
+        if (burstModeActive) {
+          if (!inBurstSession) deactivateBurst("session_end", t, i);
+          else if (dayLocked) deactivateBurst("daily_lock", t, i);
+          else if ((burstModeSide === "BUY" && cl <= vw) || (burstModeSide === "SELL" && cl >= vw)) deactivateBurst("vwap_cross", t, i);
+          else if ((burstModeSide === "BUY" && trendState !== "bull") || (burstModeSide === "SELL" && trendState !== "bear")) deactivateBurst("trend_break", t, i);
+          else if (dispStrength >= burstDispMultiplier && ((burstModeSide === "BUY" && cl < o) || (burstModeSide === "SELL" && cl > o))) {
+            deactivateBurst("opposite_displacement", t, i);
+          }
         }
 
-        const tp1Price = sig.type === "BUY" ? entry.entryPrice + riskPoints * tp1Rr : entry.entryPrice - riskPoints * tp1Rr;
-        const modeTarget = targetByMode(tpMode, sig.type, entry.entryPrice, riskPoints, vw, setup, tp2Rr);
-        const tp2Price =
-          tpMode === "partial_rr"
-            ? targetByMode("next_liquidity", sig.type, entry.entryPrice, riskPoints, vw, setup, tp2Rr)
-            : modeTarget;
+        if (!burstModeActive) {
+          if (!inBurstSession) {
+            logBurst({ time: t, idx: i, burstModeActive: false, blocked: true, reason: "session_filter", currentVwapBias: bias, trendState });
+          } else if (t < burstPauseUntilMs) {
+            logBurst({ time: t, idx: i, burstModeActive: false, blocked: true, reason: "burst_pause", currentVwapBias: bias, trendState });
+          } else if (!canActivate) {
+            logBurst({
+              time: t,
+              idx: i,
+              burstModeActive: false,
+              blocked: true,
+              reason: "activation_requirements_not_met",
+              currentVwapBias: bias,
+              trendState,
+              displacementStrength: dispStrength,
+              chop: chop.isChop,
+              momentumScore
+            });
+          } else {
+            burstModeActive = true;
+            burstModeSide = bias;
+            burstLegId += 1;
+            burstEntriesThisLeg = 0;
+            logBurst({
+              time: t,
+              idx: i,
+              burstModeActive: true,
+              activated: true,
+              reason: "momentum_activation",
+              currentVwapBias: bias,
+              trendState,
+              displacementStrength: dispStrength,
+              momentumScore,
+              legId: burstLegId
+            });
+          }
+        }
 
-        openTrades.push({
-          side: sig.type,
-          entryIdx: i,
-          entryTime: t,
-          entryPrice: Number(entry.entryPrice),
-          stopPrice: Number(stopPrice),
-          tp1Price: Number(tp1Price),
-          tp2Price: Number(tp2Price),
-          qty: Number(qty),
-          qtyRemaining: Number(qty),
-          riskPoints,
-          tp1Hit: false,
-          entryReason: entry.reason,
-          realizedPnlCurrency: 0,
-          realizedPnlTicks: 0,
-          closed: false
-        });
+        if (burstModeActive && burstEntriesThisLeg < burstMaxEntriesPerLeg) {
+          if (dayLocked) {
+            logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "daily_lock", side: burstModeSide });
+          } else if (t < burstPauseUntilMs) {
+            logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "burst_pause", side: burstModeSide });
+          } else if (hasOpenTradeForSystem("BURST") && burstMaxOpenTrades <= 1) {
+            logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "max_burst_open_trades", side: burstModeSide });
+          } else if (lastBurstExitMs && t - lastBurstExitMs < burstCooldownMinutes * 60 * 1000) {
+            logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "burst_cooldown", side: burstModeSide });
+          } else if (!allowSameCandleDualEntry && openedThisCandle.MAIN > 0) {
+            logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "same_candle_main_conflict", side: burstModeSide });
+          } else {
+            const side = burstModeSide;
+            const bodyDir = cl > o ? "BUY" : cl < o ? "SELL" : "FLAT";
+            const emaMin = Math.min(ef, es);
+            const emaMax = Math.max(ef, es);
+            const pullbackCount = Math.min(3, i);
+            let oppositeCount = 0;
+            let pbHigh = -Infinity;
+            let pbLow = Infinity;
+            for (let j = i - pullbackCount; j < i; j++) {
+              const oo = Number(candles[j].o);
+              const cc = Number(candles[j].c);
+              if ((side === "BUY" && cc < oo) || (side === "SELL" && cc > oo)) oppositeCount += 1;
+              pbHigh = Math.max(pbHigh, Number(candles[j].h));
+              pbLow = Math.min(pbLow, Number(candles[j].l));
+            }
+            const pullbackCandlesOk = oppositeCount >= 1 && oppositeCount <= 3;
+            const touchedEmaZone = Number.isFinite(emaMin) && Number.isFinite(emaMax) && l <= emaMax && h >= emaMin;
+            const reclaimFastEma = side === "BUY" ? cl > ef : cl < ef;
 
-        logDecision({
-          time: t,
-          idx: i,
-          allowed: true,
-          reason: entry.reason,
-          side: sig.type,
-          vwapBias: sig.type === "BUY" ? "above" : "below",
-          vwap: vw,
-          lastSwingHigh: setup.swingHigh,
-          lastSwingLow: setup.swingLow,
-          sweepDetected: true,
-          displacementPassed: true,
-          fvgFound: !!setup.fvg
-        });
+            const lastDispMove = avgAbsBody(candles, i - 1, 3);
+            const retracePoints = side === "BUY" ? Math.max(0, pbHigh - cl) : Math.max(0, cl - pbLow);
+            const retraceRatio = lastDispMove > 0 ? retracePoints / lastDispMove : 1;
+            const shallowRetrace = retraceRatio <= burstPullbackRetraceMax;
 
-        pnd.entered = true;
-        pending.splice(q, 1);
+            const contBreak = side === "BUY" ? cl > Number(candles[i - 1] && candles[i - 1].h) : cl < Number(candles[i - 1] && candles[i - 1].l);
+            const continuation = bodyDir === side && (contBreak || reclaimFastEma);
+
+            const emaDistancePoints = Number.isFinite(ef) ? Math.abs(cl - ef) / tickSize : Infinity;
+            const emaDistanceOk = emaDistancePoints <= burstEmaDistanceMaxPoints;
+            const volumeSpikeOk = volAvg10 <= 0 || volNow >= volAvg10 * burstVolumeSpikeMultiplier;
+
+            const pullbackQualityScore =
+              (pullbackCandlesOk ? 1 : 0) +
+              (touchedEmaZone ? 1 : 0) +
+              (shallowRetrace ? 1 : 0) +
+              (emaDistanceOk ? 1 : 0);
+
+            const pullbackDetected = pullbackCandlesOk || touchedEmaZone || shallowRetrace;
+            if (!pullbackDetected) {
+              logBurst({
+                time: t,
+                idx: i,
+                burstModeActive: true,
+                blocked: true,
+                reason: "pullback_not_detected",
+                currentVwapBias: side,
+                trendState,
+                displacementStrength: dispStrength,
+                pullbackDetected: false,
+                continuationPassed: false
+              });
+            } else if (burstUseEmaFilter && !touchedEmaZone) {
+              logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "ema_pullback_filter", side });
+            } else if (burstUseEmaFilter && !reclaimFastEma) {
+              logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "ema_reclaim_filter", side });
+            } else if (!continuation) {
+              logBurst({
+                time: t,
+                idx: i,
+                burstModeActive: true,
+                blocked: true,
+                reason: "continuation_failed",
+                currentVwapBias: side,
+                trendState,
+                displacementStrength: dispStrength,
+                pullbackDetected: true,
+                continuationPassed: false
+              });
+            } else if (pullbackQualityScore < burstMinPullbackQualityScore) {
+              logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "pullback_quality_low", pullbackQualityScore });
+            } else if (!emaDistanceOk) {
+              logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "ema_distance_filter", emaDistancePoints });
+            } else if (!volumeSpikeOk) {
+              logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "volume_spike_filter" });
+            } else {
+              const entryPrice = cl;
+              const stopAnchor = side === "BUY" ? pbLow : pbHigh;
+              const stopPrice = side === "BUY" ? stopAnchor - burstStopBufferPoints : stopAnchor + burstStopBufferPoints;
+              const riskPoints = Math.abs(entryPrice - stopPrice);
+
+              if (!Number.isFinite(riskPoints) || riskPoints <= 0) {
+                logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "invalid_risk" });
+              } else {
+                const riskAmount = equity * (burstRiskPerTradePct / 100);
+                const qty = riskAmount / (riskPoints * pointValue);
+                if (!Number.isFinite(qty) || qty <= 0) {
+                  logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "position_size_failed" });
+                } else {
+                  const tp1Price =
+                    burstTpMode === "rr_partial"
+                      ? side === "BUY"
+                        ? entryPrice + riskPoints * burstTp1Rr
+                        : entryPrice - riskPoints * burstTp1Rr
+                      : side === "BUY"
+                        ? entryPrice + burstTp1Points
+                        : entryPrice - burstTp1Points;
+
+                  const tp2Price =
+                    burstTpMode === "rr_partial"
+                      ? side === "BUY"
+                        ? entryPrice + riskPoints * burstTp2Rr
+                        : entryPrice - riskPoints * burstTp2Rr
+                      : side === "BUY"
+                        ? entryPrice + burstTp2Points
+                        : entryPrice - burstTp2Points;
+
+                  openTrades.push({
+                    system: "BURST",
+                    burstLegId,
+                    side,
+                    entryIdx: i,
+                    entryTime: t,
+                    entryPrice: Number(entryPrice),
+                    stopPrice: Number(stopPrice),
+                    tp1Price: Number(tp1Price),
+                    tp2Price: Number(tp2Price),
+                    qty: Number(qty),
+                    qtyRemaining: Number(qty),
+                    riskPoints,
+                    tp1Hit: false,
+                    moveToBeAfterTp1: burstMoveToBeAfterTp1,
+                    entryReason: "micro_pullback_continuation",
+                    realizedPnlCurrency: 0,
+                    realizedPnlTicks: 0,
+                    closed: false
+                  });
+
+                  burstEntriesThisLeg += 1;
+                  openedThisCandle.BURST += 1;
+                  logBurst({
+                    time: t,
+                    idx: i,
+                    burstModeActive: true,
+                    allowed: true,
+                    reason: "burst_entry_allowed",
+                    currentVwapBias: side,
+                    trendState,
+                    displacementStrength: dispStrength,
+                    pullbackDetected: true,
+                    continuationPassed: true,
+                    pullbackQualityScore,
+                    legId: burstLegId,
+                    entriesThisLeg: burstEntriesThisLeg
+                  });
+                }
+              }
+            }
+          }
+        } else if (burstModeActive && burstEntriesThisLeg >= burstMaxEntriesPerLeg) {
+          deactivateBurst("max_entries_per_leg", t, i);
+        }
       }
     }
 
@@ -477,16 +964,33 @@
     let grossTicks = 0;
     let grossCurrency = 0;
     let avgR = 0;
+    const bySystem = {
+      MAIN: { totalTrades: 0, wins: 0, losses: 0, grossTicks: 0, grossCurrency: 0 },
+      BURST: { totalTrades: 0, wins: 0, losses: 0, grossTicks: 0, grossCurrency: 0 }
+    };
+
     for (let i = 0; i < trades.length; i++) {
       const tr = trades[i];
       grossTicks += Number(tr.pnlTicks || 0);
       const points = Number(tr.pnlTicks || 0) * tickSize;
-      grossCurrency += points * pointValue;
+      const money = points * pointValue;
+      grossCurrency += money;
       avgR += Number(tr.pnlR || 0);
-      if (Number(tr.pnlTicks || 0) >= 0) wins += 1;
+      const isWin = Number(tr.pnlTicks || 0) >= 0;
+      if (isWin) wins += 1;
       else losses += 1;
+
+      const bucket = tr.system === "BURST" ? bySystem.BURST : bySystem.MAIN;
+      bucket.totalTrades += 1;
+      bucket.grossTicks += Number(tr.pnlTicks || 0);
+      bucket.grossCurrency += money;
+      if (isWin) bucket.wins += 1;
+      else bucket.losses += 1;
     }
     avgR = trades.length ? avgR / trades.length : 0;
+
+    bySystem.MAIN.winRate = bySystem.MAIN.totalTrades ? (bySystem.MAIN.wins / bySystem.MAIN.totalTrades) * 100 : 0;
+    bySystem.BURST.winRate = bySystem.BURST.totalTrades ? (bySystem.BURST.wins / bySystem.BURST.totalTrades) * 100 : 0;
 
     return {
       strategyId: strategy.id,
@@ -508,7 +1012,14 @@
         dailyLossLimitPct,
         dailyProfitLockPct,
         newsFilterEnabled,
-        bothHitModel
+        bothHitModel,
+        strategyMode,
+        enableBurstMode,
+        burstRiskPerTradePct,
+        burstMaxEntriesPerLeg,
+        burstCooldownMinutes,
+        burstTpMode,
+        allowSameCandleDualEntry
       },
       summary: {
         totalTrades: trades.length,
@@ -518,19 +1029,23 @@
         grossTicks,
         grossCurrency,
         avgR,
-        endingEquity: equity
+        endingEquity: equity,
+        bySystem
       },
       trades,
       signals: set.signals || [],
       verification: Object.assign({}, set.verification || {}, {
         pendingSignalsFinal: pending.length,
         decisionsLogged: decisionLog.length,
+        burstDecisionsLogged: burstDecisionLog.length,
         dayLockEnabled: true,
-        lossPauseMinutes: pauseMinutesAfterLosses
+        lossPauseMinutes: pauseMinutesAfterLosses,
+        burstPauseMinutes: burstPauseMinutesAfterLossStreak
       }),
       debug: {
         signalDebugRows: set.debugRows || [],
-        decisionLog
+        decisionLog,
+        burstDecisionLog
       }
     };
   }
@@ -773,6 +1288,8 @@
       tp1_rr: Math.max(0.2, toNum(pInput.tp1_rr, 1.0)),
       tp2_rr: Math.max(0.2, toNum(pInput.tp2_rr, 1.5)),
       move_sl_to_breakeven_after_tp1: pInput.move_sl_to_breakeven_after_tp1 !== false,
+      strategy_execution_mode: pInput.strategy_execution_mode || "both",
+      allow_same_candle_main_and_burst: !!pInput.allow_same_candle_main_and_burst,
       max_open_trades: Math.max(1, toPosInt(pInput.max_open_trades, 2, 1)),
       min_swing_lookback_candles: Math.max(2, toPosInt(pInput.min_swing_lookback_candles, 5, 2)),
       max_swing_lookback_candles: Math.max(3, toPosInt(pInput.max_swing_lookback_candles, 15, 3)),
@@ -782,6 +1299,38 @@
       tick_size: Math.max(0.00001, toNum(pInput.tick_size, toNum(tmInput.tickSize, toNum(tmDefaults.tickSize, 1)))),
       entry_window_bars: Math.max(1, toPosInt(pInput.entry_window_bars, 8, 1)),
       enable_fvg_filter: pInput.enable_fvg_filter !== false,
+      enable_burst_mode: pInput.enable_burst_mode !== false,
+      burst_mode_requires_main_bias: pInput.burst_mode_requires_main_bias !== false,
+      burst_session_start: pInput.burst_session_start || pInput.session_start || "08:30",
+      burst_session_end: pInput.burst_session_end || pInput.session_end || "11:30",
+      burst_risk_per_trade: Math.max(0.01, toNum(pInput.burst_risk_per_trade, 0.25)),
+      burst_stop_buffer_points: Math.max(0, toNum(pInput.burst_stop_buffer_points, 3)),
+      burst_tp_mode: pInput.burst_tp_mode || "points_partial",
+      burst_tp1_points: Math.max(1, toNum(pInput.burst_tp1_points, 8)),
+      burst_tp2_points: Math.max(1, toNum(pInput.burst_tp2_points, 12)),
+      burst_tp1_rr: Math.max(0.2, toNum(pInput.burst_tp1_rr, 0.8)),
+      burst_tp2_rr: Math.max(0.2, toNum(pInput.burst_tp2_rr, 1.2)),
+      burst_move_sl_to_breakeven_after_tp1: pInput.burst_move_sl_to_breakeven_after_tp1 !== false,
+      burst_use_ema_filter: pInput.burst_use_ema_filter !== false,
+      burst_fast_ema: Math.max(2, toPosInt(pInput.burst_fast_ema, 9, 2)),
+      burst_slow_ema: Math.max(3, toPosInt(pInput.burst_slow_ema, 20, 3)),
+      burst_displacement_multiplier: Math.max(0.8, toNum(pInput.burst_displacement_multiplier, 1.2)),
+      burst_max_entries_per_leg: Math.max(1, toPosInt(pInput.burst_max_entries_per_leg, 3, 1)),
+      burst_max_open_trades: Math.max(1, toPosInt(pInput.burst_max_open_trades, 1, 1)),
+      burst_cooldown_minutes: Math.max(0, toPosInt(pInput.burst_cooldown_minutes, 1, 0)),
+      burst_disable_after_consecutive_losses: Math.max(1, toPosInt(pInput.burst_disable_after_consecutive_losses, 2, 1)),
+      burst_pause_minutes_after_loss_streak: Math.max(1, toPosInt(pInput.burst_pause_minutes_after_loss_streak, 30, 1)),
+      burst_require_volume_confirmation: !!pInput.burst_require_volume_confirmation,
+      burst_volume_multiplier: Math.max(0.5, toNum(pInput.burst_volume_multiplier, 1.1)),
+      burst_min_momentum_score: Math.max(0, toNum(pInput.burst_min_momentum_score, 2.0)),
+      burst_min_candle_range_points: Math.max(0, toNum(pInput.burst_min_candle_range_points, 3)),
+      burst_min_pullback_quality_score: Math.max(0, toNum(pInput.burst_min_pullback_quality_score, 1.0)),
+      burst_ema_distance_max_points: Math.max(0.5, toNum(pInput.burst_ema_distance_max_points, 6)),
+      burst_volume_spike_multiplier: Math.max(0.5, toNum(pInput.burst_volume_spike_multiplier, 1.0)),
+      burst_max_spread_points: toNum(pInput.burst_max_spread_points, toNum(pInput.max_spread_points, Infinity)),
+      burst_pullback_retrace_max: Math.max(0.1, Math.min(0.9, toNum(pInput.burst_pullback_retrace_max, 0.45))),
+      burst_trend_lookback: Math.max(3, toPosInt(pInput.burst_trend_lookback, 5, 3)),
+      burst_chop_lookback: Math.max(5, toPosInt(pInput.burst_chop_lookback, 8, 5)),
       debug_mode: !!pInput.debug_mode
     };
 
@@ -1033,6 +1582,8 @@
         tp1_rr: 1.0,
         tp2_rr: 1.5,
         move_sl_to_breakeven_after_tp1: true,
+        strategy_execution_mode: "both",
+        allow_same_candle_main_and_burst: false,
         max_open_trades: 2,
         min_swing_lookback_candles: 5,
         max_swing_lookback_candles: 15,
@@ -1044,6 +1595,38 @@
         news_filter_enabled: false,
         enable_fvg_filter: true,
         entry_window_bars: 8,
+        enable_burst_mode: true,
+        burst_mode_requires_main_bias: true,
+        burst_session_start: "08:30",
+        burst_session_end: "11:30",
+        burst_risk_per_trade: 0.25,
+        burst_stop_buffer_points: 3,
+        burst_tp_mode: "points_partial",
+        burst_tp1_points: 8,
+        burst_tp2_points: 12,
+        burst_tp1_rr: 0.8,
+        burst_tp2_rr: 1.2,
+        burst_move_sl_to_breakeven_after_tp1: true,
+        burst_use_ema_filter: true,
+        burst_fast_ema: 9,
+        burst_slow_ema: 20,
+        burst_displacement_multiplier: 1.2,
+        burst_max_entries_per_leg: 3,
+        burst_max_open_trades: 1,
+        burst_cooldown_minutes: 1,
+        burst_disable_after_consecutive_losses: 2,
+        burst_pause_minutes_after_loss_streak: 30,
+        burst_require_volume_confirmation: false,
+        burst_volume_multiplier: 1.1,
+        burst_min_momentum_score: 2.0,
+        burst_min_candle_range_points: 3,
+        burst_min_pullback_quality_score: 1.0,
+        burst_ema_distance_max_points: 6,
+        burst_volume_spike_multiplier: 1.0,
+        burst_max_spread_points: 999,
+        burst_pullback_retrace_max: 0.45,
+        burst_trend_lookback: 5,
+        burst_chop_lookback: 8,
         tick_size: 1,
         debug_mode: true
       },

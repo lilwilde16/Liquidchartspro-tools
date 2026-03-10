@@ -118,6 +118,7 @@
     const btnReset = $("btnResetBtParams");
     const targetWinRateEl = $("btTargetWinRate");
     const maxCandidatesEl = $("btMaxCandidates");
+    const execModeEl = $("btExecMode");
     const statusEl = $("btStatus");
     const log = window.LCPro.Debug.createLogger($("btLog"));
     const setStatus = (text, cls) => window.LCPro.Debug.setStatus(statusEl, text, cls);
@@ -138,6 +139,7 @@
       !btnReset ||
       !targetWinRateEl ||
       !maxCandidatesEl ||
+      !execModeEl ||
       !registry
     )
       return;
@@ -158,6 +160,9 @@
     function getBacktestInputs() {
       const params = parseJsonField(paramsInput.value || "{}", "Strategy params");
       const tradeManagement = parseJsonField(tradeMgmtInput.value || "{}", "Trade management");
+      if (execModeEl && execModeEl.value) {
+        params.strategy_execution_mode = execModeEl.value;
+      }
 
       return {
         strategyId: strategySelect.value,
@@ -198,7 +203,7 @@
 
     function renderSummary(report) {
       const s = report.summary || {};
-      summaryEl.innerHTML =
+      let html =
         "<strong>Trades:</strong> " +
         (s.totalTrades || 0) +
         " | <strong>Wins:</strong> " +
@@ -216,6 +221,42 @@
         (report.rangePreset || "week") +
         " | <strong>Strategy:</strong> " +
         (report.strategyName || report.strategyId || "n/a");
+
+      if (s.bySystem && (s.bySystem.MAIN || s.bySystem.BURST)) {
+        const m = s.bySystem.MAIN || {};
+        const b = s.bySystem.BURST || {};
+        html +=
+          '<br><div style="margin-top:8px;overflow-x:auto;"><table><thead><tr><th>System</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Gross Ticks</th><th>Gross Currency</th></tr></thead><tbody>' +
+          "<tr><td>MAIN</td><td>" +
+          Number(m.totalTrades || 0) +
+          "</td><td>" +
+          Number(m.wins || 0) +
+          "</td><td>" +
+          Number(m.losses || 0) +
+          "</td><td>" +
+          Number(m.winRate || 0).toFixed(1) +
+          "%</td><td>" +
+          Number(m.grossTicks || 0).toFixed(1) +
+          "</td><td>" +
+          Number(m.grossCurrency || 0).toFixed(2) +
+          "</td></tr>" +
+          "<tr><td>BURST</td><td>" +
+          Number(b.totalTrades || 0) +
+          "</td><td>" +
+          Number(b.wins || 0) +
+          "</td><td>" +
+          Number(b.losses || 0) +
+          "</td><td>" +
+          Number(b.winRate || 0).toFixed(1) +
+          "%</td><td>" +
+          Number(b.grossTicks || 0).toFixed(1) +
+          "</td><td>" +
+          Number(b.grossCurrency || 0).toFixed(2) +
+          "</td></tr>" +
+          "</tbody></table></div>";
+      }
+
+      summaryEl.innerHTML = html;
     }
 
     function renderTrades(report) {
@@ -226,12 +267,16 @@
       }
 
       let html =
-        '<div style="overflow-x:auto;"><table><thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Entry</th><th>Exit Time</th><th>Exit</th><th>Reason</th><th>PnL Ticks</th><th>R</th></tr></thead><tbody>';
+        '<div style="overflow-x:auto;"><table><thead><tr><th>#</th><th>System</th><th>Label</th><th>Side</th><th>Entry Time</th><th>Entry</th><th>Exit Time</th><th>Exit</th><th>Reason</th><th>PnL Ticks</th><th>R</th></tr></thead><tbody>';
 
       rows.forEach((t) => {
         html +=
           "<tr><td>" +
           t.trade +
+          "</td><td>" +
+          (t.system || "-") +
+          "</td><td>" +
+          (t.entryLabel || "-") +
           "</td><td>" +
           t.side +
           "</td><td>" +
