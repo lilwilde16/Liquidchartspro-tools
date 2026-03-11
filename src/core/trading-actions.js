@@ -27,13 +27,65 @@
     });
   }
 
+  function pickFirstString(obj, keys) {
+    for (let i = 0; i < keys.length; i++) {
+      const v = obj && obj[keys[i]];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  }
+
+  function isExplicitSuccess(res) {
+    if (!res || typeof res !== "object") return false;
+    if (res.okay === true || res.success === true || res.accepted === true) return true;
+    const rc = Number(res.ResultCode);
+    const code = Number(res.code);
+    if (Number.isFinite(rc) && rc === 0) return true;
+    if (Number.isFinite(code) && code === 0) return true;
+    return false;
+  }
+
+  function getOrderFailureReason(res) {
+    if (res == null) return "No response from framework";
+    if (typeof res !== "object") return "Unexpected order response: " + String(res);
+
+    const explicitFailure =
+      res.okay === false || res.success === false || res.accepted === false || Number(res.ResultCode) < 0;
+
+    const msg = pickFirstString(res, [
+      "message",
+      "error",
+      "errorMessage",
+      "reason",
+      "statusText",
+      "text",
+      "ResultMessage",
+      "resultMessage"
+    ]);
+
+    if (explicitFailure && msg) return msg;
+    if (explicitFailure) return "Order was rejected by broker/framework";
+
+    if (!isExplicitSuccess(res) && msg) {
+      const lower = msg.toLowerCase();
+      if (/(failed|could not|cannot|rejected|invalid|denied|error)/.test(lower)) return msg;
+    }
+
+    return "";
+  }
+
   async function sendMarketOrder(instrumentId, side, lots) {
     const payload = {
       instrumentId,
       tradingAction: side === "BUY" ? orderType("BUY", 1) : orderType("SELL", 2),
       volume: { lots: Number(lots) }
     };
-    return await sendOrder(payload);
+    const response = await sendOrder(payload);
+    const reason = getOrderFailureReason(response);
+    if (reason) {
+      return { ok: false, reason, payload, response };
+    }
+    return { ok: true, payload, response };
   }
 
   function calcTpSlAbsolute(instrumentId, side, tpTicks, slTicks, tickSize) {
@@ -66,6 +118,8 @@
     };
 
     const res = await sendOrder(payload);
+    const reason = getOrderFailureReason(res);
+    if (reason) return { ok: false, reason, payload, response: res };
     return { ok: true, payload, response: res };
   }
 
@@ -158,7 +212,8 @@
       sl: Number(slAbs)
     };
     const res = await sendOrder(payload);
-    return { payload, response: res };
+    const reason = getOrderFailureReason(res);
+    return { ok: !reason, reason: reason || "", payload, response: res };
   }
 
   async function entryThenModify(instrumentId, side, lots, tpTicks, slTicks, tickSize, timeoutMs) {
@@ -169,7 +224,11 @@
     entryModifyInFlight = true;
     try {
       const before = new Set(listOpenOrderIds());
-      const entryResponse = await sendMarketOrder(instrumentId, side, lots);
+      const entryResult = await sendMarketOrder(instrumentId, side, lots);
+      if (!entryResult.ok) {
+        return { ok: false, reason: entryResult.reason || "Entry order rejected", entryResponse: entryResult };
+      }
+      const entryResponse = entryResult.response;
 
       // Prefer broker-returned id first for immediate modify.
       let newId = entryResponse && (entryResponse.orderId || entryResponse.id || entryResponse.ticket || null);
@@ -198,6 +257,17 @@
       if (!p.ok) return { ok: false, reason: p.reason, entryResponse, orderId: newId };
 
       const modify = await modifyOrderTpSl(newId, p.tp, p.sl);
+      if (!modify.ok) {
+        return {
+          ok: false,
+          reason: modify.reason || "Modify TP/SL rejected",
+          orderId: newId,
+          entryResponse,
+          tp: p.tp,
+          sl: p.sl,
+          modifyResponse: modify.response
+        };
+      }
       return {
         ok: true,
         orderId: newId,

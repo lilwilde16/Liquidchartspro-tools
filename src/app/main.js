@@ -194,10 +194,24 @@
     };
 
     function parsePairs(raw) {
-      return String(raw || "")
+      const cleaned = String(raw || "")
+        .replace(/[\n;|]/g, ",")
         .split(",")
-        .map((x) => x.trim().toUpperCase().replace(/\//g, ""))
+        .map((x) => x.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""))
         .filter(Boolean);
+
+      // Keep FX-style pairs plus common index symbols if typed.
+      const valid = cleaned.filter(function (s) {
+        return /^[A-Z]{6}$/.test(s) || /^[A-Z]{2,8}[0-9]{0,3}$/.test(s);
+      });
+
+      // De-duplicate while preserving order.
+      const seen = {};
+      return valid.filter(function (s) {
+        if (seen[s]) return false;
+        seen[s] = true;
+        return true;
+      });
     }
 
     function sumUnrealized(state) {
@@ -614,8 +628,21 @@
     }
 
     function createEngineFromInputs() {
-      const pairs = parsePairs(pairsEl.value);
-      if (!pairs.length) throw new Error("Pairs universe cannot be empty");
+      const defaults = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "EURJPY", "GBPJPY", "EURGBP"];
+      const parsedPairs = parsePairs(pairsEl.value);
+      const pairs = parsedPairs.length ? parsedPairs : defaults;
+
+      if (!parsedPairs.length) {
+        pairsEl.value = defaults.join(",");
+        log("[LIVE][WARN] Pairs input was invalid/empty. Reverted to default pairs universe.");
+      }
+
+      if (!window.LCPro || !window.LCPro.CSVRG || !window.LCPro.CSVRG.Engine) {
+        throw new Error("CSVRG engine is unavailable. Verify csvrg scripts are loaded in index.html.");
+      }
+      if (typeof window.LCPro.CSVRG.Engine.createEngine !== "function") {
+        throw new Error("CSVRG engine createEngine() is missing.");
+      }
 
       const cycleMs = Math.max(1000, parseInt(cycleMsEl.value || "5000", 10));
       const maxPairs = Math.max(1, parseInt(maxPairsEl.value || "4", 10));
@@ -1137,6 +1164,15 @@
           input.slTicks,
           input.tickSize
         );
+        if (!res || res.ok !== true) {
+          write({
+            action: side + " entry_then_change_101",
+            instrument: input.instrument,
+            error: (res && res.reason) || "Trade could not be started",
+            details: res || null
+          });
+          return;
+        }
         write({
           action: side + " entry_then_change_101",
           instrument: input.instrument,
