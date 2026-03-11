@@ -543,12 +543,15 @@
       const s = (pair && pair.lastSignal) || (pair && pair.signal);
       if (!s || !s.type) return { text: "-", cls: "" };
       const side = String(s.type || "").toUpperCase();
-      const tRaw = s.time || s.t || s.ts || s.date;
-      const t = tRaw ? fmtTime(tRaw) : "n/a";
+      const tRaw = s.time || s.t || s.ts || s.date || (pair && pair.market && pair.market.lastClosedBarTime);
+      const t = tRaw ? fmtTime(tRaw) : "";
       const pRaw = s.price != null ? s.price : s.px;
-      const p = Number.isFinite(Number(pRaw)) ? Number(pRaw).toFixed(5) : "n/a";
+      const p = Number.isFinite(Number(pRaw)) ? Number(pRaw).toFixed(5) : "";
+      let text = side;
+      if (p) text += " @ " + p;
+      if (t) text += " | " + t;
       return {
-        text: side + " @ " + p + " | " + t,
+        text,
         cls: side === "BUY" ? "buy" : side === "SELL" ? "sell" : ""
       };
     }
@@ -1314,7 +1317,7 @@
         const metrics = buildStrategyMetrics(rt, candlesChron, signals || []);
 
         let executionSignal = newestNorm;
-        if (!executionSignal && shouldEvaluateSignals && rt.strategyId === "sma_crossover") {
+        if (shouldEvaluateSignals && rt.strategyId === "sma_crossover") {
           const crossSide =
             metrics.waitingFor === "buy_cross_triggered"
               ? "BUY"
@@ -1330,11 +1333,19 @@
               price: Number.isFinite(lastClosePx) ? lastClosePx : Number(crossSide === "BUY" ? bidAsk.ask : bidAsk.bid),
               synthetic: true
             };
+          } else if (!executionSignal) {
+            executionSignal = null;
           }
         }
 
         const key = executionSignal
-          ? String(executionSignal.type || "") + "|" + String(executionSignal.time || executionSignal.idx || "")
+          ? String(executionSignal.type || "") +
+            "|" +
+            String(
+              rt.strategyId === "sma_crossover" && shouldEvaluateSignals
+                ? closeMs || executionSignal.time || executionSignal.idx || ""
+                : executionSignal.time || executionSignal.idx || ""
+            )
           : "";
         const signalTsRaw = executionSignal ? executionSignal.time || executionSignal.t || executionSignal.ts || executionSignal.date : 0;
         const signalMs = Number(signalTsRaw)
@@ -1346,7 +1357,10 @@
           Number.isFinite(signalMs) && Number.isFinite(closeMs)
             ? Math.abs(signalMs - closeMs) <= Math.max(1000, Math.floor(rt.timeframeSec * 250))
             : false;
-        const isNewSignal = !!(executionSignal && shouldEvaluateSignals && signalOnLatestClose && key !== st.lastSignalKey);
+        const isNewSignal =
+          rt.strategyId === "sma_crossover"
+            ? !!(executionSignal && shouldEvaluateSignals && key !== st.lastSignalKey)
+            : !!(executionSignal && shouldEvaluateSignals && signalOnLatestClose && key !== st.lastSignalKey);
         if (executionSignal) signalCount += 1;
         if (isNewSignal) newSignalCount += 1;
 
