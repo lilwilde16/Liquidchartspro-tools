@@ -88,7 +88,7 @@
       </div>
       <div class="field">
         <label>Cycle Interval (ms)</label>
-        <input id="liveCycleMs" type="number" min="1000" max="60000" step="500" value="5000" />
+        <input id="liveCycleMs" type="number" min="1000" max="60000" step="500" value="30000" />
       </div>
       <div class="field">
         <label>Max Active Pairs</label>
@@ -110,6 +110,7 @@
       <button id="btnStartLive" class="primary" type="button" disabled>Start Live Autotrader</button>
       <button id="btnStopLive" type="button" disabled>Stop Autotrader</button>
       <button id="btnFlattenLive" type="button" disabled>Close All Positions</button>
+      <button id="btnSimulateLiveTrade" type="button" disabled>Simulate Trade Path</button>
       <span class="pill" id="liveStatus">Disconnected</span>
       <span class="pill mono" id="liveSessionTimer">Session 00:00:00</span>
     </div>

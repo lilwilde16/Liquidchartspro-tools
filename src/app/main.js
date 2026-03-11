@@ -222,6 +222,7 @@
     const btnStart = $("btnStartLive");
     const btnStop = $("btnStopLive");
     const btnFlatten = $("btnFlattenLive");
+    const btnSimulateTrade = $("btnSimulateLiveTrade");
     const statusEl = $("liveStatus");
     const timerEl = $("liveSessionTimer");
     const pairsEl = $("livePairs");
@@ -254,6 +255,7 @@
       !btnStart ||
       !btnStop ||
       !btnFlatten ||
+      !btnSimulateTrade ||
       !statusEl ||
       !timerEl ||
       !pairsEl ||
@@ -288,6 +290,8 @@
     const SESSION_HISTORY_KEY = "lcpro_live_session_history_v1";
     const MAX_HISTORY_ROWS = 20;
     const MAX_EQUITY_POINTS = 900;
+    const FORCED_STRATEGY_TIMEFRAME_SEC = 60;
+    const FORCED_STRATEGY_CYCLE_MS = 30000;
 
     const live = {
       running: false,
@@ -295,7 +299,7 @@
       engine: null,
       timerId: null,
       inFlight: false,
-      cycleMs: 5000,
+      cycleMs: FORCED_STRATEGY_CYCLE_MS,
       cycleCount: 0,
       lastCycleAt: 0,
       lastCycleDurationMs: 0,
@@ -310,7 +314,7 @@
         strategyId: "sma_crossover",
         params: {},
         instruments: ["NAS100"],
-        timeframeSec: 900,
+        timeframeSec: FORCED_STRATEGY_TIMEFRAME_SEC,
         lookback: 900,
         lots: 0.01,
         tpTicks: 55,
@@ -990,6 +994,7 @@
       btnStart.disabled = !live.frameworkReady || live.running;
       btnStop.disabled = !live.frameworkReady || !live.running;
       btnFlatten.disabled = !live.frameworkReady || !live.engine;
+      btnSimulateTrade.disabled = !live.frameworkReady || live.running;
       pairsEl.disabled = live.running;
       cycleMsEl.disabled = live.running;
       maxPairsEl.disabled = live.running;
@@ -1027,6 +1032,8 @@
         rt.instrumentState[instrumentId] = {
           instrumentId,
           lastSignalKey: "",
+          lastProcessedCloseMs: 0,
+          lastSignals: [],
           openTrade: null,
           lastDataHealth: "unverified",
           lastOrderAck: null,
@@ -1172,14 +1179,23 @@
         const candleCountOk = candlesChron.length >= Math.min(200, rt.lookback - 5);
         st.lastDataHealth = bidAsk && bidAsk.ok && dataFresh && candleCountOk ? "verified" : "degraded";
 
-        const signals = await strategyApi.runSignals(rt.strategyId, {
-          strategyId: rt.strategyId,
-          instrumentId,
-          timeframeSec: rt.timeframeSec,
-          lookback: rt.lookback,
-          keepN: 2,
-          params: rt.params
-        });
+        const hasClosedBar = Number.isFinite(closeMs) && closeMs > 0;
+        const isNewClosedBar = hasClosedBar && closeMs !== Number(st.lastProcessedCloseMs || 0);
+        const shouldEvaluateSignals = isNewClosedBar || !Array.isArray(st.lastSignals) || !st.lastSignals.length;
+
+        let signals = Array.isArray(st.lastSignals) ? st.lastSignals : [];
+        if (shouldEvaluateSignals) {
+          signals = await strategyApi.runSignals(rt.strategyId, {
+            strategyId: rt.strategyId,
+            instrumentId,
+            timeframeSec: rt.timeframeSec,
+            lookback: rt.lookback,
+            keepN: 2,
+            params: rt.params
+          });
+          st.lastSignals = Array.isArray(signals) ? signals.slice(0, 2) : [];
+          if (hasClosedBar) st.lastProcessedCloseMs = closeMs;
+        }
 
         const newest = signals && signals.length ? signals[0] : null;
         const key = newest ? String(newest.type || "") + "|" + String(newest.time || newest.idx || "") : "";
@@ -1193,7 +1209,7 @@
           Number.isFinite(signalMs) && Number.isFinite(closeMs)
             ? Math.abs(signalMs - closeMs) <= Math.max(1000, Math.floor(rt.timeframeSec * 250))
             : false;
-        const isNewSignal = !!(newest && signalOnLatestClose && key !== st.lastSignalKey);
+        const isNewSignal = !!(newest && shouldEvaluateSignals && signalOnLatestClose && key !== st.lastSignalKey);
         if (newest) signalCount += 1;
         if (isNewSignal) newSignalCount += 1;
 
@@ -1240,14 +1256,17 @@
                 time: newest.time,
                 price: newest.price,
                 isNewSignal,
-                onLatestClosedBar: signalOnLatestClose
+                onLatestClosedBar: signalOnLatestClose,
+                evaluatedThisCycle: shouldEvaluateSignals
               }
             : null,
           gate: {
             waitingFor: metrics.waitingFor,
             hasOpenTrade: !!st.openTrade,
             openTradeSide: st.openTrade ? st.openTrade.side : null,
-            lastSignalKey: st.lastSignalKey
+            lastSignalKey: st.lastSignalKey,
+            lastProcessedCloseMs: st.lastProcessedCloseMs || null,
+            waitingForNextClose: !shouldEvaluateSignals && hasClosedBar
           },
           metrics,
           risk: {
@@ -1303,6 +1322,14 @@
         for (let i = 0; i < instruments.length; i++) {
           const instrumentId = instruments[i];
           const st = ensureInstrumentState(instrumentId);
+
+          const candleMsg = await window.LCPro.MarketData.requestCandles(instrumentId, rt.timeframeSec, Math.min(rt.lookback, 10));
+          const newestFirst = (candleMsg && candleMsg.candles) || [];
+          const newestClosed = newestFirst.length > 1 ? newestFirst[1] : null;
+          const rawTs = newestClosed ? newestClosed.date || newestClosed.t || newestClosed.ts || newestClosed.time : 0;
+          const closeMs = Number(rawTs) > 0 ? (Number(rawTs) < 1e12 ? Number(rawTs) * 1000 : Number(rawTs)) : 0;
+          if (closeMs > 0) st.lastProcessedCloseMs = closeMs;
+
           const signals = await strategyApi.runSignals(rt.strategyId, {
             strategyId: rt.strategyId,
             instrumentId,
@@ -1315,6 +1342,9 @@
           if (signals && signals.length) {
             const s = signals[0];
             st.lastSignalKey = String(s.type || "") + "|" + String(s.time || s.idx || "");
+            st.lastSignals = signals.slice(0, 2);
+          } else {
+            st.lastSignals = [];
           }
         }
         log("[LIVE] Primed startup signal baseline for " + instruments.length + " pair(s).");
@@ -1368,13 +1398,13 @@
       const mergedParams = Object.assign({}, strategy.defaultParams || {}, overrideParams || {});
       const paramTpTicks = Number(mergedParams.tpTicks);
       const paramSlTicks = Number(mergedParams.slTicks);
-      const paramTfSec = Number(mergedParams.timeframeSec);
+      mergedParams.timeframeSec = FORCED_STRATEGY_TIMEFRAME_SEC;
 
       live.strategyRuntime = {
         strategyId,
         params: mergedParams,
         instruments,
-        timeframeSec: Number.isFinite(paramTfSec) ? Math.max(60, Math.floor(paramTfSec)) : sd.timeframeSec,
+        timeframeSec: FORCED_STRATEGY_TIMEFRAME_SEC,
         lookback: sd.lookback,
         lots: sd.lots,
         tpTicks: Number.isFinite(paramTpTicks) ? Math.max(0, paramTpTicks) : sd.tpTicks,
@@ -1387,8 +1417,8 @@
         brokerPnlNow: null
       };
 
-      const cycleMs = Math.max(1000, parseInt(cycleMsEl.value || "5000", 10));
-      live.cycleMs = cycleMs;
+      live.cycleMs = FORCED_STRATEGY_CYCLE_MS;
+      cycleMsEl.value = String(FORCED_STRATEGY_CYCLE_MS);
 
       const customSettings = {
         execution_mode: String(execModeEl.value || "paper").toLowerCase() === "live" ? "live" : "paper"
@@ -1491,6 +1521,79 @@
         });
     }
 
+    async function simulateTradePathOnce() {
+      if (!live.frameworkReady) {
+        throw new Error("Framework not ready");
+      }
+      if (live.running) {
+        throw new Error("Stop autotrader before running simulation");
+      }
+
+      const mode = String(execModeEl.value || "paper").toLowerCase();
+      if (mode === "live") {
+        const proceed = window.confirm(
+          "Live mode simulation will place and immediately close a real market order. Continue?"
+        );
+        if (!proceed) {
+          return { ok: false, canceled: true, reason: "USER_CANCELED" };
+        }
+      }
+
+      live.engine = createEngineFromInputs();
+      const rt = live.strategyRuntime;
+      const instrumentId =
+        Array.isArray(rt.instruments) && rt.instruments.length ? String(rt.instruments[0]) : String(rt.instrumentId || "NAS100");
+      const st = ensureInstrumentState(instrumentId);
+
+      try {
+        window.LCPro.MarketData.requestPrices([instrumentId]);
+      } catch (e) {}
+      const px = window.LCPro.MarketData.getBidAsk(instrumentId);
+      if (!px || !px.ok) {
+        throw new Error("No bid/ask available for " + instrumentId);
+      }
+
+      const side = "BUY";
+      const signal = {
+        type: side,
+        time: new Date().toISOString(),
+        price: Number(side === "BUY" ? px.ask : px.bid) || 0
+      };
+
+      const startedAt = Date.now();
+      await openStrategyTrade(instrumentId, side, signal);
+      const openedAt = Date.now();
+      const closeCount = await closeStrategyTrade("SIMULATED_TRADE_PATH", instrumentId);
+      const finishedAt = Date.now();
+
+      setCurrentDiagnostic({
+        ts: Date.now(),
+        strategyId: rt.strategyId,
+        probe: {
+          type: "trade_path_simulation",
+          instrumentId,
+          mode,
+          side,
+          opened: !!st.lastOrderAck || mode !== "live",
+          closed: closeCount > 0,
+          openLatencyMs: openedAt - startedAt,
+          closeLatencyMs: finishedAt - openedAt,
+          totalLatencyMs: finishedAt - startedAt,
+          orderAck: st.lastOrderAck || null
+        }
+      });
+
+      return {
+        ok: true,
+        instrumentId,
+        mode,
+        closeCount,
+        openLatencyMs: openedAt - startedAt,
+        closeLatencyMs: finishedAt - openedAt,
+        totalLatencyMs: finishedAt - startedAt
+      };
+    }
+
     btnStart.addEventListener("click", function () {
       startLive();
     });
@@ -1499,6 +1602,38 @@
     });
     btnFlatten.addEventListener("click", function () {
       flattenPositions();
+    });
+    btnSimulateTrade.addEventListener("click", function () {
+      btnSimulateTrade.disabled = true;
+      simulateTradePathOnce()
+        .then(function (res) {
+          if (res && res.canceled) {
+            log("[LIVE] Simulation canceled by user.");
+            return;
+          }
+          log(
+            "[LIVE] Trade path simulation OK | instrument=" +
+              res.instrumentId +
+              " | mode=" +
+              res.mode +
+              " | open=" +
+              res.openLatencyMs +
+              "ms | close=" +
+              res.closeLatencyMs +
+              "ms | total=" +
+              res.totalLatencyMs +
+              "ms"
+          );
+        })
+        .catch(function (e) {
+          const msg = e && e.message ? e.message : String(e);
+          log("[LIVE][ERR] Trade path simulation failed: " + msg);
+          setLiveStatus("Simulation Failed", "bad");
+        })
+        .finally(function () {
+          updateMetrics();
+          setControls();
+        });
     });
     btnClearHistory.addEventListener("click", function () {
       live.sessionHistory = [];
