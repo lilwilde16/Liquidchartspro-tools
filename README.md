@@ -16,9 +16,54 @@ Modular foundation for LiquidCharts widget development with clear separation bet
 - `src/backtest/sma-crossover.js`: closed-candle SMA crossover scanner.
 - `src/strategy/actions.js`: strategy registry surface.
 - `src/debug/logger.js`: log/status, health check, snapshot dump helpers.
+- `src/csvrg/*.js`: CS-VRG Engine modules (currency strength + volatility reversion bounded grid).
 - `src/app/main.js`: UI wiring and runtime orchestration.
 - `docs/TRADING_FUNCTIONS_CHEAT_SHEET.md`: verified working patterns.
 - `docs/AI_REFERENCE.md`: AI-friendly quick map for future debugging/fixes.
+
+## CS-VRG Engine
+
+`CS-VRG` (Currency Strength + Volatility Reversion Grid) is now available under `window.LCPro.CSVRG`.
+
+Implemented modules:
+- market data module
+- currency strength module
+- pair selection module
+- regime filter module
+- volatility reversion module
+- scoring module
+- bounded grid execution module
+- counter-scalp module
+- risk management module
+- session manager module
+- trade manager module
+- logger / analytics module
+
+### Quickstart
+
+```js
+const engine = window.LCPro.CSVRG.Engine.createEngine({
+	execution_mode: "paper",
+	min_trade_score: 7
+});
+
+// Run one full cycle
+await engine.run_cycle();
+
+// Inspect state and analytics
+engine.state.selected_pairs;
+engine.state.currency_ranks;
+engine.state.analytics.events.slice(-20);
+```
+
+### Core guarantees
+
+- no martingale
+- no loss-doubling logic
+- bounded max grid levels
+- pair and portfolio drawdown enforcement
+- spread and margin safety checks
+- Friday shutdown flattening
 
 ## Core rules (verified)
 

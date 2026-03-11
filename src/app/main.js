@@ -640,18 +640,52 @@
       if (!window.LCPro || !window.LCPro.CSVRG || !window.LCPro.CSVRG.Engine) {
         throw new Error("CSVRG engine is unavailable. Verify csvrg scripts are loaded in index.html.");
       }
-      if (typeof window.LCPro.CSVRG.Engine.createEngine !== "function") {
-        throw new Error("CSVRG engine createEngine() is missing.");
-      }
 
       const cycleMs = Math.max(1000, parseInt(cycleMsEl.value || "5000", 10));
       const maxPairs = Math.max(1, parseInt(maxPairsEl.value || "4", 10));
       live.cycleMs = cycleMs;
 
-      return window.LCPro.CSVRG.Engine.createEngine({
+      const csvrg = window.LCPro.CSVRG;
+      const customSettings = {
         pairs_universe: pairs,
         max_active_pairs: maxPairs
-      });
+      };
+
+      // Primary path: normal engine factory.
+      if (csvrg.Engine && typeof csvrg.Engine.createEngine === "function") {
+        return csvrg.Engine.createEngine(customSettings);
+      }
+
+      // Fallback path: compose runtime engine from available modules.
+      const hasFallbackPieces =
+        csvrg.Config &&
+        typeof csvrg.Config.createSettings === "function" &&
+        csvrg.State &&
+        typeof csvrg.State.createEngineState === "function" &&
+        csvrg.Engine &&
+        typeof csvrg.Engine.runCycle === "function";
+
+      if (!hasFallbackPieces) {
+        throw new Error("CSVRG engine startup dependencies are incomplete (missing createEngine and fallback modules).");
+      }
+
+      const settings = csvrg.Config.createSettings(customSettings);
+      const state = csvrg.State.createEngineState(settings);
+      log("[LIVE][WARN] Engine.createEngine missing. Using runtime fallback engine composition.");
+
+      return {
+        state,
+        settings,
+        run_cycle: function () {
+          return csvrg.Engine.runCycle(state);
+        },
+        close_all_positions: function () {
+          if (csvrg.TradeManager && typeof csvrg.TradeManager.close_all_positions === "function") {
+            return csvrg.TradeManager.close_all_positions(state, "MANUAL_CLOSE_ALL");
+          }
+          return 0;
+        }
+      };
     }
 
     async function startLive() {
@@ -675,6 +709,7 @@
         live.running = false;
         live.lastError = e && e.message ? e.message : String(e);
         setLiveStatus("Start Failed", "bad");
+        overviewEl.textContent = "Start failed: " + live.lastError;
         log("[LIVE][ERR] Failed to start: " + live.lastError);
         setControls();
         updateMetrics();
