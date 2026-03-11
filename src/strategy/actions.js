@@ -1526,7 +1526,7 @@
         slTicks: 0,
         tickSize: 1
       },
-      defaultParams: { fastLen: 9, slowLen: 21, tpTicks: 0, slTicks: 0 },
+      defaultParams: { fastLen: 9, slowLen: 21, timeframeSec: 900, tpTicks: 0, slTicks: 0 },
       tradeManagementDefaults: {
         slTicks: 55,
         tpTicks: 55,

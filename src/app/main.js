@@ -1310,12 +1310,13 @@
       const mergedParams = Object.assign({}, strategy.defaultParams || {}, overrideParams || {});
       const paramTpTicks = Number(mergedParams.tpTicks);
       const paramSlTicks = Number(mergedParams.slTicks);
+      const paramTfSec = Number(mergedParams.timeframeSec);
 
       live.strategyRuntime = {
         strategyId,
         params: mergedParams,
         instruments,
-        timeframeSec: sd.timeframeSec,
+        timeframeSec: Number.isFinite(paramTfSec) ? Math.max(60, Math.floor(paramTfSec)) : sd.timeframeSec,
         lookback: sd.lookback,
         lots: sd.lots,
         tpTicks: Number.isFinite(paramTpTicks) ? Math.max(0, paramTpTicks) : sd.tpTicks,
