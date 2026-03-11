@@ -540,12 +540,15 @@
     }
 
     function formatLastSignal(pair) {
-      const s = pair && pair.signal;
+      const s = (pair && pair.lastSignal) || (pair && pair.signal);
       if (!s || !s.type) return { text: "-", cls: "" };
       const side = String(s.type || "").toUpperCase();
-      const t = s.time ? fmtTime(s.time) : "n/a";
+      const tRaw = s.time || s.t || s.ts || s.date;
+      const t = tRaw ? fmtTime(tRaw) : "n/a";
+      const pRaw = s.price != null ? s.price : s.px;
+      const p = Number.isFinite(Number(pRaw)) ? Number(pRaw).toFixed(5) : "n/a";
       return {
-        text: side + " @ " + t,
+        text: side + " @ " + p + " | " + t,
         cls: side === "BUY" ? "buy" : side === "SELL" ? "sell" : ""
       };
     }
@@ -553,6 +556,13 @@
     function fmtDiagNum(v, digits) {
       const n = Number(v);
       return Number.isFinite(n) ? n.toFixed(Number.isFinite(Number(digits)) ? Number(digits) : 5) : "-";
+    }
+
+    function normalizeSignalSide(raw) {
+      const s = String(raw || "").toUpperCase();
+      if (s === "BUY" || s === "LONG") return "BUY";
+      if (s === "SELL" || s === "SHORT") return "SELL";
+      return "";
     }
 
     function renderCurrentDiagnostic() {
@@ -1130,6 +1140,7 @@
         rt.instrumentState[instrumentId] = {
           instrumentId,
           lastSignalKey: "",
+          lastSignal: null,
           lastProcessedCloseMs: 0,
           lastSignals: [],
           openTrade: null,
@@ -1185,13 +1196,15 @@
     async function openStrategyTrade(instrumentId, side, signal) {
       const rt = live.strategyRuntime;
       const st = ensureInstrumentState(instrumentId);
+      const normSide = normalizeSignalSide(side);
+      if (!normSide) throw new Error("Invalid trade side: " + String(side || ""));
       const lots = rt.lots;
       const tpTicks = rt.tpTicks;
       const slTicks = rt.slTicks;
       const tickSize = Math.max(0.00001, Number(rt.tickSize || 1));
 
       const px = window.LCPro.MarketData.getBidAsk(instrumentId);
-      const entryPx = px && px.ok ? (side === "BUY" ? Number(px.ask) : Number(px.bid)) : Number(signal.price || 0);
+      const entryPx = px && px.ok ? (normSide === "BUY" ? Number(px.ask) : Number(px.bid)) : Number(signal.price || 0);
 
       if (String(execModeEl.value || "paper").toLowerCase() === "live") {
         const orderStartedAt = Date.now();
@@ -1199,14 +1212,14 @@
         if (tpTicks > 0 || slTicks > 0) {
           res = await window.LCPro.Trading.sendMarketOrderWithTpSl(
             instrumentId,
-            side,
+            normSide,
             lots,
             Math.max(0, tpTicks),
             Math.max(0, slTicks),
             tickSize
           );
         } else {
-          res = await window.LCPro.Trading.sendMarketOrder(instrumentId, side, lots);
+          res = await window.LCPro.Trading.sendMarketOrder(instrumentId, normSide, lots);
         }
 
         if (!res || res.ok !== true) {
@@ -1216,13 +1229,13 @@
         st.lastOrderAck = {
           at: Date.now(),
           latencyMs: Date.now() - orderStartedAt,
-          side,
+          side: normSide,
           instrumentId
         };
       }
 
       st.openTrade = {
-        side,
+        side: normSide,
         entryPrice: Number.isFinite(entryPx) ? entryPx : Number(signal.price || 0),
         lots,
         signalTime: signal.time,
@@ -1296,8 +1309,34 @@
         }
 
         const newest = signals && signals.length ? signals[0] : null;
-        const key = newest ? String(newest.type || "") + "|" + String(newest.time || newest.idx || "") : "";
-        const signalTsRaw = newest ? newest.time || newest.t || newest.ts || newest.date : 0;
+        const newestType = normalizeSignalSide(newest && newest.type);
+        const newestNorm = newestType ? Object.assign({}, newest, { type: newestType }) : null;
+        const metrics = buildStrategyMetrics(rt, candlesChron, signals || []);
+
+        let executionSignal = newestNorm;
+        if (!executionSignal && shouldEvaluateSignals && rt.strategyId === "sma_crossover") {
+          const crossSide =
+            metrics.waitingFor === "buy_cross_triggered"
+              ? "BUY"
+              : metrics.waitingFor === "sell_cross_triggered"
+                ? "SELL"
+                : "";
+          if (crossSide) {
+            const lastClosePx =
+              candlesChron && candlesChron.length ? Number(candlesChron[candlesChron.length - 1].c) : Number.NaN;
+            executionSignal = {
+              type: crossSide,
+              time: closeMs || Date.now(),
+              price: Number.isFinite(lastClosePx) ? lastClosePx : Number(crossSide === "BUY" ? bidAsk.ask : bidAsk.bid),
+              synthetic: true
+            };
+          }
+        }
+
+        const key = executionSignal
+          ? String(executionSignal.type || "") + "|" + String(executionSignal.time || executionSignal.idx || "")
+          : "";
+        const signalTsRaw = executionSignal ? executionSignal.time || executionSignal.t || executionSignal.ts || executionSignal.date : 0;
         const signalMs = Number(signalTsRaw)
           ? Number(signalTsRaw) < 1e12
             ? Number(signalTsRaw) * 1000
@@ -1307,28 +1346,33 @@
           Number.isFinite(signalMs) && Number.isFinite(closeMs)
             ? Math.abs(signalMs - closeMs) <= Math.max(1000, Math.floor(rt.timeframeSec * 250))
             : false;
-        const isNewSignal = !!(newest && shouldEvaluateSignals && signalOnLatestClose && key !== st.lastSignalKey);
-        if (newest) signalCount += 1;
+        const isNewSignal = !!(executionSignal && shouldEvaluateSignals && signalOnLatestClose && key !== st.lastSignalKey);
+        if (executionSignal) signalCount += 1;
         if (isNewSignal) newSignalCount += 1;
 
-        if (newest && isNewSignal) {
-          if (st.openTrade && st.openTrade.side !== newest.type) {
+        if (executionSignal && isNewSignal) {
+          if (st.openTrade && st.openTrade.side !== executionSignal.type) {
             await closeStrategyTrade("OPPOSITE_SIGNAL", instrumentId);
           }
 
           if (!st.openTrade) {
-            await openStrategyTrade(instrumentId, newest.type, newest);
+            await openStrategyTrade(instrumentId, executionSignal.type, executionSignal);
           }
 
           st.lastSignalKey = key;
         }
-
-        const metrics = buildStrategyMetrics(rt, candlesChron, signals || []);
+        if (executionSignal) {
+          st.lastSignal = {
+            type: executionSignal.type,
+            time: executionSignal.time,
+            price: executionSignal.price
+          };
+        }
         let tpSlPreview = null;
         if (Number(rt.tpTicks || 0) > 0 || Number(rt.slTicks || 0) > 0) {
           tpSlPreview = window.LCPro.Trading.calcTpSlAbsolute(
             instrumentId,
-            st.openTrade ? st.openTrade.side : newest ? newest.type : "BUY",
+            st.openTrade ? st.openTrade.side : executionSignal ? executionSignal.type : "BUY",
             Math.max(0, Number(rt.tpTicks || 0)),
             Math.max(0, Number(rt.slTicks || 0)),
             Math.max(0.00001, Number(rt.tickSize || 1))
@@ -1348,16 +1392,17 @@
             candleCountClosed: candlesChron.length,
             candleCountOk
           },
-          signal: newest
+          signal: executionSignal
             ? {
-                type: newest.type,
-                time: newest.time,
-                price: newest.price,
+                type: executionSignal.type,
+                time: executionSignal.time,
+                price: executionSignal.price,
                 isNewSignal,
                 onLatestClosedBar: signalOnLatestClose,
                 evaluatedThisCycle: shouldEvaluateSignals
               }
             : null,
+          lastSignal: st.lastSignal || null,
           gate: {
             waitingFor: metrics.waitingFor,
             hasOpenTrade: !!st.openTrade,
