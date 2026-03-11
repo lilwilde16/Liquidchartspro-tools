@@ -181,7 +181,7 @@
     const recentTradesEl = $("liveRecentTrades");
     const equityCanvas = $("equityCanvas");
     const equityMetaEl = $("equityMeta");
-    const liveDiagSelectEl = $("liveDiagSelect");
+    const liveDiagStatusEl = $("liveDiagStatus");
     const liveDiagOutputEl = $("liveDiagOutput");
     const historyRowsEl = $("liveSessionHistoryRows");
     const btnClearHistory = $("btnClearSessionHistory");
@@ -213,7 +213,7 @@
       !recentTradesEl ||
       !equityCanvas ||
       !equityMetaEl ||
-      !liveDiagSelectEl ||
+      !liveDiagStatusEl ||
       !liveDiagOutputEl ||
       !historyRowsEl ||
       !btnClearHistory ||
@@ -247,23 +247,19 @@
       lastError: "",
       equityPoints: [],
       sessionHistory: [],
-      diagnosticsSnapshots: [],
-      selectedDiagId: "",
+      currentDiagnostic: null,
       strategyRuntime: {
         strategyId: "sma_crossover",
         params: {},
-        instrumentId: "NAS100",
+        instruments: ["NAS100"],
         timeframeSec: 900,
         lookback: 900,
         lots: 0.01,
         tpTicks: 55,
         slTicks: 55,
         selectedPairsTarget: 4,
-        lastSignalKey: "",
-        openTrade: null,
         closedTrades: [],
-        lastDataHealth: "unverified",
-        lastOrderAck: null,
+        instrumentState: {},
         brokerPnlAtStart: null,
         brokerPnlNow: null
       }
@@ -446,44 +442,31 @@
       });
     }
 
-    function renderDiagnosticsDropdown() {
-      const snaps = live.diagnosticsSnapshots;
-      if (!snaps.length) {
-        liveDiagSelectEl.innerHTML = '<option value="">No snapshots yet</option>';
-        liveDiagOutputEl.textContent = "Diagnostics will populate while live autotrader is running.";
+    function renderCurrentDiagnostic() {
+      if (!live.currentDiagnostic) {
+        liveDiagStatusEl.textContent = "Live now: waiting for first cycle.";
+        liveDiagOutputEl.textContent = "Diagnostics will show current-cycle live data while the autotrader is running.";
         return;
       }
 
-      let html = "";
-      for (let i = 0; i < snaps.length; i++) {
-        const s = snaps[i];
-        const label = fmtTime(s.ts) + " | " + (s.signal ? s.signal.type : "WAIT") + " | " + (s.metrics && s.metrics.waitingFor ? s.metrics.waitingFor : "");
-        html += '<option value="' + s.id + '">' + label + "</option>";
-      }
-      liveDiagSelectEl.innerHTML = html;
-
-      const hasSelected = snaps.some(function (s) {
-        return s.id === live.selectedDiagId;
-      });
-      if (!hasSelected) live.selectedDiagId = snaps[0].id;
-      liveDiagSelectEl.value = live.selectedDiagId;
-
-      const current = snaps.find(function (s) {
-        return s.id === live.selectedDiagId;
-      });
-      liveDiagOutputEl.textContent = current ? JSON.stringify(current, null, 2) : "Diagnostics unavailable.";
+      const d = live.currentDiagnostic;
+      liveDiagStatusEl.textContent =
+        "Live now: " +
+        fmtTime(d.ts) +
+        " | strategy=" +
+        (d.strategyId || "n/a") +
+        " | pairs=" +
+        Number(d.pairCount || 0) +
+        " | latency=" +
+        Number(d.cycleLatencyMs || 0) +
+        "ms";
+      liveDiagOutputEl.textContent = JSON.stringify(d, null, 2);
     }
 
-    function pushDiagnosticsSnapshot(snapshot) {
-      live.diagnosticsSnapshots.unshift(snapshot);
-      if (live.diagnosticsSnapshots.length > 60) live.diagnosticsSnapshots = live.diagnosticsSnapshots.slice(0, 60);
-      renderDiagnosticsDropdown();
+    function setCurrentDiagnostic(diagnostic) {
+      live.currentDiagnostic = diagnostic || null;
+      renderCurrentDiagnostic();
     }
-
-    liveDiagSelectEl.addEventListener("change", function () {
-      live.selectedDiagId = String(liveDiagSelectEl.value || "");
-      renderDiagnosticsDropdown();
-    });
 
     const strategyTabSelectEl = $("strategySelect");
     if (strategyTabSelectEl) {
@@ -530,14 +513,22 @@
     }
 
     function sumUnrealized(state) {
-      if (!state && live.strategyRuntime && live.strategyRuntime.openTrade) {
-        const t = live.strategyRuntime.openTrade;
-        const px = window.LCPro.MarketData.getBidAsk(t.instrumentId);
-        if (!px || !px.ok) return 0;
-        const exitPx = t.side === "BUY" ? Number(px.bid) : Number(px.ask);
-        if (!Number.isFinite(exitPx)) return 0;
-        if (t.side === "BUY") return (exitPx - Number(t.entryPrice || exitPx)) * Number(t.lots || 0);
-        return (Number(t.entryPrice || exitPx) - exitPx) * Number(t.lots || 0);
+      if (!state && live.strategyRuntime) {
+        const rt = live.strategyRuntime;
+        const keys = Object.keys(rt.instrumentState || {});
+        let totalRt = 0;
+        for (let i = 0; i < keys.length; i++) {
+          const st = rt.instrumentState[keys[i]];
+          const t = st && st.openTrade;
+          if (!t) continue;
+          const px = window.LCPro.MarketData.getBidAsk(t.instrumentId);
+          if (!px || !px.ok) continue;
+          const exitPx = t.side === "BUY" ? Number(px.bid) : Number(px.ask);
+          if (!Number.isFinite(exitPx)) continue;
+          if (t.side === "BUY") totalRt += (exitPx - Number(t.entryPrice || exitPx)) * Number(t.lots || 0);
+          else totalRt += (Number(t.entryPrice || exitPx) - exitPx) * Number(t.lots || 0);
+        }
+        return totalRt;
       }
 
       const pairs = Object.keys((state && state.pair_states) || {});
@@ -620,9 +611,10 @@
             const ps = state.pair_states[pair];
             return acc + ((ps && ps.positions && ps.positions.length) || 0);
           }, 0)
-        : live.strategyRuntime.openTrade
-          ? 1
-          : 0;
+        : Object.keys((live.strategyRuntime && live.strategyRuntime.instrumentState) || {}).reduce(function (acc, k) {
+            const st = live.strategyRuntime.instrumentState[k];
+            return acc + (st && st.openTrade ? 1 : 0);
+          }, 0);
       const drawdownPct = (state && state.portfolio && Number(state.portfolio.total_drawdown_pct)) || 0;
       const marginPct = (state && state.portfolio && Number(state.portfolio.margin_used_pct)) || 0;
       const consecutiveLosses = computeConsecutiveLosses(closedTrades);
@@ -872,7 +864,7 @@
       const strategySummary =
         (rt.strategyId || "n/a") +
         " @ " +
-        (rt.instrumentId || "n/a") +
+        (rt.instruments && rt.instruments.length ? rt.instruments.join(",") : "n/a") +
         " tf=" +
         Number(rt.timeframeSec || 0);
       const sessionDrawdown = Math.max(0, Number(live.sessionPeakPnl || 0) - Number(stats.sessionPnl || 0));
@@ -970,37 +962,66 @@
       pushSessionHistory(stopReason);
     }
 
-    async function closeStrategyTrade(reason) {
+    function ensureInstrumentState(instrumentId) {
       const rt = live.strategyRuntime;
-      if (!rt.openTrade) return 0;
-
-      const t = rt.openTrade;
-      const px = window.LCPro.MarketData.getBidAsk(t.instrumentId);
-      const exitPx = px && px.ok ? (t.side === "BUY" ? Number(px.bid) : Number(px.ask)) : Number(t.entryPrice || 0);
-      const pnl = t.side === "BUY" ? (exitPx - Number(t.entryPrice || exitPx)) * t.lots : (Number(t.entryPrice || exitPx) - exitPx) * t.lots;
-
-      if (String(execModeEl.value || "paper").toLowerCase() === "live") {
-        try {
-          await window.LCPro.Trading.closeSideOnInstrument(t.instrumentId, t.side);
-        } catch (e) {
-          log("[LIVE][WARN] Close side failed: " + (e && e.message ? e.message : String(e)));
-        }
+      rt.instrumentState = rt.instrumentState || {};
+      if (!rt.instrumentState[instrumentId]) {
+        rt.instrumentState[instrumentId] = {
+          instrumentId,
+          lastSignalKey: "",
+          openTrade: null,
+          lastDataHealth: "unverified",
+          lastOrderAck: null,
+          lastReadout: null
+        };
       }
-
-      rt.closedTrades.push({
-        time: new Date().toISOString(),
-        pair: t.instrumentId,
-        side: t.side,
-        reason: reason || "CLOSE",
-        pnl: Number.isFinite(pnl) ? pnl : 0
-      });
-      rt.openTrade = null;
-      return 1;
+      return rt.instrumentState[instrumentId];
     }
 
-    async function openStrategyTrade(side, signal) {
+    async function closeStrategyTrade(reason, instrumentId) {
       const rt = live.strategyRuntime;
-      const instrumentId = rt.instrumentId;
+      const keys = instrumentId
+        ? [instrumentId]
+        : Object.keys((rt && rt.instrumentState) || {});
+      let closed = 0;
+
+      for (let i = 0; i < keys.length; i++) {
+        const st = ensureInstrumentState(keys[i]);
+        const t = st.openTrade;
+        if (!t) continue;
+
+        const px = window.LCPro.MarketData.getBidAsk(t.instrumentId);
+        const exitPx = px && px.ok ? (t.side === "BUY" ? Number(px.bid) : Number(px.ask)) : Number(t.entryPrice || 0);
+        const pnl =
+          t.side === "BUY"
+            ? (exitPx - Number(t.entryPrice || exitPx)) * t.lots
+            : (Number(t.entryPrice || exitPx) - exitPx) * t.lots;
+
+        if (String(execModeEl.value || "paper").toLowerCase() === "live") {
+          try {
+            await window.LCPro.Trading.closeSideOnInstrument(t.instrumentId, t.side);
+          } catch (e) {
+            log("[LIVE][WARN] Close side failed: " + (e && e.message ? e.message : String(e)));
+          }
+        }
+
+        rt.closedTrades.push({
+          time: new Date().toISOString(),
+          pair: t.instrumentId,
+          side: t.side,
+          reason: reason || "CLOSE",
+          pnl: Number.isFinite(pnl) ? pnl : 0
+        });
+        st.openTrade = null;
+        closed += 1;
+      }
+
+      return closed;
+    }
+
+    async function openStrategyTrade(instrumentId, side, signal) {
+      const rt = live.strategyRuntime;
+      const st = ensureInstrumentState(instrumentId);
       const lots = rt.lots;
       const tpTicks = rt.tpTicks;
       const slTicks = rt.slTicks;
@@ -1029,7 +1050,7 @@
           throw new Error((res && res.reason) || "Broker rejected live entry");
         }
 
-        rt.lastOrderAck = {
+        st.lastOrderAck = {
           at: Date.now(),
           latencyMs: Date.now() - orderStartedAt,
           side,
@@ -1037,7 +1058,7 @@
         };
       }
 
-      rt.openTrade = {
+      st.openTrade = {
         side,
         entryPrice: Number.isFinite(entryPx) ? entryPx : Number(signal.price || 0),
         lots,
@@ -1053,12 +1074,12 @@
       const strategy = strategyApi && strategyApi.getStrategy ? strategyApi.getStrategy(rt.strategyId) : null;
       if (!strategy) throw new Error("Selected strategy not found: " + rt.strategyId);
 
+      const instruments = Array.isArray(rt.instruments) && rt.instruments.length ? rt.instruments.slice(0) : ["NAS100"];
+
       const cycleStartedAt = Date.now();
       try {
-        window.LCPro.MarketData.requestPrices([rt.instrumentId]);
+        window.LCPro.MarketData.requestPrices(instruments);
       } catch (e) {}
-
-      const bidAsk = window.LCPro.MarketData.getBidAsk(rt.instrumentId);
       const accountSnap = window.LCPro.MarketData.getAccountSnapshot ? window.LCPro.MarketData.getAccountSnapshot() : null;
       if (accountSnap) {
         const pnlRaw = Number(accountSnap.profitLoss);
@@ -1069,105 +1090,138 @@
         if (Number.isFinite(pnlRaw)) rt.brokerPnlNow = pnlRaw;
         else if (Number.isFinite(pnlFromEqBal)) rt.brokerPnlNow = pnlFromEqBal;
       }
-      const candleMsg = await window.LCPro.MarketData.requestCandles(rt.instrumentId, rt.timeframeSec, rt.lookback);
-      const newestFirst = (candleMsg && candleMsg.candles) || [];
-      const closed = newestFirst.slice(1);
-      const candlesChron = window.LCPro.MarketData.candlesToChron ? window.LCPro.MarketData.candlesToChron(closed) : closed.slice().reverse();
 
-      const newestClosed = closed[0] || null;
-      const rawTs = newestClosed ? newestClosed.date || newestClosed.t || newestClosed.ts || newestClosed.time : 0;
-      const closeMs = Number(rawTs) > 0 ? (Number(rawTs) < 1e12 ? Number(rawTs) * 1000 : Number(rawTs)) : 0;
-      const maxLagMs = Math.max(120000, rt.timeframeSec * 2000);
-      const dataFresh = closeMs > 0 ? Date.now() - closeMs <= maxLagMs : false;
-      const candleCountOk = candlesChron.length >= Math.min(200, rt.lookback - 5);
-      rt.lastDataHealth = bidAsk && bidAsk.ok && dataFresh && candleCountOk ? "verified" : "degraded";
+      const perPair = [];
+      let signalCount = 0;
+      let newSignalCount = 0;
 
-      const signals = await strategyApi.runSignals(rt.strategyId, {
-        strategyId: rt.strategyId,
-        instrumentId: rt.instrumentId,
-        timeframeSec: rt.timeframeSec,
-        lookback: rt.lookback,
-        keepN: 2,
-        params: rt.params
-      });
+      for (let i = 0; i < instruments.length; i++) {
+        const instrumentId = instruments[i];
+        const st = ensureInstrumentState(instrumentId);
+        const bidAsk = window.LCPro.MarketData.getBidAsk(instrumentId);
+        const candleMsg = await window.LCPro.MarketData.requestCandles(instrumentId, rt.timeframeSec, rt.lookback);
+        const newestFirst = (candleMsg && candleMsg.candles) || [];
+        const closed = newestFirst.slice(1);
+        const candlesChron = window.LCPro.MarketData.candlesToChron
+          ? window.LCPro.MarketData.candlesToChron(closed)
+          : closed.slice().reverse();
 
-      let tpSlPreview = null;
-      if (Number(rt.tpTicks || 0) > 0 || Number(rt.slTicks || 0) > 0) {
-        tpSlPreview = window.LCPro.Trading.calcTpSlAbsolute(
-          rt.instrumentId,
-          rt.openTrade ? rt.openTrade.side : signals && signals[0] ? signals[0].type : "BUY",
-          Math.max(0, Number(rt.tpTicks || 0)),
-          Math.max(0, Number(rt.slTicks || 0)),
-          Math.max(0.00001, Number(rt.tickSize || 1))
-        );
+        const newestClosed = closed[0] || null;
+        const rawTs = newestClosed ? newestClosed.date || newestClosed.t || newestClosed.ts || newestClosed.time : 0;
+        const closeMs = Number(rawTs) > 0 ? (Number(rawTs) < 1e12 ? Number(rawTs) * 1000 : Number(rawTs)) : 0;
+        const maxLagMs = Math.max(120000, rt.timeframeSec * 2000);
+        const dataFresh = closeMs > 0 ? Date.now() - closeMs <= maxLagMs : false;
+        const candleCountOk = candlesChron.length >= Math.min(200, rt.lookback - 5);
+        st.lastDataHealth = bidAsk && bidAsk.ok && dataFresh && candleCountOk ? "verified" : "degraded";
+
+        const signals = await strategyApi.runSignals(rt.strategyId, {
+          strategyId: rt.strategyId,
+          instrumentId,
+          timeframeSec: rt.timeframeSec,
+          lookback: rt.lookback,
+          keepN: 2,
+          params: rt.params
+        });
+
+        const newest = signals && signals.length ? signals[0] : null;
+        const key = newest ? String(newest.type || "") + "|" + String(newest.time || newest.idx || "") : "";
+        const isNewSignal = !!(newest && key !== st.lastSignalKey);
+        if (newest) signalCount += 1;
+        if (isNewSignal) newSignalCount += 1;
+
+        if (newest && isNewSignal) {
+          if (st.openTrade && st.openTrade.side !== newest.type) {
+            await closeStrategyTrade("OPPOSITE_SIGNAL", instrumentId);
+          }
+
+          if (!st.openTrade) {
+            await openStrategyTrade(instrumentId, newest.type, newest);
+          }
+
+          st.lastSignalKey = key;
+        }
+
+        const metrics = buildStrategyMetrics(rt, candlesChron, signals || []);
+        let tpSlPreview = null;
+        if (Number(rt.tpTicks || 0) > 0 || Number(rt.slTicks || 0) > 0) {
+          tpSlPreview = window.LCPro.Trading.calcTpSlAbsolute(
+            instrumentId,
+            st.openTrade ? st.openTrade.side : newest ? newest.type : "BUY",
+            Math.max(0, Number(rt.tpTicks || 0)),
+            Math.max(0, Number(rt.slTicks || 0)),
+            Math.max(0.00001, Number(rt.tickSize || 1))
+          );
+        }
+
+        const pairReadout = {
+          instrumentId,
+          timeframeSec: rt.timeframeSec,
+          dataHealth: st.lastDataHealth,
+          market: {
+            bid: bidAsk && Number.isFinite(Number(bidAsk.bid)) ? Number(bidAsk.bid) : null,
+            ask: bidAsk && Number.isFinite(Number(bidAsk.ask)) ? Number(bidAsk.ask) : null,
+            spread: bidAsk && bidAsk.ok ? Number(bidAsk.ask) - Number(bidAsk.bid) : null,
+            lastClosedBarTime: closeMs || null,
+            dataFresh,
+            candleCountClosed: candlesChron.length,
+            candleCountOk
+          },
+          signal: newest
+            ? {
+                type: newest.type,
+                time: newest.time,
+                price: newest.price,
+                isNewSignal
+              }
+            : null,
+          gate: {
+            waitingFor: metrics.waitingFor,
+            hasOpenTrade: !!st.openTrade,
+            openTradeSide: st.openTrade ? st.openTrade.side : null,
+            lastSignalKey: st.lastSignalKey
+          },
+          metrics,
+          risk: {
+            lots: rt.lots,
+            tpTicks: rt.tpTicks,
+            slTicks: rt.slTicks,
+            tpSlPreview
+          },
+          broker: {
+            mode: String(execModeEl.value || "paper"),
+            lastOrderAck: st.lastOrderAck || null
+          }
+        };
+
+        st.lastReadout = pairReadout;
+        perPair.push(pairReadout);
       }
 
-      const newest = signals && signals.length ? signals[0] : null;
-      const key = newest ? String(newest.type || "") + "|" + String(newest.time || newest.idx || "") : "";
-      const isNewSignal = !!(newest && key !== rt.lastSignalKey);
-
-      const metrics = buildStrategyMetrics(rt, candlesChron, signals || []);
-      const snapshot = {
-        id: "diag_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      setCurrentDiagnostic({
         ts: Date.now(),
         strategyId: rt.strategyId,
-        instrumentId: rt.instrumentId,
-        timeframeSec: rt.timeframeSec,
+        pairCount: instruments.length,
         cycleLatencyMs: Date.now() - cycleStartedAt,
-        dataHealth: rt.lastDataHealth,
-        market: {
-          bid: bidAsk && Number.isFinite(Number(bidAsk.bid)) ? Number(bidAsk.bid) : null,
-          ask: bidAsk && Number.isFinite(Number(bidAsk.ask)) ? Number(bidAsk.ask) : null,
-          spread: bidAsk && bidAsk.ok ? Number(bidAsk.ask) - Number(bidAsk.bid) : null,
-          lastClosedBarTime: closeMs || null,
-          dataFresh,
-          candleCountClosed: candlesChron.length,
-          candleCountOk
+        summary: {
+          signalsFound: signalCount,
+          newSignals: newSignalCount,
+          openTrades: perPair.filter(function (p) {
+            return p.gate && p.gate.hasOpenTrade;
+          }).length
         },
-        signal: newest
-          ? {
-              type: newest.type,
-              time: newest.time,
-              price: newest.price,
-              isNewSignal
-            }
-          : null,
-        gate: {
-          waitingFor: metrics.waitingFor,
-          hasOpenTrade: !!rt.openTrade,
-          openTradeSide: rt.openTrade ? rt.openTrade.side : null,
-          lastSignalKey: rt.lastSignalKey
-        },
-        metrics,
-        risk: {
-          lots: rt.lots,
-          tpTicks: rt.tpTicks,
-          slTicks: rt.slTicks,
-          tpSlPreview
-        },
+        pairs: perPair,
         broker: {
           mode: String(execModeEl.value || "paper"),
-          lastOrderAck: rt.lastOrderAck,
           accountSnapshot: accountSnap,
           brokerPnlAtStart: rt.brokerPnlAtStart,
           brokerPnlNow: rt.brokerPnlNow
         }
+      });
+
+      return {
+        ok: true,
+        reason: newSignalCount > 0 ? "SIGNAL_PROCESSED" : signalCount > 0 ? "NO_NEW_SIGNAL" : "NO_SIGNAL"
       };
-      pushDiagnosticsSnapshot(snapshot);
-
-      if (!signals || !signals.length) return { ok: true, reason: "NO_SIGNAL" };
-      if (key === rt.lastSignalKey) return { ok: true, reason: "NO_NEW_SIGNAL" };
-
-      if (rt.openTrade && rt.openTrade.side !== newest.type) {
-        await closeStrategyTrade("OPPOSITE_SIGNAL");
-      }
-
-      if (!rt.openTrade) {
-        await openStrategyTrade(newest.type, newest);
-      }
-
-      rt.lastSignalKey = key;
-      return { ok: true, signal: newest };
     }
 
     async function primeStrategySignalBaseline() {
@@ -1176,20 +1230,25 @@
       if (!rt || !strategyApi || typeof strategyApi.runSignals !== "function") return;
 
       try {
-        const signals = await strategyApi.runSignals(rt.strategyId, {
-          strategyId: rt.strategyId,
-          instrumentId: rt.instrumentId,
-          timeframeSec: rt.timeframeSec,
-          lookback: rt.lookback,
-          keepN: 1,
-          params: rt.params
-        });
+        const instruments = Array.isArray(rt.instruments) && rt.instruments.length ? rt.instruments : ["NAS100"];
+        for (let i = 0; i < instruments.length; i++) {
+          const instrumentId = instruments[i];
+          const st = ensureInstrumentState(instrumentId);
+          const signals = await strategyApi.runSignals(rt.strategyId, {
+            strategyId: rt.strategyId,
+            instrumentId,
+            timeframeSec: rt.timeframeSec,
+            lookback: rt.lookback,
+            keepN: 1,
+            params: rt.params
+          });
 
-        if (signals && signals.length) {
-          const s = signals[0];
-          rt.lastSignalKey = String(s.type || "") + "|" + String(s.time || s.idx || "");
-          log("[LIVE] Primed startup signal baseline: " + rt.lastSignalKey);
+          if (signals && signals.length) {
+            const s = signals[0];
+            st.lastSignalKey = String(s.type || "") + "|" + String(s.time || s.idx || "");
+          }
         }
+        log("[LIVE] Primed startup signal baseline for " + instruments.length + " pair(s).");
       } catch (e) {
         log("[LIVE][WARN] Could not prime signal baseline: " + (e && e.message ? e.message : String(e)));
       }
@@ -1230,6 +1289,9 @@
       const strategy = strategyApi && strategyApi.getStrategy ? strategyApi.getStrategy(strategyId) : null;
       if (!strategy) throw new Error("Strategy unavailable: " + strategyId);
       const sd = resolveStrategyRuntimeDefaults(strategy);
+      const inputPairs = parsePairs(pairsEl.value);
+      const maxPairCount = Math.max(1, parseInt(maxPairsEl.value || "4", 10));
+      const instruments = inputPairs.length ? inputPairs.slice(0, maxPairCount) : [sd.instrumentId];
       const overrideParams =
         window.LCPro && window.LCPro.AppStrategyConfig && window.LCPro.AppStrategyConfig.getLiveParamsOverride
           ? window.LCPro.AppStrategyConfig.getLiveParamsOverride(strategyId)
@@ -1238,16 +1300,15 @@
       live.strategyRuntime = {
         strategyId,
         params: Object.assign({}, strategy.defaultParams || {}, overrideParams || {}),
-        instrumentId: sd.instrumentId,
+        instruments,
         timeframeSec: sd.timeframeSec,
         lookback: sd.lookback,
         lots: sd.lots,
         tpTicks: sd.tpTicks,
         slTicks: sd.slTicks,
         tickSize: sd.tickSize,
-        selectedPairsTarget: Math.max(1, parseInt(maxPairsEl.value || "4", 10)),
-        lastSignalKey: "",
-        openTrade: null,
+        selectedPairsTarget: instruments.length,
+        instrumentState: {},
         closedTrades: [],
         brokerPnlAtStart: null,
         brokerPnlNow: null
@@ -1274,9 +1335,7 @@
               await window.LCPro.Trading.closeAllPositions();
             } catch (e) {}
           }
-          if (live.strategyRuntime.openTrade) {
-            closed += await closeStrategyTrade("MANUAL_CLOSE_ALL");
-          }
+          closed += await closeStrategyTrade("MANUAL_CLOSE_ALL");
           return closed;
         }
       };
@@ -1294,9 +1353,8 @@
         live.sessionStopMs = 0;
         live.sessionPeakPnl = 0;
         live.equityPoints = [];
-        live.diagnosticsSnapshots = [];
-        live.selectedDiagId = "";
-        renderDiagnosticsDropdown();
+        live.currentDiagnostic = null;
+        renderCurrentDiagnostic();
         live.running = true;
         if (String(execModeEl.value || "paper").toLowerCase() === "live" && window.LCPro.MarketData.getAccountSnapshot) {
           const snap = window.LCPro.MarketData.getAccountSnapshot();
@@ -1377,7 +1435,7 @@
 
     live.sessionHistory = loadHistory();
     renderHistory();
-    renderDiagnosticsDropdown();
+    renderCurrentDiagnostic();
     setLiveStatus("Disconnected", "warn");
     setControls();
     updateMetrics();
