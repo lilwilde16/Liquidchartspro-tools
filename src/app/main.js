@@ -328,6 +328,7 @@
         brokerPnlNow: null
       }
     };
+    let liveSimArmedUntilMs = 0;
 
     function populateLiveStrategyOptions() {
       const registry = window.LCPro && window.LCPro.Strategy && window.LCPro.Strategy.STRATEGIES;
@@ -1592,14 +1593,6 @@
       }
 
       const mode = String(execModeEl.value || "paper").toLowerCase();
-      if (mode === "live") {
-        const proceed = window.confirm(
-          "Live mode simulation will place and immediately close a real market order. Continue?"
-        );
-        if (!proceed) {
-          return { ok: false, canceled: true, reason: "USER_CANCELED" };
-        }
-      }
 
       live.engine = createEngineFromInputs();
       const rt = live.strategyRuntime;
@@ -1666,13 +1659,22 @@
       flattenPositions();
     });
     btnSimulateTrade.addEventListener("click", function () {
+      const mode = String(execModeEl.value || "paper").toLowerCase();
+      if (mode === "live") {
+        const now = Date.now();
+        if (now > liveSimArmedUntilMs) {
+          liveSimArmedUntilMs = now + 10000;
+          log("[LIVE] Live simulation armed. Click Simulate Trade Path again within 10s to execute real open+close test.");
+          return;
+        }
+      } else {
+        liveSimArmedUntilMs = 0;
+      }
+
       btnSimulateTrade.disabled = true;
       simulateTradePathOnce()
         .then(function (res) {
-          if (res && res.canceled) {
-            log("[LIVE] Simulation canceled by user.");
-            return;
-          }
+          liveSimArmedUntilMs = 0;
           log(
             "[LIVE] Trade path simulation OK | instrument=" +
               res.instrumentId +
