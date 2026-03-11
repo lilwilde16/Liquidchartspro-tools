@@ -3,6 +3,7 @@
 
   const $ = (id) => document.getElementById(id);
   let uiInitialized = false;
+  let homeLiveController = null;
 
   function fmtTime(x) {
     try {
@@ -101,6 +102,615 @@
 
     html += "</tbody></table></div>";
     target.innerHTML = html;
+  }
+
+  function formatDuration(ms) {
+    const totalSec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    const pad = (n) => (n < 10 ? "0" : "") + n;
+    return pad(h) + ":" + pad(m) + ":" + pad(s);
+  }
+
+  function initHomeLiveControls(log) {
+    const btnStart = $("btnStartLive");
+    const btnStop = $("btnStopLive");
+    const btnFlatten = $("btnFlattenLive");
+    const statusEl = $("liveStatus");
+    const timerEl = $("liveSessionTimer");
+    const pairsEl = $("livePairs");
+    const cycleMsEl = $("liveCycleMs");
+    const maxPairsEl = $("liveMaxPairs");
+    const overviewEl = $("liveOverview");
+    const metricSessionPnl = $("metricSessionPnl");
+    const metricWins = $("metricWins");
+    const metricLosses = $("metricLosses");
+    const metricWinRate = $("metricWinRate");
+    const metricOpenTrades = $("metricOpenTrades");
+    const metricSelectedPairs = $("metricSelectedPairs");
+    const recentTradesEl = $("liveRecentTrades");
+    const equityCanvas = $("equityCanvas");
+    const equityMetaEl = $("equityMeta");
+    const historyRowsEl = $("liveSessionHistoryRows");
+    const btnClearHistory = $("btnClearSessionHistory");
+    const riskEnableDailyLossEl = $("riskEnableDailyLoss");
+    const riskEnableDrawdownEl = $("riskEnableDrawdown");
+    const riskEnableConsecLossEl = $("riskEnableConsecLoss");
+    const riskMaxDailyLossEl = $("riskMaxDailyLoss");
+    const riskMaxDrawdownEl = $("riskMaxDrawdown");
+    const riskMaxConsecLossEl = $("riskMaxConsecLoss");
+
+    if (
+      !btnStart ||
+      !btnStop ||
+      !btnFlatten ||
+      !statusEl ||
+      !timerEl ||
+      !pairsEl ||
+      !cycleMsEl ||
+      !maxPairsEl ||
+      !overviewEl ||
+      !metricSessionPnl ||
+      !metricWins ||
+      !metricLosses ||
+      !metricWinRate ||
+      !metricOpenTrades ||
+      !metricSelectedPairs ||
+      !recentTradesEl ||
+      !equityCanvas ||
+      !equityMetaEl ||
+      !historyRowsEl ||
+      !btnClearHistory ||
+      !riskEnableDailyLossEl ||
+      !riskEnableDrawdownEl ||
+      !riskEnableConsecLossEl ||
+      !riskMaxDailyLossEl ||
+      !riskMaxDrawdownEl ||
+      !riskMaxConsecLossEl
+    ) {
+      return null;
+    }
+
+    const SESSION_HISTORY_KEY = "lcpro_live_session_history_v1";
+    const MAX_HISTORY_ROWS = 20;
+    const MAX_EQUITY_POINTS = 900;
+
+    const live = {
+      running: false,
+      frameworkReady: false,
+      engine: null,
+      timerId: null,
+      inFlight: false,
+      cycleMs: 5000,
+      cycleCount: 0,
+      lastCycleAt: 0,
+      lastCycleDurationMs: 0,
+      sessionStartMs: 0,
+      sessionPeakPnl: 0,
+      lastError: "",
+      equityPoints: [],
+      sessionHistory: []
+    };
+
+    function parsePairs(raw) {
+      return String(raw || "")
+        .split(",")
+        .map((x) => x.trim().toUpperCase().replace(/\//g, ""))
+        .filter(Boolean);
+    }
+
+    function sumUnrealized(state) {
+      const pairs = Object.keys((state && state.pair_states) || {});
+      let total = 0;
+      for (let i = 0; i < pairs.length; i++) {
+        const ps = state.pair_states[pairs[i]];
+        total += Number(ps && ps.unrealized_pnl) || 0;
+      }
+      return total;
+    }
+
+    function getSessionClosedTrades(state) {
+      const events = ((state && state.analytics && state.analytics.events) || []).filter(function (e) {
+        if (!e || e.type !== "TRADE_CLOSE") return false;
+        const ts = Date.parse(e.timestamp || "");
+        return Number.isFinite(ts) && ts >= live.sessionStartMs;
+      });
+
+      return events.map(function (e) {
+        const trade = e.trade || {};
+        return {
+          time: e.timestamp,
+          pair: e.pair || "-",
+          side: trade.side || "-",
+          reason: trade.reason_for_exit || "-",
+          pnl: Number(trade.pnl) || 0
+        };
+      });
+    }
+
+    function computeConsecutiveLosses(closedTrades) {
+      let count = 0;
+      for (let i = closedTrades.length - 1; i >= 0; i--) {
+        if (closedTrades[i].pnl < 0) {
+          count += 1;
+          continue;
+        }
+        break;
+      }
+      return count;
+    }
+
+    function getStatsSnapshot() {
+      const state = live.engine ? live.engine.state : null;
+      const closedTrades = getSessionClosedTrades(state);
+      const wins = closedTrades.filter((t) => t.pnl > 0).length;
+      const losses = closedTrades.filter((t) => t.pnl < 0).length;
+      const realizedPnl = closedTrades.reduce((acc, t) => acc + t.pnl, 0);
+      const unrealizedPnl = sumUnrealized(state);
+      const sessionPnl = realizedPnl + unrealizedPnl;
+      const totalClosed = wins + losses;
+      const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
+      const selectedPairs = (state && state.selected_pairs && state.selected_pairs.length) || 0;
+      const openTrades =
+        (state && state.portfolio && Number(state.portfolio.total_open_trades)) ||
+        Object.keys((state && state.pair_states) || {}).reduce(function (acc, pair) {
+          const ps = state.pair_states[pair];
+          return acc + ((ps && ps.positions && ps.positions.length) || 0);
+        }, 0);
+      const drawdownPct = (state && state.portfolio && Number(state.portfolio.total_drawdown_pct)) || 0;
+      const marginPct = (state && state.portfolio && Number(state.portfolio.margin_used_pct)) || 0;
+      const consecutiveLosses = computeConsecutiveLosses(closedTrades);
+
+      return {
+        state,
+        closedTrades,
+        wins,
+        losses,
+        realizedPnl,
+        unrealizedPnl,
+        sessionPnl,
+        totalClosed,
+        winRate,
+        selectedPairs,
+        openTrades,
+        drawdownPct,
+        marginPct,
+        consecutiveLosses
+      };
+    }
+
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem(SESSION_HISTORY_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveHistory() {
+      try {
+        localStorage.setItem(SESSION_HISTORY_KEY, JSON.stringify(live.sessionHistory.slice(0, MAX_HISTORY_ROWS)));
+      } catch (e) {}
+    }
+
+    function renderHistory() {
+      if (!live.sessionHistory.length) {
+        historyRowsEl.innerHTML = '<tr><td colspan="8" class="small">No saved sessions yet.</td></tr>';
+        return;
+      }
+
+      let html = "";
+      live.sessionHistory.slice(0, MAX_HISTORY_ROWS).forEach(function (s) {
+        html +=
+          "<tr><td>" +
+          fmtTime(s.startMs) +
+          "</td><td>" +
+          fmtTime(s.endMs) +
+          "</td><td>" +
+          formatDuration((s.endMs || 0) - (s.startMs || 0)) +
+          "</td><td class=\"" +
+          (Number(s.sessionPnl || 0) >= 0 ? "buy" : "sell") +
+          "\">" +
+          Number(s.sessionPnl || 0).toFixed(2) +
+          "</td><td>" +
+          Number(s.wins || 0) +
+          "</td><td>" +
+          Number(s.losses || 0) +
+          "</td><td>" +
+          Number(s.winRate || 0).toFixed(1) +
+          "%</td><td>" +
+          (s.stopReason || "MANUAL_STOP") +
+          "</td></tr>";
+      });
+      historyRowsEl.innerHTML = html;
+    }
+
+    function pushSessionHistory(stopReason) {
+      if (!live.sessionStartMs) return;
+      const stats = getStatsSnapshot();
+      const endMs = Date.now();
+      const item = {
+        startMs: live.sessionStartMs,
+        endMs,
+        sessionPnl: stats.sessionPnl,
+        wins: stats.wins,
+        losses: stats.losses,
+        winRate: stats.winRate,
+        cycles: live.cycleCount,
+        stopReason: stopReason || "MANUAL_STOP"
+      };
+      live.sessionHistory.unshift(item);
+      if (live.sessionHistory.length > MAX_HISTORY_ROWS) {
+        live.sessionHistory = live.sessionHistory.slice(0, MAX_HISTORY_ROWS);
+      }
+      saveHistory();
+      renderHistory();
+    }
+
+    function drawEquity() {
+      const canvas = equityCanvas;
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(320, Math.floor(rect.width || 320));
+      const height = Math.max(180, Math.floor(rect.height || 180));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#fbfdff";
+      ctx.fillRect(0, 0, width, height);
+
+      const points = live.equityPoints;
+      if (!points.length) {
+        ctx.fillStyle = "#5b6678";
+        ctx.font = "12px ui-monospace";
+        ctx.fillText("No data yet", 12, 20);
+        equityMetaEl.textContent = "Starts plotting after session start.";
+        return;
+      }
+
+      const values = points.map((p) => p.v);
+      const minV = Math.min.apply(null, values);
+      const maxV = Math.max.apply(null, values);
+      const padV = maxV === minV ? 1 : (maxV - minV) * 0.1;
+      const lo = minV - padV;
+      const hi = maxV + padV;
+
+      const left = 32;
+      const top = 12;
+      const right = width - 8;
+      const bottom = height - 24;
+      const w = right - left;
+      const h = bottom - top;
+
+      ctx.strokeStyle = "#d6dde8";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(left, top);
+      ctx.lineTo(left, bottom);
+      ctx.lineTo(right, bottom);
+      ctx.stroke();
+
+      const yZero = top + (hi - 0) * (h / (hi - lo));
+      if (yZero >= top && yZero <= bottom) {
+        ctx.strokeStyle = "#e7ecf3";
+        ctx.beginPath();
+        ctx.moveTo(left, yZero);
+        ctx.lineTo(right, yZero);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = values[values.length - 1] >= 0 ? "#169f5f" : "#c93434";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < points.length; i++) {
+        const x = left + (i / Math.max(1, points.length - 1)) * w;
+        const y = top + (hi - points[i].v) * (h / (hi - lo));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      const last = points[points.length - 1];
+      equityMetaEl.textContent =
+        "Points: " +
+        points.length +
+        " | Peak P/L: " +
+        Number(live.sessionPeakPnl || 0).toFixed(2) +
+        " | Current P/L: " +
+        Number(last.v || 0).toFixed(2);
+    }
+
+    function appendEquityPoint(value) {
+      if (!live.sessionStartMs) return;
+      const now = Date.now();
+      const prev = live.equityPoints.length ? live.equityPoints[live.equityPoints.length - 1] : null;
+      if (prev && now - prev.t < 900) return;
+
+      live.equityPoints.push({ t: now, v: Number(value) || 0 });
+      if (live.equityPoints.length > MAX_EQUITY_POINTS) {
+        live.equityPoints.shift();
+      }
+    }
+
+    function readRiskRules() {
+      return {
+        dailyLossEnabled: !!riskEnableDailyLossEl.checked,
+        drawdownEnabled: !!riskEnableDrawdownEl.checked,
+        consecLossEnabled: !!riskEnableConsecLossEl.checked,
+        maxDailyLoss: Math.max(0, Number(riskMaxDailyLossEl.value || 0)),
+        maxDrawdown: Math.max(0, Number(riskMaxDrawdownEl.value || 0)),
+        maxConsecLoss: Math.max(1, parseInt(riskMaxConsecLossEl.value || "1", 10))
+      };
+    }
+
+    function maybeAutoStop(stats) {
+      if (!live.running) return false;
+      const rules = readRiskRules();
+      const sessionDrawdown = Math.max(0, Number(live.sessionPeakPnl || 0) - Number(stats.sessionPnl || 0));
+
+      if (rules.dailyLossEnabled && rules.maxDailyLoss > 0 && stats.sessionPnl <= -rules.maxDailyLoss) {
+        stopLive("AUTO_STOP_DAILY_LOSS", true);
+        return true;
+      }
+      if (rules.drawdownEnabled && rules.maxDrawdown > 0 && sessionDrawdown >= rules.maxDrawdown) {
+        stopLive("AUTO_STOP_MAX_DRAWDOWN", true);
+        return true;
+      }
+      if (rules.consecLossEnabled && rules.maxConsecLoss > 0 && stats.consecutiveLosses >= rules.maxConsecLoss) {
+        stopLive("AUTO_STOP_CONSEC_LOSSES", true);
+        return true;
+      }
+      return false;
+    }
+
+    function updateMetrics() {
+      const stats = getStatsSnapshot();
+      const state = stats.state;
+      const now = Date.now();
+
+      if (!live.sessionStartMs) {
+        timerEl.textContent = "Session 00:00:00";
+      } else {
+        timerEl.textContent = "Session " + formatDuration(now - live.sessionStartMs);
+      }
+
+      if (live.sessionStartMs) {
+        live.sessionPeakPnl = Math.max(Number(live.sessionPeakPnl || 0), Number(stats.sessionPnl || 0));
+        appendEquityPoint(stats.sessionPnl);
+      }
+
+      metricSessionPnl.textContent = stats.sessionPnl.toFixed(2);
+      metricSessionPnl.classList.toggle("pos", stats.sessionPnl > 0);
+      metricSessionPnl.classList.toggle("neg", stats.sessionPnl < 0);
+      metricWins.textContent = String(stats.wins);
+      metricLosses.textContent = String(stats.losses);
+      metricWinRate.textContent = stats.winRate.toFixed(1) + "%";
+      metricOpenTrades.textContent = String(stats.openTrades);
+      metricSelectedPairs.textContent = String(stats.selectedPairs);
+
+      const lastCycleLabel = live.lastCycleAt ? fmtTime(live.lastCycleAt) : "n/a";
+      const sessionState = state && state.bot_enabled ? "enabled" : "disabled";
+      const sessionDrawdown = Math.max(0, Number(live.sessionPeakPnl || 0) - Number(stats.sessionPnl || 0));
+      overviewEl.textContent =
+        "Autotrader: " +
+        (live.running ? "RUNNING" : "STOPPED") +
+        " | Engine bot flag: " +
+        sessionState +
+        " | Cycles: " +
+        live.cycleCount +
+        " | Last cycle: " +
+        lastCycleLabel +
+        " (" +
+        live.lastCycleDurationMs +
+        " ms)" +
+        " | Realized: " +
+        stats.realizedPnl.toFixed(2) +
+        " | Unrealized: " +
+        stats.unrealizedPnl.toFixed(2) +
+        " | Session DD: " +
+        sessionDrawdown.toFixed(2) +
+        " | Drawdown: " +
+        stats.drawdownPct.toFixed(2) +
+        "% | Margin: " +
+        stats.marginPct.toFixed(2) +
+        "% | Consec Losses: " +
+        stats.consecutiveLosses +
+        (live.lastError ? " | Last error: " + live.lastError : "");
+
+      if (!stats.closedTrades.length) {
+        recentTradesEl.innerHTML = '<tr><td colspan="5" class="small">No closed trades in this session yet.</td></tr>';
+      } else {
+        const rows = stats.closedTrades.slice(-8).reverse();
+        let html = "";
+        rows.forEach(function (t) {
+          html +=
+            "<tr><td>" +
+            fmtTime(t.time) +
+            "</td><td>" +
+            t.pair +
+            "</td><td>" +
+            t.side +
+            "</td><td>" +
+            t.reason +
+            "</td><td class=\"" +
+            (t.pnl >= 0 ? "buy" : "sell") +
+            "\">" +
+            t.pnl.toFixed(2) +
+            "</td></tr>";
+        });
+        recentTradesEl.innerHTML = html;
+      }
+
+      drawEquity();
+      maybeAutoStop(stats);
+    }
+
+    function setControls() {
+      btnStart.disabled = !live.frameworkReady || live.running;
+      btnStop.disabled = !live.frameworkReady || !live.running;
+      btnFlatten.disabled = !live.frameworkReady || !live.engine;
+      pairsEl.disabled = live.running;
+      cycleMsEl.disabled = live.running;
+      maxPairsEl.disabled = live.running;
+      btnClearHistory.disabled = live.running;
+    }
+
+    function setLiveStatus(text, cls) {
+      window.LCPro.Debug.setStatus(statusEl, text, cls);
+    }
+
+    function clearTimer() {
+      if (live.timerId) {
+        clearTimeout(live.timerId);
+        live.timerId = null;
+      }
+    }
+
+    function scheduleNextCycle() {
+      clearTimer();
+      if (!live.running) return;
+      live.timerId = setTimeout(runCycle, live.cycleMs);
+    }
+
+    function finalizeRunningSession(stopReason) {
+      if (!live.sessionStartMs) return;
+      pushSessionHistory(stopReason);
+    }
+
+    async function runCycle() {
+      if (!live.running || !live.engine || live.inFlight) return;
+      live.inFlight = true;
+      try {
+        const started = Date.now();
+        const result = await live.engine.run_cycle();
+        live.lastCycleDurationMs = Date.now() - started;
+        live.lastCycleAt = Date.now();
+        live.cycleCount += 1;
+        live.lastError = "";
+
+        if (result && result.reason === "FRIDAY_SHUTDOWN") {
+          setLiveStatus("Stopped: Friday Shutdown", "warn");
+          log("[LIVE] Friday shutdown triggered, stopping loop.");
+          stopLive("FRIDAY_SHUTDOWN", true);
+          return;
+        }
+      } catch (e) {
+        live.lastError = e && e.message ? e.message : String(e);
+        setLiveStatus("Cycle Error", "bad");
+        log("[LIVE][ERR] " + live.lastError);
+      } finally {
+        live.inFlight = false;
+        updateMetrics();
+        setControls();
+        if (live.running) scheduleNextCycle();
+      }
+    }
+
+    function createEngineFromInputs() {
+      const pairs = parsePairs(pairsEl.value);
+      if (!pairs.length) throw new Error("Pairs universe cannot be empty");
+
+      const cycleMs = Math.max(1000, parseInt(cycleMsEl.value || "5000", 10));
+      const maxPairs = Math.max(1, parseInt(maxPairsEl.value || "4", 10));
+      live.cycleMs = cycleMs;
+
+      return window.LCPro.CSVRG.Engine.createEngine({
+        pairs_universe: pairs,
+        max_active_pairs: maxPairs
+      });
+    }
+
+    async function startLive() {
+      if (live.running) return;
+      try {
+        live.engine = createEngineFromInputs();
+        live.cycleCount = 0;
+        live.lastCycleAt = 0;
+        live.lastCycleDurationMs = 0;
+        live.lastError = "";
+        live.sessionStartMs = Date.now();
+        live.sessionPeakPnl = 0;
+        live.equityPoints = [];
+        live.running = true;
+        setLiveStatus("Running", "ok");
+        log("[LIVE] Autotrader started.");
+        setControls();
+        updateMetrics();
+        await runCycle();
+      } catch (e) {
+        live.running = false;
+        live.lastError = e && e.message ? e.message : String(e);
+        setLiveStatus("Start Failed", "bad");
+        log("[LIVE][ERR] Failed to start: " + live.lastError);
+        setControls();
+        updateMetrics();
+      }
+    }
+
+    function stopLive(reason, isAutoStop) {
+      if (!live.running) return;
+      live.running = false;
+      clearTimer();
+      const stopReason = reason || "MANUAL_STOP";
+      setLiveStatus(isAutoStop ? "Auto-stopped" : "Stopped", isAutoStop ? "bad" : "warn");
+      log("[LIVE] Autotrader stopped. reason=" + stopReason);
+      finalizeRunningSession(stopReason);
+      setControls();
+      updateMetrics();
+    }
+
+    function flattenPositions() {
+      if (!live.engine) return;
+      const closed = live.engine.close_all_positions();
+      log("[LIVE] Closed positions: " + closed);
+      updateMetrics();
+    }
+
+    btnStart.addEventListener("click", function () {
+      startLive();
+    });
+    btnStop.addEventListener("click", function () {
+      stopLive("MANUAL_STOP", false);
+    });
+    btnFlatten.addEventListener("click", function () {
+      flattenPositions();
+    });
+    btnClearHistory.addEventListener("click", function () {
+      live.sessionHistory = [];
+      saveHistory();
+      renderHistory();
+    });
+
+    live.sessionHistory = loadHistory();
+    renderHistory();
+    setLiveStatus("Disconnected", "warn");
+    setControls();
+    updateMetrics();
+    setInterval(updateMetrics, 1000);
+
+    return {
+      setFrameworkReady: function (ready) {
+        live.frameworkReady = !!ready;
+        if (!live.frameworkReady && live.running) stopLive("FRAMEWORK_DISCONNECTED", true);
+        if (!live.running) {
+          setLiveStatus(live.frameworkReady ? "Ready" : "Disconnected", live.frameworkReady ? "ok" : "warn");
+        }
+        setControls();
+      },
+      stop: function () {
+        stopLive("MANUAL_STOP", false);
+      },
+      getState: function () {
+        return live;
+      }
+    };
   }
 
   function initBacktesterTab() {
@@ -804,6 +1414,7 @@
       initStrategyTab();
       initBacktesterTab();
       initToolsTab();
+      homeLiveController = initHomeLiveControls(log);
       setTab("Home");
       uiInitialized = true;
     }
@@ -812,6 +1423,7 @@
     try {
       Framework = window.LCPro.Core.ensureFramework();
     } catch (e) {
+      if (homeLiveController) homeLiveController.setFrameworkReady(false);
       setStatus("Waiting for framework...", "warn");
       log("[WARN] Framework not ready yet: " + (e.message || String(e)));
       setTimeout(setup, 1000);
@@ -821,6 +1433,7 @@
     Framework.OnLoad = function () {
       setStatus("Connected", "ok");
       log("[OK] Framework loaded");
+      if (homeLiveController) homeLiveController.setFrameworkReady(true);
 
       $("btnRun").disabled = false;
       $("btnDumpCandle").disabled = false;

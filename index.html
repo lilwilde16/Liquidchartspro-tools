@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>LiquidCharts Backtest: Last 5 MA-Crossover Signals</title>
+<title>LiquidCharts Pro: Autotrader Control Center</title>
 <link rel="stylesheet" type="text/css" href="https://pro.liquidcharts.com/css/widget-css"/>
 <script src="https://pro.liquidcharts.com/scripts/widget-js"></script>
 <style>
@@ -48,6 +48,20 @@
   .sell{ color:#c93434; font-weight:950; }
   .small{ font-size:12px; color:#5b6678; line-height:1.35; margin-top:6px; }
   code{ font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .overview-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; }
+  .metric{
+    background:linear-gradient(180deg,#fbfdff 0%, #f1f6ff 100%);
+    border:1px solid #d6dde8;
+    border-radius:14px;
+    padding:10px;
+  }
+  .metric .label{ font-size:11px; font-weight:800; letter-spacing:.02em; color:#5b6678; text-transform:uppercase; }
+  .metric .value{ font-size:22px; font-weight:950; color:#17212f; margin-top:4px; line-height:1.1; }
+  .value.pos{ color:#169f5f; }
+  .value.neg{ color:#c93434; }
+  .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .chart-wrap{ height:220px; border:1px solid #d6dde8; border-radius:14px; background:#fbfdff; padding:8px; }
+  #equityCanvas{ width:100%; height:100%; display:block; }
 </style>
 </head>
 <body class="Widget">
@@ -61,7 +75,100 @@
 
 <div id="pageHome" class="page">
   <div class="card">
-    <div class="title">Backtest - Last 5 MA Crossover Signals</div>
+    <div class="title">Live Autotrader Control</div>
+    <div class="row">
+      <div class="field">
+        <label>Pairs Universe (comma separated)</label>
+        <input id="livePairs" type="text" value="EURUSD,GBPUSD,USDJPY,AUDUSD,USDCAD,EURJPY,GBPJPY,EURGBP" />
+      </div>
+      <div class="field">
+        <label>Cycle Interval (ms)</label>
+        <input id="liveCycleMs" type="number" min="1000" max="60000" step="500" value="5000" />
+      </div>
+      <div class="field">
+        <label>Max Active Pairs</label>
+        <input id="liveMaxPairs" type="number" min="1" max="12" step="1" value="4" />
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button id="btnStartLive" class="primary" type="button" disabled>Start Live Autotrader</button>
+      <button id="btnStopLive" type="button" disabled>Stop Autotrader</button>
+      <button id="btnFlattenLive" type="button" disabled>Close All Positions</button>
+      <span class="pill" id="liveStatus">Disconnected</span>
+      <span class="pill mono" id="liveSessionTimer">Session 00:00:00</span>
+    </div>
+    <div class="small">Start creates a fresh live session and tracks session stats from that point. Stop halts new cycles but keeps your session stats visible.</div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field">
+        <label><input id="riskEnableDailyLoss" type="checkbox" checked style="width:auto;margin-right:6px;" /> Auto-stop Max Daily Loss</label>
+        <input id="riskMaxDailyLoss" type="number" min="0" step="0.01" value="250" />
+      </div>
+      <div class="field">
+        <label><input id="riskEnableDrawdown" type="checkbox" checked style="width:auto;margin-right:6px;" /> Auto-stop Max Drawdown</label>
+        <input id="riskMaxDrawdown" type="number" min="0" step="0.01" value="180" />
+      </div>
+      <div class="field">
+        <label><input id="riskEnableConsecLoss" type="checkbox" checked style="width:auto;margin-right:6px;" /> Auto-stop Consecutive Losses</label>
+        <input id="riskMaxConsecLoss" type="number" min="1" step="1" value="4" />
+      </div>
+    </div>
+    <div class="small">Set a value and keep checkbox on to enforce that auto-stop rule. Values are interpreted in the same P/L units shown on this page.</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Session Performance</div>
+    <div class="overview-grid">
+      <div class="metric"><div class="label">Session P/L</div><div id="metricSessionPnl" class="value">0.00</div></div>
+      <div class="metric"><div class="label">Wins</div><div id="metricWins" class="value">0</div></div>
+      <div class="metric"><div class="label">Losses</div><div id="metricLosses" class="value">0</div></div>
+      <div class="metric"><div class="label">Win Rate</div><div id="metricWinRate" class="value">0.0%</div></div>
+      <div class="metric"><div class="label">Open Trades</div><div id="metricOpenTrades" class="value">0</div></div>
+      <div class="metric"><div class="label">Selected Pairs</div><div id="metricSelectedPairs" class="value">0</div></div>
+    </div>
+    <div id="liveOverview" class="small">Waiting for live session...</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Session Equity Curve</div>
+    <div class="chart-wrap">
+      <canvas id="equityCanvas"></canvas>
+    </div>
+    <div id="equityMeta" class="small">Starts plotting after session start.</div>
+  </div>
+
+  <div class="card">
+    <div class="title">Session History (Persistent)</div>
+    <div class="row" style="margin-bottom:10px;">
+      <button id="btnClearSessionHistory" type="button">Clear History</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>Start</th><th>End</th><th>Duration</th><th>P/L</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Stop Reason</th></tr>
+        </thead>
+        <tbody id="liveSessionHistoryRows">
+          <tr><td colspan="8" class="small">No saved sessions yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="title">Recent Closed Trades (Session)</div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>Time</th><th>Pair</th><th>Side</th><th>Reason</th><th>P/L</th></tr>
+        </thead>
+        <tbody id="liveRecentTrades">
+          <tr><td colspan="5" class="small">No closed trades in this session yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="title">Quick Backtest - Last 5 MA Crossover Signals</div>
     <div class="row">
       <div class="field">
         <label>Instrument</label>
@@ -304,6 +411,22 @@
 <script src="./src/backtest/sma-crossover.js"></script>
 <script src="./src/strategy/actions.js"></script>
 <script src="./src/debug/logger.js"></script>
+<script src="./src/csvrg/config.js"></script>
+<script src="./src/csvrg/state.js"></script>
+<script src="./src/csvrg/indicators.js"></script>
+<script src="./src/csvrg/market-data-module.js"></script>
+<script src="./src/csvrg/session-manager.js"></script>
+<script src="./src/csvrg/logger-analytics.js"></script>
+<script src="./src/csvrg/currency-strength.js"></script>
+<script src="./src/csvrg/pair-selection.js"></script>
+<script src="./src/csvrg/regime-filter.js"></script>
+<script src="./src/csvrg/volatility-reversion.js"></script>
+<script src="./src/csvrg/grid-execution.js"></script>
+<script src="./src/csvrg/trade-manager.js"></script>
+<script src="./src/csvrg/risk-management.js"></script>
+<script src="./src/csvrg/scoring.js"></script>
+<script src="./src/csvrg/counter-scalp.js"></script>
+<script src="./src/csvrg/engine.js"></script>
 <script src="./src/app/main.js"></script>
 </body>
 </html>
