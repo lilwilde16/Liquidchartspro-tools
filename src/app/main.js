@@ -50,6 +50,12 @@
   function initStrategyTab() {
     const strategySelect = $("strategySelect");
     const strategyInfo = $("strategyInfo");
+    const quickWrap = $("strategyQuickControls");
+    const smaTfPreset = $("smaTfPreset");
+    const smaFastPreset = $("smaFastPreset");
+    const smaSlowPreset = $("smaSlowPreset");
+    const smaTpPreset = $("smaTpPreset");
+    const smaSlPreset = $("smaSlPreset");
     const liveParamsInput = $("strategyLiveParams");
     const btnSave = $("btnSaveStrategyLiveParams");
     const btnReset = $("btnResetStrategyLiveParams");
@@ -63,6 +69,48 @@
       .map((s) => '<option value="' + s.id + '">' + s.name + "</option>")
       .join("");
 
+    function safeParseObject(raw) {
+      try {
+        const v = JSON.parse(raw || "{}");
+        return v && typeof v === "object" ? v : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function setSmaQuickVisibility(strategyId) {
+      if (!quickWrap) return;
+      quickWrap.style.display = strategyId === "sma_crossover" ? "block" : "none";
+    }
+
+    function syncQuickControlsFromParams(params) {
+      if (!smaTfPreset || !smaFastPreset || !smaSlowPreset || !smaTpPreset || !smaSlPreset) return;
+      const p = params || {};
+      const tf = String(Number(p.timeframeSec) || 900);
+      const fast = String(Number(p.fastLen) || 9);
+      const slow = String(Number(p.slowLen) || 21);
+      const tp = String(Math.max(0, Number(p.tpTicks) || 0));
+      const sl = String(Math.max(0, Number(p.slTicks) || 0));
+      if (smaTfPreset.querySelector('option[value="' + tf + '"]')) smaTfPreset.value = tf;
+      if (smaFastPreset.querySelector('option[value="' + fast + '"]')) smaFastPreset.value = fast;
+      if (smaSlowPreset.querySelector('option[value="' + slow + '"]')) smaSlowPreset.value = slow;
+      if (smaTpPreset.querySelector('option[value="' + tp + '"]')) smaTpPreset.value = tp;
+      if (smaSlPreset.querySelector('option[value="' + sl + '"]')) smaSlPreset.value = sl;
+    }
+
+    function applyQuickControlsToJson() {
+      if (strategySelect.value !== "sma_crossover") return;
+      const current = safeParseObject(liveParamsInput.value);
+      current.timeframeSec = Number(smaTfPreset && smaTfPreset.value ? smaTfPreset.value : 900);
+      current.fastLen = Number(smaFastPreset && smaFastPreset.value ? smaFastPreset.value : 9);
+      current.slowLen = Number(smaSlowPreset && smaSlowPreset.value ? smaSlowPreset.value : 21);
+      current.tpTicks = Math.max(0, Number(smaTpPreset && smaTpPreset.value ? smaTpPreset.value : 0));
+      current.slTicks = Math.max(0, Number(smaSlPreset && smaSlPreset.value ? smaSlPreset.value : 0));
+      liveParamsInput.value = JSON.stringify(current, null, 2);
+      statusEl.textContent = "Unsaved Changes";
+      statusEl.className = "pill warn";
+    }
+
     function renderStrategyInfo() {
       const id = strategySelect.value;
       const selected = items.find((s) => s.id === id);
@@ -70,11 +118,13 @@
         strategyInfo.textContent = "No strategy selected.";
         return;
       }
+      setSmaQuickVisibility(id);
       strategyInfo.textContent = "ID: " + selected.id + " | " + (selected.notes || "No notes");
 
       const override = strategyLiveOverrides[id];
       const params = override || selected.defaultParams || {};
       liveParamsInput.value = JSON.stringify(params, null, 2);
+      syncQuickControlsFromParams(params);
       statusEl.textContent = override ? "Override Saved" : "Using Defaults";
       statusEl.className = "pill " + (override ? "ok" : "warn");
     }
@@ -104,10 +154,18 @@
       const id = strategySelect.value;
       delete strategyLiveOverrides[id];
       const selected = items.find((s) => s.id === id);
-      liveParamsInput.value = JSON.stringify((selected && selected.defaultParams) || {}, null, 2);
+      const defaults = (selected && selected.defaultParams) || {};
+      liveParamsInput.value = JSON.stringify(defaults, null, 2);
+      syncQuickControlsFromParams(defaults);
       statusEl.textContent = "Using Defaults";
       statusEl.className = "pill warn";
     });
+
+    if (smaTfPreset) smaTfPreset.addEventListener("change", applyQuickControlsToJson);
+    if (smaFastPreset) smaFastPreset.addEventListener("change", applyQuickControlsToJson);
+    if (smaSlowPreset) smaSlowPreset.addEventListener("change", applyQuickControlsToJson);
+    if (smaTpPreset) smaTpPreset.addEventListener("change", applyQuickControlsToJson);
+    if (smaSlPreset) smaSlPreset.addEventListener("change", applyQuickControlsToJson);
 
     strategySelect.addEventListener("change", renderStrategyInfo);
     renderStrategyInfo();

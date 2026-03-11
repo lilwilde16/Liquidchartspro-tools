@@ -260,6 +260,64 @@
       </div>
     </div>
     <div class="row" style="margin-top:10px;">
+      <div id="strategyQuickControls" class="field" style="min-width:280px;">
+        <label>Quick SMA Settings (safe presets)</label>
+        <div class="row">
+          <div class="field">
+            <label>Timeframe</label>
+            <select id="smaTfPreset">
+              <option value="60">1m</option>
+              <option value="300">5m</option>
+              <option value="900" selected>15m</option>
+              <option value="1800">30m</option>
+              <option value="3600">1h</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Fast SMA</label>
+            <select id="smaFastPreset">
+              <option value="5">5</option>
+              <option value="8">8</option>
+              <option value="9" selected>9</option>
+              <option value="13">13</option>
+              <option value="21">21</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Slow SMA</label>
+            <select id="smaSlowPreset">
+              <option value="21" selected>21</option>
+              <option value="34">34</option>
+              <option value="50">50</option>
+              <option value="89">89</option>
+              <option value="200">200</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>TP (ticks)</label>
+            <select id="smaTpPreset">
+              <option value="0" selected>Off</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+              <option value="40">40</option>
+              <option value="55">55</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>SL (ticks)</label>
+            <select id="smaSlPreset">
+              <option value="0" selected>Off</option>
+              <option value="20">20</option>
+              <option value="30">30</option>
+              <option value="40">40</option>
+              <option value="55">55</option>
+            </select>
+          </div>
+        </div>
+        <div class="small">Selecting presets updates the JSON override below automatically for SMA Crossover.</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
       <div class="field" style="min-width:280px;">
         <label>Live strategy params override (JSON)</label>
         <textarea id="strategyLiveParams" rows="4">{}</textarea>
