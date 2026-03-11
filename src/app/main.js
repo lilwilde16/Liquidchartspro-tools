@@ -1125,7 +1125,17 @@
 
         const newest = signals && signals.length ? signals[0] : null;
         const key = newest ? String(newest.type || "") + "|" + String(newest.time || newest.idx || "") : "";
-        const isNewSignal = !!(newest && key !== st.lastSignalKey);
+        const signalTsRaw = newest ? newest.time || newest.t || newest.ts || newest.date : 0;
+        const signalMs = Number(signalTsRaw)
+          ? Number(signalTsRaw) < 1e12
+            ? Number(signalTsRaw) * 1000
+            : Number(signalTsRaw)
+          : Date.parse(String(signalTsRaw || ""));
+        const signalOnLatestClose =
+          Number.isFinite(signalMs) && Number.isFinite(closeMs)
+            ? Math.abs(signalMs - closeMs) <= Math.max(1000, Math.floor(rt.timeframeSec * 250))
+            : false;
+        const isNewSignal = !!(newest && signalOnLatestClose && key !== st.lastSignalKey);
         if (newest) signalCount += 1;
         if (isNewSignal) newSignalCount += 1;
 
@@ -1171,7 +1181,8 @@
                 type: newest.type,
                 time: newest.time,
                 price: newest.price,
-                isNewSignal
+                isNewSignal,
+                onLatestClosedBar: signalOnLatestClose
               }
             : null,
           gate: {
@@ -1296,16 +1307,19 @@
         window.LCPro && window.LCPro.AppStrategyConfig && window.LCPro.AppStrategyConfig.getLiveParamsOverride
           ? window.LCPro.AppStrategyConfig.getLiveParamsOverride(strategyId)
           : null;
+      const mergedParams = Object.assign({}, strategy.defaultParams || {}, overrideParams || {});
+      const paramTpTicks = Number(mergedParams.tpTicks);
+      const paramSlTicks = Number(mergedParams.slTicks);
 
       live.strategyRuntime = {
         strategyId,
-        params: Object.assign({}, strategy.defaultParams || {}, overrideParams || {}),
+        params: mergedParams,
         instruments,
         timeframeSec: sd.timeframeSec,
         lookback: sd.lookback,
         lots: sd.lots,
-        tpTicks: sd.tpTicks,
-        slTicks: sd.slTicks,
+        tpTicks: Number.isFinite(paramTpTicks) ? Math.max(0, paramTpTicks) : sd.tpTicks,
+        slTicks: Number.isFinite(paramSlTicks) ? Math.max(0, paramSlTicks) : sd.slTicks,
         tickSize: sd.tickSize,
         selectedPairsTarget: instruments.length,
         instrumentState: {},

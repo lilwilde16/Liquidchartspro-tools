@@ -1522,11 +1522,11 @@
         timeframeSec: 900,
         lookback: 900,
         lots: 0.01,
-        tpTicks: 55,
-        slTicks: 55,
+        tpTicks: 0,
+        slTicks: 0,
         tickSize: 1
       },
-      defaultParams: { fastLen: 9, slowLen: 21 },
+      defaultParams: { fastLen: 9, slowLen: 21, tpTicks: 0, slTicks: 0 },
       tradeManagementDefaults: {
         slTicks: 55,
         tpTicks: 55,
