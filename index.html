@@ -156,7 +156,26 @@
   <div class="card">
     <div class="title">Live Signal Verification</div>
     <div id="liveDiagStatus" class="small">Live now: waiting for first cycle.</div>
-    <pre id="liveDiagOutput">Diagnostics will show current-cycle live data while the autotrader is running.</pre>
+    <div style="overflow-x:auto; margin-top:8px;">
+      <table>
+        <thead>
+          <tr><th>Pair</th><th>Status</th></tr>
+        </thead>
+        <tbody id="liveDiagPairStatus">
+          <tr><td colspan="2" class="small">Waiting for first cycle...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="overflow-x:auto; margin-top:10px;">
+      <table>
+        <thead>
+          <tr><th>Pair</th><th>Bid</th><th>Ask</th><th>MA Fast</th><th>MA Slow</th></tr>
+        </thead>
+        <tbody id="liveDiagMarketMini">
+          <tr><td colspan="5" class="small">Waiting for first cycle...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <div class="card">

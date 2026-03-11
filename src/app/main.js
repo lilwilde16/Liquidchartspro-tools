@@ -241,7 +241,8 @@
     const equityCanvas = $("equityCanvas");
     const equityMetaEl = $("equityMeta");
     const liveDiagStatusEl = $("liveDiagStatus");
-    const liveDiagOutputEl = $("liveDiagOutput");
+    const liveDiagPairStatusEl = $("liveDiagPairStatus");
+    const liveDiagMarketMiniEl = $("liveDiagMarketMini");
     const historyRowsEl = $("liveSessionHistoryRows");
     const btnClearHistory = $("btnClearSessionHistory");
     const riskEnableDailyLossEl = $("riskEnableDailyLoss");
@@ -274,7 +275,8 @@
       !equityCanvas ||
       !equityMetaEl ||
       !liveDiagStatusEl ||
-      !liveDiagOutputEl ||
+      !liveDiagPairStatusEl ||
+      !liveDiagMarketMiniEl ||
       !historyRowsEl ||
       !btnClearHistory ||
       !riskEnableDailyLossEl ||
@@ -504,10 +506,37 @@
       });
     }
 
+    function formatDiagStatusLabel(pair) {
+      if (!pair) return "n/a";
+      if (pair.signal && pair.signal.isNewSignal) {
+        return String(pair.signal.type || "SIGNAL") + " trigger";
+      }
+      if (pair.gate && pair.gate.waitingForNextClose) {
+        return "Waiting for verified close";
+      }
+
+      const waiting = String((pair.gate && pair.gate.waitingFor) || "");
+      if (waiting === "waiting_for_buy_cross") return "Waiting for BUY cross";
+      if (waiting === "waiting_for_sell_cross") return "Waiting for SELL cross";
+      if (waiting === "buy_cross_triggered") return "BUY trigger";
+      if (waiting === "sell_cross_triggered") return "SELL trigger";
+      if (waiting === "signal_ready") return "Signal ready";
+      if (waiting === "waiting_for_momentum_breakout") return "Waiting for breakout";
+      if (waiting === "waiting_for_strategy_conditions") return "Waiting for strategy conditions";
+      if (waiting === "insufficient_ma_data") return "Waiting for MA data";
+      return waiting ? waiting.replace(/_/g, " ") : "Waiting for data";
+    }
+
+    function fmtDiagNum(v, digits) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n.toFixed(Number.isFinite(Number(digits)) ? Number(digits) : 5) : "-";
+    }
+
     function renderCurrentDiagnostic() {
       if (!live.currentDiagnostic) {
         liveDiagStatusEl.textContent = "Live now: waiting for first cycle.";
-        liveDiagOutputEl.textContent = "Diagnostics will show current-cycle live data while the autotrader is running.";
+        liveDiagPairStatusEl.innerHTML = '<tr><td colspan="2" class="small">Waiting for first cycle...</td></tr>';
+        liveDiagMarketMiniEl.innerHTML = '<tr><td colspan="5" class="small">Waiting for first cycle...</td></tr>';
         return;
       }
 
@@ -522,7 +551,40 @@
         " | latency=" +
         Number(d.cycleLatencyMs || 0) +
         "ms";
-      liveDiagOutputEl.textContent = JSON.stringify(d, null, 2);
+
+      const pairs = Array.isArray(d.pairs) ? d.pairs : [];
+      if (!pairs.length) {
+        liveDiagPairStatusEl.innerHTML = '<tr><td colspan="2" class="small">No pair diagnostics yet.</td></tr>';
+        liveDiagMarketMiniEl.innerHTML = '<tr><td colspan="5" class="small">No pair diagnostics yet.</td></tr>';
+        return;
+      }
+
+      let statusHtml = "";
+      let marketHtml = "";
+      pairs.forEach(function (pair) {
+        const instrumentId = String(pair.instrumentId || "-");
+        const statusText = formatDiagStatusLabel(pair);
+        statusHtml += "<tr><td>" + instrumentId + "</td><td>" + statusText + "</td></tr>";
+
+        const metrics = pair.metrics || {};
+        const fast = metrics.currFast != null ? metrics.currFast : metrics.emaFast;
+        const slow = metrics.currSlow != null ? metrics.currSlow : metrics.emaSlow;
+        marketHtml +=
+          "<tr><td>" +
+          instrumentId +
+          "</td><td>" +
+          fmtDiagNum(pair.market && pair.market.bid, 5) +
+          "</td><td>" +
+          fmtDiagNum(pair.market && pair.market.ask, 5) +
+          "</td><td>" +
+          fmtDiagNum(fast, 5) +
+          "</td><td>" +
+          fmtDiagNum(slow, 5) +
+          "</td></tr>";
+      });
+
+      liveDiagPairStatusEl.innerHTML = statusHtml;
+      liveDiagMarketMiniEl.innerHTML = marketHtml;
     }
 
     function setCurrentDiagnostic(diagnostic) {
