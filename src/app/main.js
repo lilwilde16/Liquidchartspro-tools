@@ -210,6 +210,7 @@
         lots: 0.01,
         tpTicks: 55,
         slTicks: 55,
+        selectedPairsTarget: 4,
         lastSignalKey: "",
         openTrade: null,
         closedTrades: [],
@@ -254,9 +255,13 @@
 
     const strategyRegistryReady = populateLiveStrategyOptions();
     if (!strategyRegistryReady) {
-      setTimeout(function retryLiveStrategyPopulate() {
-        populateLiveStrategyOptions();
-      }, 600);
+      let attempts = 0;
+      const retryId = setInterval(function retryLiveStrategyPopulate() {
+        attempts += 1;
+        if (populateLiveStrategyOptions() || attempts >= 12) {
+          clearInterval(retryId);
+        }
+      }, 500);
     }
 
     function resolveStrategyRuntimeDefaults(strategy) {
@@ -545,8 +550,8 @@
       const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
       const selectedPairs = state
         ? (state.selected_pairs && state.selected_pairs.length) || 0
-        : live.strategyRuntime.instrumentId
-          ? 1
+        : Number(live.strategyRuntime.selectedPairsTarget || 0) > 0
+          ? Number(live.strategyRuntime.selectedPairsTarget || 0)
           : 0;
       const openTrades = state
         ? (state.portfolio && Number(state.portfolio.total_open_trades)) ||
@@ -782,7 +787,8 @@
 
       if (live.sessionStartMs) {
         live.sessionPeakPnl = Math.max(Number(live.sessionPeakPnl || 0), Number(stats.sessionPnl || 0));
-        appendEquityPoint(stats.sessionPnl);
+        // Equity curve is realized-only to avoid oscillation from open-trade unrealized P/L.
+        appendEquityPoint(stats.realizedPnl);
       }
 
       metricSessionPnl.textContent = stats.sessionPnl.toFixed(2);
@@ -1089,6 +1095,31 @@
       return { ok: true, signal: newest };
     }
 
+    async function primeStrategySignalBaseline() {
+      const rt = live.strategyRuntime;
+      const strategyApi = window.LCPro.Strategy;
+      if (!rt || !strategyApi || typeof strategyApi.runSignals !== "function") return;
+
+      try {
+        const signals = await strategyApi.runSignals(rt.strategyId, {
+          strategyId: rt.strategyId,
+          instrumentId: rt.instrumentId,
+          timeframeSec: rt.timeframeSec,
+          lookback: rt.lookback,
+          keepN: 1,
+          params: rt.params
+        });
+
+        if (signals && signals.length) {
+          const s = signals[0];
+          rt.lastSignalKey = String(s.type || "") + "|" + String(s.time || s.idx || "");
+          log("[LIVE] Primed startup signal baseline: " + rt.lastSignalKey);
+        }
+      } catch (e) {
+        log("[LIVE][WARN] Could not prime signal baseline: " + (e && e.message ? e.message : String(e)));
+      }
+    }
+
     async function runCycle() {
       if (!live.running || !live.engine || live.inFlight) return;
       live.inFlight = true;
@@ -1135,6 +1166,7 @@
         tpTicks: sd.tpTicks,
         slTicks: sd.slTicks,
         tickSize: sd.tickSize,
+        selectedPairsTarget: Math.max(1, parseInt(maxPairsEl.value || "4", 10)),
         lastSignalKey: "",
         openTrade: null,
         closedTrades: []
@@ -1179,6 +1211,7 @@
         log("[LIVE] Autotrader started.");
         setControls();
         updateMetrics();
+        await primeStrategySignalBaseline();
         await runCycle();
       } catch (e) {
         live.running = false;
