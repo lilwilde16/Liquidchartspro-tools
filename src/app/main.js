@@ -294,6 +294,8 @@
     const MAX_EQUITY_POINTS = 900;
     const FORCED_STRATEGY_TIMEFRAME_SEC = 60;
     const FORCED_STRATEGY_CYCLE_MS = 30000;
+    const TRADE_EXECUTION_GRACE_MS = 700;
+    const MIN_TRADE_GAP_MS = 2500;
 
     const live = {
       running: false,
@@ -1147,6 +1149,8 @@
           lastProcessedCloseMs: 0,
           lastSignals: [],
           openTrade: null,
+          lastTradeActionMs: 0,
+          lastExecutionNote: "",
           lastDataHealth: "unverified",
           lastOrderAck: null,
           lastReadout: null
@@ -1190,6 +1194,7 @@
           pnl: Number.isFinite(pnl) ? pnl : 0
         });
         st.openTrade = null;
+        st.lastTradeActionMs = Date.now();
         closed += 1;
       }
 
@@ -1245,6 +1250,7 @@
         instrumentId,
         openedAt: Date.now()
       };
+      st.lastTradeActionMs = Date.now();
     }
 
     async function runStrategyCycle() {
@@ -1365,12 +1371,49 @@
         if (isNewSignal) newSignalCount += 1;
 
         if (executionSignal && isNewSignal) {
+          log(
+            "[LIVE][TRIGGER] " +
+              instrumentId +
+              " " +
+              executionSignal.type +
+              " on closed candle " +
+              fmtTime(closeMs || executionSignal.time || Date.now())
+          );
+
+          const sinceLastActionMs = Date.now() - Number(st.lastTradeActionMs || 0);
+          if (sinceLastActionMs < MIN_TRADE_GAP_MS) {
+            await new Promise(function (resolve) {
+              setTimeout(resolve, MIN_TRADE_GAP_MS - sinceLastActionMs);
+            });
+          }
+          await new Promise(function (resolve) {
+            setTimeout(resolve, TRADE_EXECUTION_GRACE_MS);
+          });
+
           if (st.openTrade && st.openTrade.side !== executionSignal.type) {
             await closeStrategyTrade("OPPOSITE_SIGNAL", instrumentId);
           }
 
           if (!st.openTrade) {
-            await openStrategyTrade(instrumentId, executionSignal.type, executionSignal);
+            try {
+              await openStrategyTrade(instrumentId, executionSignal.type, executionSignal);
+              st.lastExecutionNote = "OPENED_" + executionSignal.type;
+              log("[LIVE][EXEC] Opened " + executionSignal.type + " on " + instrumentId + ".");
+            } catch (e) {
+              st.lastExecutionNote = "OPEN_FAILED";
+              log(
+                "[LIVE][ERR] Open failed on " +
+                  instrumentId +
+                  " for " +
+                  executionSignal.type +
+                  ": " +
+                  (e && e.message ? e.message : String(e))
+              );
+              throw e;
+            }
+          } else {
+            st.lastExecutionNote = "ALREADY_OPEN_" + st.openTrade.side;
+            log("[LIVE][EXEC] Skipped open on " + instrumentId + " because " + st.openTrade.side + " is already open.");
           }
 
           st.lastSignalKey = key;
@@ -1422,6 +1465,7 @@
             hasOpenTrade: !!st.openTrade,
             openTradeSide: st.openTrade ? st.openTrade.side : null,
             lastSignalKey: st.lastSignalKey,
+            lastExecutionNote: st.lastExecutionNote || null,
             lastProcessedCloseMs: st.lastProcessedCloseMs || null,
             waitingForNextClose: !shouldEvaluateSignals && hasClosedBar
           },
