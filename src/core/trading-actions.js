@@ -92,8 +92,13 @@
     const px = MarketData.getBidAsk(instrumentId);
     if (!px.ok) return { ok: false, reason: "No bid/ask" };
 
-    const tpPts = Number(tpTicks) * Number(tickSize);
-    const slPts = Number(slTicks) * Number(tickSize);
+    const unitSize =
+      Number.isFinite(Number(tickSize)) && Number(tickSize) > 0
+        ? Number(tickSize)
+        : Number(MarketData.getPipSize ? MarketData.getPipSize(instrumentId) : 1);
+
+    const tpPts = Number(tpTicks) * unitSize;
+    const slPts = Number(slTicks) * unitSize;
     if (!Number.isFinite(tpPts) || !Number.isFinite(slPts)) {
       return { ok: false, reason: "Bad tp/sl/tick" };
     }
@@ -102,7 +107,7 @@
     const tp = side === "BUY" ? base + tpPts : base - tpPts;
     const sl = side === "BUY" ? base - slPts : base + slPts;
 
-    return { ok: true, base, tp, sl, bid: px.bid, ask: px.ask, tpPts, slPts };
+    return { ok: true, base, tp, sl, bid: px.bid, ask: px.ask, tpPts, slPts, unitSize };
   }
 
   async function sendMarketOrderWithTpSl(instrumentId, side, lots, tpTicks, slTicks, tickSize) {

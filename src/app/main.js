@@ -215,7 +215,9 @@
         openTrade: null,
         closedTrades: [],
         lastDataHealth: "unverified",
-        lastOrderAck: null
+        lastOrderAck: null,
+        brokerPnlAtStart: null,
+        brokerPnlNow: null
       }
     };
 
@@ -545,7 +547,15 @@
       const losses = closedTrades.filter((t) => t.pnl < 0).length;
       const realizedPnl = closedTrades.reduce((acc, t) => acc + t.pnl, 0);
       const unrealizedPnl = sumUnrealized(state);
-      const sessionPnl = realizedPnl + unrealizedPnl;
+      let sessionPnl = realizedPnl + unrealizedPnl;
+
+      // In live strategy mode, prefer broker-reported account P/L so this matches platform display.
+      if (!state && String(execModeEl.value || "paper").toLowerCase() === "live") {
+        const brokerPnl = Number(live.strategyRuntime.brokerPnlNow);
+        if (Number.isFinite(brokerPnl)) {
+          sessionPnl = brokerPnl;
+        }
+      }
       const totalClosed = wins + losses;
       const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
       const selectedPairs = state
@@ -997,6 +1007,10 @@
       } catch (e) {}
 
       const bidAsk = window.LCPro.MarketData.getBidAsk(rt.instrumentId);
+      const accountSnap = window.LCPro.MarketData.getAccountSnapshot ? window.LCPro.MarketData.getAccountSnapshot() : null;
+      if (accountSnap && Number.isFinite(Number(accountSnap.profitLoss))) {
+        rt.brokerPnlNow = Number(accountSnap.profitLoss);
+      }
       const candleMsg = await window.LCPro.MarketData.requestCandles(rt.instrumentId, rt.timeframeSec, rt.lookback);
       const newestFirst = (candleMsg && candleMsg.candles) || [];
       const closed = newestFirst.slice(1);
@@ -1075,7 +1089,10 @@
         },
         broker: {
           mode: String(execModeEl.value || "paper"),
-          lastOrderAck: rt.lastOrderAck
+          lastOrderAck: rt.lastOrderAck,
+          accountSnapshot: accountSnap,
+          brokerPnlAtStart: rt.brokerPnlAtStart,
+          brokerPnlNow: rt.brokerPnlNow
         }
       };
       pushDiagnosticsSnapshot(snapshot);
@@ -1169,7 +1186,9 @@
         selectedPairsTarget: Math.max(1, parseInt(maxPairsEl.value || "4", 10)),
         lastSignalKey: "",
         openTrade: null,
-        closedTrades: []
+        closedTrades: [],
+        brokerPnlAtStart: null,
+        brokerPnlNow: null
       };
 
       const cycleMs = Math.max(1000, parseInt(cycleMsEl.value || "5000", 10));
@@ -1207,6 +1226,13 @@
         live.selectedDiagId = "";
         renderDiagnosticsDropdown();
         live.running = true;
+        if (String(execModeEl.value || "paper").toLowerCase() === "live" && window.LCPro.MarketData.getAccountSnapshot) {
+          const snap = window.LCPro.MarketData.getAccountSnapshot();
+          if (snap && Number.isFinite(Number(snap.profitLoss))) {
+            live.strategyRuntime.brokerPnlAtStart = Number(snap.profitLoss);
+            live.strategyRuntime.brokerPnlNow = Number(snap.profitLoss);
+          }
+        }
         setLiveStatus("Running", "ok");
         log("[LIVE] Autotrader started.");
         setControls();

@@ -34,6 +34,85 @@
     return { bid, ask, ok: Number.isFinite(bid) && Number.isFinite(ask) };
   }
 
+  function getFirstFinite(obj, keys) {
+    if (!obj || typeof obj !== "object") return null;
+    for (let i = 0; i < keys.length; i++) {
+      const v = Number(obj[keys[i]]);
+      if (Number.isFinite(v)) return v;
+    }
+    return null;
+  }
+
+  function inferPipFromSymbol(instrumentId) {
+    const s = String(instrumentId || "").toUpperCase();
+    const clean = s.replace("/", "");
+    if (clean.length === 6) {
+      const quote = clean.slice(3);
+      if (quote === "JPY") return 0.01;
+      return 0.0001;
+    }
+    return 1;
+  }
+
+  function getPipSize(instrumentId) {
+    const m = getInstrument(instrumentId);
+    const fromMeta =
+      getFirstFinite(m, ["pipSize", "pip", "point", "tickSize", "priceIncrement", "increment"]) ||
+      inferPipFromSymbol(instrumentId);
+    return Number.isFinite(fromMeta) && fromMeta > 0 ? fromMeta : 1;
+  }
+
+  function getAccountSnapshot() {
+    const Framework = Core.ensureFramework();
+    const candidates = [];
+
+    if (Framework.Account) candidates.push(Framework.Account);
+    if (Framework.Accounts) {
+      if (Framework.Accounts.current) candidates.push(Framework.Accounts.current);
+      if (typeof Framework.Accounts.getCurrent === "function") {
+        try {
+          const c = Framework.Accounts.getCurrent();
+          if (c) candidates.push(c);
+        } catch (e) {}
+      }
+      if (Framework.Accounts._dict && typeof Framework.Accounts._dict === "object") {
+        const keys = Object.keys(Framework.Accounts._dict);
+        for (let i = 0; i < keys.length; i++) {
+          candidates.push(Framework.Accounts._dict[keys[i]]);
+        }
+      }
+    }
+
+    let balance = null;
+    let equity = null;
+    let profitLoss = null;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      if (balance == null) balance = getFirstFinite(c, ["balance", "accountBalance", "cash", "Balance"]);
+      if (equity == null) equity = getFirstFinite(c, ["equity", "accountEquity", "Equity"]);
+      if (profitLoss == null) {
+        profitLoss = getFirstFinite(c, [
+          "profitLoss",
+          "pnl",
+          "floatingProfitLoss",
+          "unrealizedPnl",
+          "dailyProfitLoss",
+          "ProfitLoss",
+          "PnL"
+        ]);
+      }
+      if (balance != null && equity != null && profitLoss != null) break;
+    }
+
+    return {
+      balance,
+      equity,
+      profitLoss,
+      ok: balance != null || equity != null || profitLoss != null
+    };
+  }
+
   async function requestCandles(instrumentId, timeframeSec, count) {
     const Framework = Core.ensureFramework();
 
@@ -63,6 +142,8 @@
     getInstrument,
     requestPrices,
     getBidAsk,
+    getPipSize,
+    getAccountSnapshot,
     requestCandles,
     candlesToChron
   };
