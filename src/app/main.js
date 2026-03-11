@@ -530,9 +530,11 @@
 
     function diagStatusClass(pair, statusText) {
       const txt = String(statusText || "").toLowerCase();
+      if (txt.indexOf("sell") >= 0) return "sell";
+      if (txt.indexOf("buy") >= 0) return "buy";
       const signalType = String((pair && pair.signal && pair.signal.type) || "").toUpperCase();
-      if (signalType === "BUY" || txt.indexOf("buy") >= 0) return "buy";
-      if (signalType === "SELL" || txt.indexOf("sell") >= 0) return "sell";
+      if (signalType === "BUY") return "buy";
+      if (signalType === "SELL") return "sell";
       if (txt.indexOf("verified close") >= 0 || txt.indexOf("trigger") >= 0 || txt.indexOf("ready") >= 0) return "warn";
       return "";
     }
@@ -1653,22 +1655,43 @@
         throw new Error("No bid/ask available for " + instrumentId);
       }
 
-      const side = "BUY";
+      const lastSignalType =
+        st && st.lastSignals && st.lastSignals.length && st.lastSignals[0] && st.lastSignals[0].type
+          ? String(st.lastSignals[0].type).toUpperCase()
+          : "";
+      const side = lastSignalType === "SELL" ? "SELL" : "BUY";
       const signal = {
         type: side,
         time: new Date().toISOString(),
         price: Number(side === "BUY" ? px.ask : px.bid) || 0
       };
 
+      const listPositions =
+        window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.listOpenPositionsDetailed === "function"
+          ? window.LCPro.Trading.listOpenPositionsDetailed
+          : null;
+      const countPositionsForInstrument = function () {
+        if (!listPositions) return null;
+        return listPositions().filter(function (p) {
+          return String((p && p.instrumentId) || "").toUpperCase() === instrumentId.toUpperCase();
+        }).length;
+      };
+
       const startedAt = Date.now();
+      const beforeCount = countPositionsForInstrument();
       log("[LIVE] Simulation opening " + side + " on " + instrumentId + "...");
+      if (mode !== "live") {
+        log("[LIVE][SIM] Execution mode is PAPER. This validates logic path only and does not place broker orders.");
+      }
       await openStrategyTrade(instrumentId, side, signal);
       const openedAt = Date.now();
+      const afterOpenCount = countPositionsForInstrument();
       await new Promise(function (resolve) {
         setTimeout(resolve, mode === "live" ? 2500 : 500);
       });
       const closeCount = await closeStrategyTrade("SIMULATED_TRADE_PATH", instrumentId);
       const finishedAt = Date.now();
+      const afterCloseCount = countPositionsForInstrument();
 
       setCurrentDiagnostic({
         ts: Date.now(),
@@ -1680,6 +1703,9 @@
           side,
           opened: !!st.lastOrderAck || mode !== "live",
           closed: closeCount > 0,
+          positionsBefore: beforeCount,
+          positionsAfterOpen: afterOpenCount,
+          positionsAfterClose: afterCloseCount,
           openLatencyMs: openedAt - startedAt,
           closeLatencyMs: finishedAt - openedAt,
           totalLatencyMs: finishedAt - startedAt,
@@ -1692,6 +1718,9 @@
         instrumentId,
         mode,
         closeCount,
+        positionsBefore: beforeCount,
+        positionsAfterOpen: afterOpenCount,
+        positionsAfterClose: afterCloseCount,
         openLatencyMs: openedAt - startedAt,
         closeLatencyMs: finishedAt - openedAt,
         totalLatencyMs: finishedAt - startedAt
@@ -1729,6 +1758,12 @@
               res.instrumentId +
               " | mode=" +
               res.mode +
+              " | pos(before/open/close)=" +
+              (res.positionsBefore == null ? "n/a" : String(res.positionsBefore)) +
+              "/" +
+              (res.positionsAfterOpen == null ? "n/a" : String(res.positionsAfterOpen)) +
+              "/" +
+              (res.positionsAfterClose == null ? "n/a" : String(res.positionsAfterClose)) +
               " | open=" +
               res.openLatencyMs +
               "ms | close=" +
