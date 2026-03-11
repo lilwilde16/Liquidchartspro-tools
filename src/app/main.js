@@ -4,6 +4,7 @@
   const $ = (id) => document.getElementById(id);
   let uiInitialized = false;
   let homeLiveController = null;
+  let strategyLiveOverrides = {};
 
   function fmtTime(x) {
     try {
@@ -49,9 +50,13 @@
   function initStrategyTab() {
     const strategySelect = $("strategySelect");
     const strategyInfo = $("strategyInfo");
+    const liveParamsInput = $("strategyLiveParams");
+    const btnSave = $("btnSaveStrategyLiveParams");
+    const btnReset = $("btnResetStrategyLiveParams");
+    const statusEl = $("strategyParamsStatus");
     const registry = window.LCPro.Strategy && window.LCPro.Strategy.STRATEGIES;
 
-    if (!strategySelect || !strategyInfo || !registry) return;
+    if (!strategySelect || !strategyInfo || !liveParamsInput || !btnSave || !btnReset || !statusEl || !registry) return;
 
     const items = Object.keys(registry).map((k) => registry[k]);
     strategySelect.innerHTML = items
@@ -66,10 +71,52 @@
         return;
       }
       strategyInfo.textContent = "ID: " + selected.id + " | " + (selected.notes || "No notes");
+
+      const override = strategyLiveOverrides[id];
+      const params = override || selected.defaultParams || {};
+      liveParamsInput.value = JSON.stringify(params, null, 2);
+      statusEl.textContent = override ? "Override Saved" : "Using Defaults";
+      statusEl.className = "pill " + (override ? "ok" : "warn");
     }
+
+    function readJsonSafe(raw) {
+      try {
+        return { ok: true, value: JSON.parse(raw || "{}") };
+      } catch (e) {
+        return { ok: false, error: e && e.message ? e.message : String(e) };
+      }
+    }
+
+    btnSave.addEventListener("click", function () {
+      const id = strategySelect.value;
+      const parsed = readJsonSafe(liveParamsInput.value || "{}");
+      if (!parsed.ok || !parsed.value || typeof parsed.value !== "object") {
+        statusEl.textContent = "Invalid JSON";
+        statusEl.className = "pill bad";
+        return;
+      }
+      strategyLiveOverrides[id] = parsed.value;
+      statusEl.textContent = "Override Saved";
+      statusEl.className = "pill ok";
+    });
+
+    btnReset.addEventListener("click", function () {
+      const id = strategySelect.value;
+      delete strategyLiveOverrides[id];
+      const selected = items.find((s) => s.id === id);
+      liveParamsInput.value = JSON.stringify((selected && selected.defaultParams) || {}, null, 2);
+      statusEl.textContent = "Using Defaults";
+      statusEl.className = "pill warn";
+    });
 
     strategySelect.addEventListener("change", renderStrategyInfo);
     renderStrategyInfo();
+
+    window.LCPro.AppStrategyConfig = {
+      getLiveParamsOverride: function (strategyId) {
+        return strategyLiveOverrides[strategyId] || null;
+      }
+    };
   }
 
   function renderSignals(signals, targetId) {
@@ -195,6 +242,7 @@
       lastCycleAt: 0,
       lastCycleDurationMs: 0,
       sessionStartMs: 0,
+      sessionStopMs: 0,
       sessionPeakPnl: 0,
       lastError: "",
       equityPoints: [],
@@ -552,7 +600,10 @@
       // In live strategy mode, prefer broker-reported account P/L so this matches platform display.
       if (!state && String(execModeEl.value || "paper").toLowerCase() === "live") {
         const brokerPnl = Number(live.strategyRuntime.brokerPnlNow);
-        if (Number.isFinite(brokerPnl)) {
+        const brokerStart = Number(live.strategyRuntime.brokerPnlAtStart);
+        if (Number.isFinite(brokerPnl) && Number.isFinite(brokerStart)) {
+          sessionPnl = brokerPnl - brokerStart;
+        } else if (Number.isFinite(brokerPnl)) {
           sessionPnl = brokerPnl;
         }
       }
@@ -792,7 +843,8 @@
       if (!live.sessionStartMs) {
         timerEl.textContent = "Session 00:00:00";
       } else {
-        timerEl.textContent = "Session " + formatDuration(now - live.sessionStartMs);
+        const endTs = !live.running && live.sessionStopMs ? live.sessionStopMs : now;
+        timerEl.textContent = "Session " + formatDuration(endTs - live.sessionStartMs);
       }
 
       if (live.sessionStartMs) {
@@ -1008,8 +1060,14 @@
 
       const bidAsk = window.LCPro.MarketData.getBidAsk(rt.instrumentId);
       const accountSnap = window.LCPro.MarketData.getAccountSnapshot ? window.LCPro.MarketData.getAccountSnapshot() : null;
-      if (accountSnap && Number.isFinite(Number(accountSnap.profitLoss))) {
-        rt.brokerPnlNow = Number(accountSnap.profitLoss);
+      if (accountSnap) {
+        const pnlRaw = Number(accountSnap.profitLoss);
+        const pnlFromEqBal =
+          Number.isFinite(Number(accountSnap.equity)) && Number.isFinite(Number(accountSnap.balance))
+            ? Number(accountSnap.equity) - Number(accountSnap.balance)
+            : NaN;
+        if (Number.isFinite(pnlRaw)) rt.brokerPnlNow = pnlRaw;
+        else if (Number.isFinite(pnlFromEqBal)) rt.brokerPnlNow = pnlFromEqBal;
       }
       const candleMsg = await window.LCPro.MarketData.requestCandles(rt.instrumentId, rt.timeframeSec, rt.lookback);
       const newestFirst = (candleMsg && candleMsg.candles) || [];
@@ -1172,10 +1230,14 @@
       const strategy = strategyApi && strategyApi.getStrategy ? strategyApi.getStrategy(strategyId) : null;
       if (!strategy) throw new Error("Strategy unavailable: " + strategyId);
       const sd = resolveStrategyRuntimeDefaults(strategy);
+      const overrideParams =
+        window.LCPro && window.LCPro.AppStrategyConfig && window.LCPro.AppStrategyConfig.getLiveParamsOverride
+          ? window.LCPro.AppStrategyConfig.getLiveParamsOverride(strategyId)
+          : null;
 
       live.strategyRuntime = {
         strategyId,
-        params: Object.assign({}, strategy.defaultParams || {}),
+        params: Object.assign({}, strategy.defaultParams || {}, overrideParams || {}),
         instrumentId: sd.instrumentId,
         timeframeSec: sd.timeframeSec,
         lookback: sd.lookback,
@@ -1205,8 +1267,17 @@
         run_cycle: function () {
           return runStrategyCycle();
         },
-        close_all_positions: function () {
-          return closeStrategyTrade("MANUAL_CLOSE_ALL");
+        close_all_positions: async function () {
+          let closed = 0;
+          if (window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.closeAllPositions === "function") {
+            try {
+              await window.LCPro.Trading.closeAllPositions();
+            } catch (e) {}
+          }
+          if (live.strategyRuntime.openTrade) {
+            closed += await closeStrategyTrade("MANUAL_CLOSE_ALL");
+          }
+          return closed;
         }
       };
     }
@@ -1220,6 +1291,7 @@
         live.lastCycleDurationMs = 0;
         live.lastError = "";
         live.sessionStartMs = Date.now();
+        live.sessionStopMs = 0;
         live.sessionPeakPnl = 0;
         live.equityPoints = [];
         live.diagnosticsSnapshots = [];
@@ -1228,9 +1300,17 @@
         live.running = true;
         if (String(execModeEl.value || "paper").toLowerCase() === "live" && window.LCPro.MarketData.getAccountSnapshot) {
           const snap = window.LCPro.MarketData.getAccountSnapshot();
-          if (snap && Number.isFinite(Number(snap.profitLoss))) {
-            live.strategyRuntime.brokerPnlAtStart = Number(snap.profitLoss);
-            live.strategyRuntime.brokerPnlNow = Number(snap.profitLoss);
+          if (snap) {
+            const startPnlRaw = Number(snap.profitLoss);
+            const startPnlEqBal =
+              Number.isFinite(Number(snap.equity)) && Number.isFinite(Number(snap.balance))
+                ? Number(snap.equity) - Number(snap.balance)
+                : NaN;
+            const startPnl = Number.isFinite(startPnlRaw) ? startPnlRaw : startPnlEqBal;
+            if (Number.isFinite(startPnl)) {
+              live.strategyRuntime.brokerPnlAtStart = startPnl;
+              live.strategyRuntime.brokerPnlNow = startPnl;
+            }
           }
         }
         setLiveStatus("Running", "ok");
@@ -1253,6 +1333,7 @@
     function stopLive(reason, isAutoStop) {
       if (!live.running) return;
       live.running = false;
+      live.sessionStopMs = Date.now();
       clearTimer();
       const stopReason = reason || "MANUAL_STOP";
       if (live.engine && live.engine.driverType === "strategy") {

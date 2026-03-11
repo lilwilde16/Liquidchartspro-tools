@@ -105,6 +105,29 @@
       if (balance != null && equity != null && profitLoss != null) break;
     }
 
+    if (profitLoss == null && Framework.Positions && Framework.Positions._dict) {
+      const d = Framework.Positions._dict;
+      const keys = Object.keys(d);
+      let sum = 0;
+      let found = 0;
+      for (let i = 0; i < keys.length; i++) {
+        const p = d[keys[i]];
+        const v = getFirstFinite(p, [
+          "profitLoss",
+          "pnl",
+          "floatingProfitLoss",
+          "unrealizedPnl",
+          "ProfitLoss",
+          "PnL"
+        ]);
+        if (v != null) {
+          sum += v;
+          found += 1;
+        }
+      }
+      if (found > 0) profitLoss = sum;
+    }
+
     return {
       balance,
       equity,

@@ -266,6 +266,17 @@
         <select id="strategySelect"></select>
       </div>
     </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field" style="min-width:280px;">
+        <label>Live strategy params override (JSON)</label>
+        <textarea id="strategyLiveParams" rows="4">{}</textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button id="btnSaveStrategyLiveParams" type="button">Save Live Params Override</button>
+      <button id="btnResetStrategyLiveParams" type="button">Reset To Strategy Defaults</button>
+      <span class="pill" id="strategyParamsStatus">Ready</span>
+    </div>
     <div id="strategyInfo" class="small">No strategy selected.</div>
   </div>
 </div>
