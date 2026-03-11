@@ -512,20 +512,40 @@
       if (pair.signal && pair.signal.isNewSignal) {
         return String(pair.signal.type || "SIGNAL") + " trigger";
       }
-      if (pair.gate && pair.gate.waitingForNextClose) {
-        return "Waiting for verified close";
-      }
 
       const waiting = String((pair.gate && pair.gate.waitingFor) || "");
       if (waiting === "waiting_for_buy_cross") return "Waiting for BUY cross";
       if (waiting === "waiting_for_sell_cross") return "Waiting for SELL cross";
       if (waiting === "buy_cross_triggered") return "BUY trigger";
       if (waiting === "sell_cross_triggered") return "SELL trigger";
+      if (pair.gate && pair.gate.waitingForNextClose && waiting === "signal_ready") {
+        return "Waiting for verified close";
+      }
       if (waiting === "signal_ready") return "Signal ready";
       if (waiting === "waiting_for_momentum_breakout") return "Waiting for breakout";
       if (waiting === "waiting_for_strategy_conditions") return "Waiting for strategy conditions";
       if (waiting === "insufficient_ma_data") return "Waiting for MA data";
       return waiting ? waiting.replace(/_/g, " ") : "Waiting for data";
+    }
+
+    function diagStatusClass(pair, statusText) {
+      const txt = String(statusText || "").toLowerCase();
+      const signalType = String((pair && pair.signal && pair.signal.type) || "").toUpperCase();
+      if (signalType === "BUY" || txt.indexOf("buy") >= 0) return "buy";
+      if (signalType === "SELL" || txt.indexOf("sell") >= 0) return "sell";
+      if (txt.indexOf("verified close") >= 0 || txt.indexOf("trigger") >= 0 || txt.indexOf("ready") >= 0) return "warn";
+      return "";
+    }
+
+    function formatLastSignal(pair) {
+      const s = pair && pair.signal;
+      if (!s || !s.type) return { text: "-", cls: "" };
+      const side = String(s.type || "").toUpperCase();
+      const t = s.time ? fmtTime(s.time) : "n/a";
+      return {
+        text: side + " @ " + t,
+        cls: side === "BUY" ? "buy" : side === "SELL" ? "sell" : ""
+      };
     }
 
     function fmtDiagNum(v, digits) {
@@ -536,7 +556,7 @@
     function renderCurrentDiagnostic() {
       if (!live.currentDiagnostic) {
         liveDiagStatusEl.textContent = "Live now: waiting for first cycle.";
-        liveDiagPairStatusEl.innerHTML = '<tr><td colspan="2" class="small">Waiting for first cycle...</td></tr>';
+        liveDiagPairStatusEl.innerHTML = '<tr><td colspan="3" class="small">Waiting for first cycle...</td></tr>';
         liveDiagMarketMiniEl.innerHTML = '<tr><td colspan="5" class="small">Waiting for first cycle...</td></tr>';
         return;
       }
@@ -555,7 +575,7 @@
 
       const pairs = Array.isArray(d.pairs) ? d.pairs : [];
       if (!pairs.length) {
-        liveDiagPairStatusEl.innerHTML = '<tr><td colspan="2" class="small">No pair diagnostics yet.</td></tr>';
+        liveDiagPairStatusEl.innerHTML = '<tr><td colspan="3" class="small">No pair diagnostics yet.</td></tr>';
         liveDiagMarketMiniEl.innerHTML = '<tr><td colspan="5" class="small">No pair diagnostics yet.</td></tr>';
         return;
       }
@@ -565,7 +585,20 @@
       pairs.forEach(function (pair) {
         const instrumentId = String(pair.instrumentId || "-");
         const statusText = formatDiagStatusLabel(pair);
-        statusHtml += "<tr><td>" + instrumentId + "</td><td>" + statusText + "</td></tr>";
+        const statusCls = diagStatusClass(pair, statusText);
+        const lastSignal = formatLastSignal(pair);
+        statusHtml +=
+          "<tr><td>" +
+          instrumentId +
+          "</td><td class=\"" +
+          lastSignal.cls +
+          "\">" +
+          lastSignal.text +
+          "</td><td class=\"" +
+          statusCls +
+          "\">" +
+          statusText +
+          "</td></tr>";
 
         const metrics = pair.metrics || {};
         const fast = metrics.currFast != null ? metrics.currFast : metrics.emaFast;
@@ -1600,10 +1633,22 @@
         Array.isArray(rt.instruments) && rt.instruments.length ? String(rt.instruments[0]) : String(rt.instrumentId || "NAS100");
       const st = ensureInstrumentState(instrumentId);
 
-      try {
-        window.LCPro.MarketData.requestPrices([instrumentId]);
-      } catch (e) {}
-      const px = window.LCPro.MarketData.getBidAsk(instrumentId);
+      async function waitForBidAsk(maxWaitMs) {
+        const started = Date.now();
+        while (Date.now() - started < maxWaitMs) {
+          try {
+            window.LCPro.MarketData.requestPrices([instrumentId]);
+          } catch (e) {}
+          const p = window.LCPro.MarketData.getBidAsk(instrumentId);
+          if (p && p.ok && Number.isFinite(Number(p.bid)) && Number.isFinite(Number(p.ask))) return p;
+          await new Promise(function (resolve) {
+            setTimeout(resolve, 250);
+          });
+        }
+        return null;
+      }
+
+      const px = await waitForBidAsk(5000);
       if (!px || !px.ok) {
         throw new Error("No bid/ask available for " + instrumentId);
       }
@@ -1616,8 +1661,12 @@
       };
 
       const startedAt = Date.now();
+      log("[LIVE] Simulation opening " + side + " on " + instrumentId + "...");
       await openStrategyTrade(instrumentId, side, signal);
       const openedAt = Date.now();
+      await new Promise(function (resolve) {
+        setTimeout(resolve, mode === "live" ? 2500 : 500);
+      });
       const closeCount = await closeStrategyTrade("SIMULATED_TRADE_PATH", instrumentId);
       const finishedAt = Date.now();
 
