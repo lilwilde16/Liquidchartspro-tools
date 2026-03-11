@@ -1517,6 +1517,15 @@
       id: "sma_crossover",
       name: "SMA Crossover",
       notes: "Fast SMA crossing Slow SMA on closed candles.",
+      liveDefaults: {
+        instrumentId: "NAS100",
+        timeframeSec: 900,
+        lookback: 900,
+        lots: 0.01,
+        tpTicks: 55,
+        slTicks: 55,
+        tickSize: 1
+      },
       defaultParams: { fastLen: 9, slowLen: 21 },
       tradeManagementDefaults: {
         slTicks: 55,
@@ -1531,6 +1540,15 @@
       id: "nas100_momentum_scalper",
       name: "NAS100 Momentum Scalper",
       notes: "Fast trend-following breakout entries with ATR momentum and anti-consolidation filters.",
+      liveDefaults: {
+        instrumentId: "NAS100",
+        timeframeSec: 60,
+        lookback: 1200,
+        lots: 0.01,
+        tpTicks: 32,
+        slTicks: 28,
+        tickSize: 1
+      },
       defaultParams: {
         fastEma: 18,
         slowEma: 55,
@@ -1560,6 +1578,15 @@
       name: "NAS100_VWAP_LIQUIDITY_SWEEP_FVG_SCALPER",
       notes:
         "M1 NAS100 session VWAP bias + liquidity sweep rejection + displacement + optional FVG entries with strict risk controls.",
+      liveDefaults: {
+        instrumentId: "NAS100",
+        timeframeSec: 60,
+        lookback: 1500,
+        lots: 0.01,
+        tpTicks: 0,
+        slTicks: 0,
+        tickSize: 1
+      },
       defaultParams: {
         symbol: "NAS100",
         timeframe: "1m",

@@ -124,12 +124,6 @@
     const maxPairsEl = $("liveMaxPairs");
     const execModeEl = $("liveExecMode");
     const liveStrategySelectEl = $("liveStrategySelect");
-    const liveInstrumentEl = $("liveInstrument");
-    const liveTfSecEl = $("liveTfSec");
-    const liveLookbackEl = $("liveLookback");
-    const liveLotsEl = $("liveLots");
-    const liveTpTicksEl = $("liveTpTicks");
-    const liveSlTicksEl = $("liveSlTicks");
     const overviewEl = $("liveOverview");
     const metricSessionPnl = $("metricSessionPnl");
     const metricWins = $("metricWins");
@@ -162,12 +156,6 @@
       !maxPairsEl ||
       !execModeEl ||
       !liveStrategySelectEl ||
-      !liveInstrumentEl ||
-      !liveTfSecEl ||
-      !liveLookbackEl ||
-      !liveLotsEl ||
-      !liveTpTicksEl ||
-      !liveSlTicksEl ||
       !overviewEl ||
       !metricSessionPnl ||
       !metricWins ||
@@ -233,13 +221,25 @@
     function populateLiveStrategyOptions() {
       const registry = window.LCPro && window.LCPro.Strategy && window.LCPro.Strategy.STRATEGIES;
       if (!registry) {
-        liveStrategySelectEl.innerHTML = '<option value="sma_crossover">SMA Crossover</option>';
-        return;
+        liveStrategySelectEl.innerHTML =
+          '<option value="sma_crossover">SMA Crossover</option>' +
+          '<option value="nas100_momentum_scalper">NAS100 Momentum Scalper</option>' +
+          '<option value="nas100_vwap_liquidity_sweep_fvg_scalper">NAS100 VWAP Liquidity Sweep FVG Scalper</option>';
+        if (!liveStrategySelectEl.value) liveStrategySelectEl.value = "sma_crossover";
+        return false;
       }
 
       const items = Object.keys(registry).map(function (k) {
         return registry[k];
       });
+      if (!items.length) {
+        liveStrategySelectEl.innerHTML =
+          '<option value="sma_crossover">SMA Crossover</option>' +
+          '<option value="nas100_momentum_scalper">NAS100 Momentum Scalper</option>' +
+          '<option value="nas100_vwap_liquidity_sweep_fvg_scalper">NAS100 VWAP Liquidity Sweep FVG Scalper</option>';
+        if (!liveStrategySelectEl.value) liveStrategySelectEl.value = "sma_crossover";
+        return false;
+      }
       liveStrategySelectEl.innerHTML = items
         .map(function (s) {
           return '<option value="' + s.id + '">' + s.name + "</option>";
@@ -249,9 +249,41 @@
       if (items.some(function (s) { return s.id === "sma_crossover"; })) {
         liveStrategySelectEl.value = "sma_crossover";
       }
+      return true;
     }
 
-    populateLiveStrategyOptions();
+    const strategyRegistryReady = populateLiveStrategyOptions();
+    if (!strategyRegistryReady) {
+      setTimeout(function retryLiveStrategyPopulate() {
+        populateLiveStrategyOptions();
+      }, 600);
+    }
+
+    function resolveStrategyRuntimeDefaults(strategy) {
+      const ld = (strategy && strategy.liveDefaults) || {};
+      const p = (strategy && strategy.defaultParams) || {};
+      const tm = (strategy && strategy.tradeManagementDefaults) || {};
+
+      const timeframeFromString = {
+        "1m": 60,
+        "5m": 300,
+        "15m": 900,
+        "30m": 1800,
+        "1h": 3600
+      };
+      const tfRaw = String(ld.timeframe || p.timeframe || "").toLowerCase();
+      const tfFromParams = timeframeFromString[tfRaw] || Number(ld.timeframeSec || 0);
+
+      return {
+        instrumentId: String(ld.instrumentId || p.symbol || "NAS100"),
+        timeframeSec: Math.max(60, Number(tfFromParams || 900)),
+        lookback: Math.max(200, Number(ld.lookback || 900)),
+        lots: Math.max(0.01, Number(ld.lots || 0.01)),
+        tpTicks: Math.max(0, Number(ld.tpTicks != null ? ld.tpTicks : tm.tpTicks != null ? tm.tpTicks : 0)),
+        slTicks: Math.max(0, Number(ld.slTicks != null ? ld.slTicks : tm.slTicks != null ? tm.slTicks : 0)),
+        tickSize: Math.max(0.00001, Number(ld.tickSize || p.tickSize || p.tick_size || tm.tickSize || 1))
+      };
+    }
 
     function smaSeries(values, len) {
       const out = new Array(values.length).fill(null);
@@ -768,12 +800,21 @@
         ? ((state.settings && state.settings.execution_mode) || "paper").toUpperCase()
         : String(execModeEl.value || "paper").toUpperCase();
       const driverLabel = state ? "CSVRG" : "STRATEGY";
+      const rt = live.strategyRuntime || {};
+      const strategySummary =
+        (rt.strategyId || "n/a") +
+        " @ " +
+        (rt.instrumentId || "n/a") +
+        " tf=" +
+        Number(rt.timeframeSec || 0);
       const sessionDrawdown = Math.max(0, Number(live.sessionPeakPnl || 0) - Number(stats.sessionPnl || 0));
       overviewEl.textContent =
         "Autotrader: " +
         (live.running ? "RUNNING" : "STOPPED") +
         " | Driver: " +
         driverLabel +
+        " | Strategy: " +
+        strategySummary +
         " | Mode: " +
         modeLabel +
         " | Engine bot flag: " +
@@ -836,12 +877,6 @@
       maxPairsEl.disabled = live.running;
       execModeEl.disabled = live.running;
       liveStrategySelectEl.disabled = live.running;
-      liveInstrumentEl.disabled = live.running;
-      liveTfSecEl.disabled = live.running;
-      liveLookbackEl.disabled = live.running;
-      liveLotsEl.disabled = live.running;
-      liveTpTicksEl.disabled = live.running;
-      liveSlTicksEl.disabled = live.running;
       btnClearHistory.disabled = live.running;
     }
 
@@ -901,7 +936,7 @@
       const lots = rt.lots;
       const tpTicks = rt.tpTicks;
       const slTicks = rt.slTicks;
-      const tickSize = 1;
+      const tickSize = Math.max(0.00001, Number(rt.tickSize || 1));
 
       const px = window.LCPro.MarketData.getBidAsk(instrumentId);
       const entryPx = px && px.ok ? (side === "BUY" ? Number(px.ask) : Number(px.bid)) : Number(signal.price || 0);
@@ -985,7 +1020,7 @@
           rt.openTrade ? rt.openTrade.side : signals && signals[0] ? signals[0].type : "BUY",
           Math.max(0, Number(rt.tpTicks || 0)),
           Math.max(0, Number(rt.slTicks || 0)),
-          1
+          Math.max(0.00001, Number(rt.tickSize || 1))
         );
       }
 
@@ -1088,16 +1123,18 @@
       const strategyId = String(liveStrategySelectEl.value || "sma_crossover");
       const strategy = strategyApi && strategyApi.getStrategy ? strategyApi.getStrategy(strategyId) : null;
       if (!strategy) throw new Error("Strategy unavailable: " + strategyId);
+      const sd = resolveStrategyRuntimeDefaults(strategy);
 
       live.strategyRuntime = {
         strategyId,
         params: Object.assign({}, strategy.defaultParams || {}),
-        instrumentId: String(liveInstrumentEl.value || "NAS100").trim(),
-        timeframeSec: Math.max(60, parseInt(liveTfSecEl.value || "900", 10)),
-        lookback: Math.max(200, parseInt(liveLookbackEl.value || "900", 10)),
-        lots: Math.max(0.01, Number(liveLotsEl.value || "0.01")),
-        tpTicks: Math.max(0, Number(liveTpTicksEl.value || "0")),
-        slTicks: Math.max(0, Number(liveSlTicksEl.value || "0")),
+        instrumentId: sd.instrumentId,
+        timeframeSec: sd.timeframeSec,
+        lookback: sd.lookback,
+        lots: sd.lots,
+        tpTicks: sd.tpTicks,
+        slTicks: sd.slTicks,
+        tickSize: sd.tickSize,
         lastSignalKey: "",
         openTrade: null,
         closedTrades: []
@@ -1112,7 +1149,7 @@
 
       return {
         driverType: "strategy",
-        state,
+        state: null,
         settings: { execution_mode: customSettings.execution_mode },
         run_cycle: function () {
           return runStrategyCycle();
