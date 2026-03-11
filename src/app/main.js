@@ -122,6 +122,14 @@
     const pairsEl = $("livePairs");
     const cycleMsEl = $("liveCycleMs");
     const maxPairsEl = $("liveMaxPairs");
+    const execModeEl = $("liveExecMode");
+    const liveStrategySelectEl = $("liveStrategySelect");
+    const liveInstrumentEl = $("liveInstrument");
+    const liveTfSecEl = $("liveTfSec");
+    const liveLookbackEl = $("liveLookback");
+    const liveLotsEl = $("liveLots");
+    const liveTpTicksEl = $("liveTpTicks");
+    const liveSlTicksEl = $("liveSlTicks");
     const overviewEl = $("liveOverview");
     const metricSessionPnl = $("metricSessionPnl");
     const metricWins = $("metricWins");
@@ -132,6 +140,8 @@
     const recentTradesEl = $("liveRecentTrades");
     const equityCanvas = $("equityCanvas");
     const equityMetaEl = $("equityMeta");
+    const liveDiagSelectEl = $("liveDiagSelect");
+    const liveDiagOutputEl = $("liveDiagOutput");
     const historyRowsEl = $("liveSessionHistoryRows");
     const btnClearHistory = $("btnClearSessionHistory");
     const riskEnableDailyLossEl = $("riskEnableDailyLoss");
@@ -150,6 +160,14 @@
       !pairsEl ||
       !cycleMsEl ||
       !maxPairsEl ||
+      !execModeEl ||
+      !liveStrategySelectEl ||
+      !liveInstrumentEl ||
+      !liveTfSecEl ||
+      !liveLookbackEl ||
+      !liveLotsEl ||
+      !liveTpTicksEl ||
+      !liveSlTicksEl ||
       !overviewEl ||
       !metricSessionPnl ||
       !metricWins ||
@@ -160,6 +178,8 @@
       !recentTradesEl ||
       !equityCanvas ||
       !equityMetaEl ||
+      !liveDiagSelectEl ||
+      !liveDiagOutputEl ||
       !historyRowsEl ||
       !btnClearHistory ||
       !riskEnableDailyLossEl ||
@@ -190,8 +210,216 @@
       sessionPeakPnl: 0,
       lastError: "",
       equityPoints: [],
-      sessionHistory: []
+      sessionHistory: [],
+      diagnosticsSnapshots: [],
+      selectedDiagId: "",
+      strategyRuntime: {
+        strategyId: "sma_crossover",
+        params: {},
+        instrumentId: "NAS100",
+        timeframeSec: 900,
+        lookback: 900,
+        lots: 0.01,
+        tpTicks: 55,
+        slTicks: 55,
+        lastSignalKey: "",
+        openTrade: null,
+        closedTrades: [],
+        lastDataHealth: "unverified",
+        lastOrderAck: null
+      }
     };
+
+    function populateLiveStrategyOptions() {
+      const registry = window.LCPro && window.LCPro.Strategy && window.LCPro.Strategy.STRATEGIES;
+      if (!registry) {
+        liveStrategySelectEl.innerHTML = '<option value="sma_crossover">SMA Crossover</option>';
+        return;
+      }
+
+      const items = Object.keys(registry).map(function (k) {
+        return registry[k];
+      });
+      liveStrategySelectEl.innerHTML = items
+        .map(function (s) {
+          return '<option value="' + s.id + '">' + s.name + "</option>";
+        })
+        .join("");
+
+      if (items.some(function (s) { return s.id === "sma_crossover"; })) {
+        liveStrategySelectEl.value = "sma_crossover";
+      }
+    }
+
+    populateLiveStrategyOptions();
+
+    function smaSeries(values, len) {
+      const out = new Array(values.length).fill(null);
+      if (!values.length || len < 1) return out;
+      let sum = 0;
+      for (let i = 0; i < values.length; i++) {
+        const v = Number(values[i]);
+        if (!Number.isFinite(v)) {
+          out[i] = i > 0 ? out[i - 1] : null;
+          continue;
+        }
+        sum += v;
+        if (i >= len) sum -= Number(values[i - len]) || 0;
+        if (i >= len - 1) out[i] = sum / len;
+      }
+      return out;
+    }
+
+    function emaSeries(values, len) {
+      const out = new Array(values.length).fill(null);
+      if (!values.length || len < 1) return out;
+      const alpha = 2 / (len + 1);
+      let prev = Number(values[0]);
+      if (!Number.isFinite(prev)) return out;
+      out[0] = prev;
+      for (let i = 1; i < values.length; i++) {
+        const v = Number(values[i]);
+        if (!Number.isFinite(v)) {
+          out[i] = out[i - 1];
+          continue;
+        }
+        prev = alpha * v + (1 - alpha) * prev;
+        out[i] = prev;
+      }
+      return out;
+    }
+
+    function buildStrategyMetrics(rt, candlesChron, signals) {
+      const strategyId = String(rt.strategyId || "");
+      const closes = (candlesChron || []).map(function (c) {
+        return Number(c && c.c);
+      });
+      const n = closes.length;
+      if (!n) return { strategyId, status: "waiting_for_candles" };
+
+      const latestSignal = signals && signals.length ? signals[0] : null;
+      const common = {
+        strategyId,
+        candlesClosed: n,
+        lastClose: Number(closes[n - 1] || 0),
+        latestSignal: latestSignal
+          ? { type: latestSignal.type, time: latestSignal.time, price: latestSignal.price }
+          : null
+      };
+
+      if (strategyId === "sma_crossover") {
+        const fastLen = Number((rt.params && rt.params.fastLen) || 9);
+        const slowLen = Number((rt.params && rt.params.slowLen) || 21);
+        const fast = smaSeries(closes, fastLen);
+        const slow = smaSeries(closes, slowLen);
+        const currFast = Number(fast[n - 1]);
+        const currSlow = Number(slow[n - 1]);
+        const prevFast = Number(fast[n - 2]);
+        const prevSlow = Number(slow[n - 2]);
+        const currDiff = currFast - currSlow;
+        const prevDiff = prevFast - prevSlow;
+        let waitingFor = "insufficient_ma_data";
+        if (Number.isFinite(currDiff) && Number.isFinite(prevDiff)) {
+          if (prevDiff <= 0 && currDiff > 0) waitingFor = "buy_cross_triggered";
+          else if (prevDiff >= 0 && currDiff < 0) waitingFor = "sell_cross_triggered";
+          else waitingFor = currDiff > 0 ? "waiting_for_sell_cross" : "waiting_for_buy_cross";
+        }
+        return Object.assign({}, common, {
+          fastLen,
+          slowLen,
+          prevFast,
+          prevSlow,
+          currFast,
+          currSlow,
+          prevDiff,
+          currDiff,
+          waitingFor
+        });
+      }
+
+      if (strategyId === "nas100_momentum_scalper") {
+        const fastEma = Number((rt.params && rt.params.fastEma) || 18);
+        const slowEma = Number((rt.params && rt.params.slowEma) || 55);
+        const eFast = emaSeries(closes, fastEma);
+        const eSlow = emaSeries(closes, slowEma);
+        const ef = Number(eFast[n - 1]);
+        const es = Number(eSlow[n - 1]);
+        return Object.assign({}, common, {
+          fastEma,
+          slowEma,
+          emaFast: ef,
+          emaSlow: es,
+          trendBias: Number.isFinite(ef) && Number.isFinite(es) ? (ef >= es ? "bull" : "bear") : "unknown",
+          waitingFor: latestSignal ? "signal_ready" : "waiting_for_momentum_breakout"
+        });
+      }
+
+      return Object.assign({}, common, {
+        waitingFor: latestSignal ? "signal_ready" : "waiting_for_strategy_conditions"
+      });
+    }
+
+    function renderDiagnosticsDropdown() {
+      const snaps = live.diagnosticsSnapshots;
+      if (!snaps.length) {
+        liveDiagSelectEl.innerHTML = '<option value="">No snapshots yet</option>';
+        liveDiagOutputEl.textContent = "Diagnostics will populate while live autotrader is running.";
+        return;
+      }
+
+      let html = "";
+      for (let i = 0; i < snaps.length; i++) {
+        const s = snaps[i];
+        const label = fmtTime(s.ts) + " | " + (s.signal ? s.signal.type : "WAIT") + " | " + (s.metrics && s.metrics.waitingFor ? s.metrics.waitingFor : "");
+        html += '<option value="' + s.id + '">' + label + "</option>";
+      }
+      liveDiagSelectEl.innerHTML = html;
+
+      const hasSelected = snaps.some(function (s) {
+        return s.id === live.selectedDiagId;
+      });
+      if (!hasSelected) live.selectedDiagId = snaps[0].id;
+      liveDiagSelectEl.value = live.selectedDiagId;
+
+      const current = snaps.find(function (s) {
+        return s.id === live.selectedDiagId;
+      });
+      liveDiagOutputEl.textContent = current ? JSON.stringify(current, null, 2) : "Diagnostics unavailable.";
+    }
+
+    function pushDiagnosticsSnapshot(snapshot) {
+      live.diagnosticsSnapshots.unshift(snapshot);
+      if (live.diagnosticsSnapshots.length > 60) live.diagnosticsSnapshots = live.diagnosticsSnapshots.slice(0, 60);
+      renderDiagnosticsDropdown();
+    }
+
+    liveDiagSelectEl.addEventListener("change", function () {
+      live.selectedDiagId = String(liveDiagSelectEl.value || "");
+      renderDiagnosticsDropdown();
+    });
+
+    const strategyTabSelectEl = $("strategySelect");
+    if (strategyTabSelectEl) {
+      if (strategyTabSelectEl.value && liveStrategySelectEl.querySelector('option[value="' + strategyTabSelectEl.value + '"]')) {
+        liveStrategySelectEl.value = strategyTabSelectEl.value;
+      }
+
+      strategyTabSelectEl.addEventListener("change", function () {
+        if (live.running) return;
+        const v = strategyTabSelectEl.value;
+        if (liveStrategySelectEl.querySelector('option[value="' + v + '"]')) {
+          liveStrategySelectEl.value = v;
+        }
+      });
+
+      liveStrategySelectEl.addEventListener("change", function () {
+        if (live.running) return;
+        if (strategyTabSelectEl.querySelector('option[value="' + liveStrategySelectEl.value + '"]')) {
+          strategyTabSelectEl.value = liveStrategySelectEl.value;
+          strategyTabSelectEl.dispatchEvent(new Event("change"));
+        }
+      });
+    }
 
     function parsePairs(raw) {
       const cleaned = String(raw || "")
@@ -215,6 +443,16 @@
     }
 
     function sumUnrealized(state) {
+      if (!state && live.strategyRuntime && live.strategyRuntime.openTrade) {
+        const t = live.strategyRuntime.openTrade;
+        const px = window.LCPro.MarketData.getBidAsk(t.instrumentId);
+        if (!px || !px.ok) return 0;
+        const exitPx = t.side === "BUY" ? Number(px.bid) : Number(px.ask);
+        if (!Number.isFinite(exitPx)) return 0;
+        if (t.side === "BUY") return (exitPx - Number(t.entryPrice || exitPx)) * Number(t.lots || 0);
+        return (Number(t.entryPrice || exitPx) - exitPx) * Number(t.lots || 0);
+      }
+
       const pairs = Object.keys((state && state.pair_states) || {});
       let total = 0;
       for (let i = 0; i < pairs.length; i++) {
@@ -225,6 +463,13 @@
     }
 
     function getSessionClosedTrades(state) {
+      if (!state) {
+        return (live.strategyRuntime.closedTrades || []).filter(function (t) {
+          const ts = Date.parse(t.time || "");
+          return Number.isFinite(ts) && ts >= live.sessionStartMs;
+        });
+      }
+
       const events = ((state && state.analytics && state.analytics.events) || []).filter(function (e) {
         if (!e || e.type !== "TRADE_CLOSE") return false;
         const ts = Date.parse(e.timestamp || "");
@@ -256,7 +501,8 @@
     }
 
     function getStatsSnapshot() {
-      const state = live.engine ? live.engine.state : null;
+      const strategyDriver = !!(live.engine && live.engine.driverType === "strategy");
+      const state = strategyDriver ? null : live.engine ? live.engine.state : null;
       const closedTrades = getSessionClosedTrades(state);
       const wins = closedTrades.filter((t) => t.pnl > 0).length;
       const losses = closedTrades.filter((t) => t.pnl < 0).length;
@@ -265,13 +511,20 @@
       const sessionPnl = realizedPnl + unrealizedPnl;
       const totalClosed = wins + losses;
       const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
-      const selectedPairs = (state && state.selected_pairs && state.selected_pairs.length) || 0;
-      const openTrades =
-        (state && state.portfolio && Number(state.portfolio.total_open_trades)) ||
-        Object.keys((state && state.pair_states) || {}).reduce(function (acc, pair) {
-          const ps = state.pair_states[pair];
-          return acc + ((ps && ps.positions && ps.positions.length) || 0);
-        }, 0);
+      const selectedPairs = state
+        ? (state.selected_pairs && state.selected_pairs.length) || 0
+        : live.strategyRuntime.instrumentId
+          ? 1
+          : 0;
+      const openTrades = state
+        ? (state.portfolio && Number(state.portfolio.total_open_trades)) ||
+          Object.keys((state.pair_states || {})).reduce(function (acc, pair) {
+            const ps = state.pair_states[pair];
+            return acc + ((ps && ps.positions && ps.positions.length) || 0);
+          }, 0)
+        : live.strategyRuntime.openTrade
+          ? 1
+          : 0;
       const drawdownPct = (state && state.portfolio && Number(state.portfolio.total_drawdown_pct)) || 0;
       const marginPct = (state && state.portfolio && Number(state.portfolio.margin_used_pct)) || 0;
       const consecutiveLosses = computeConsecutiveLosses(closedTrades);
@@ -510,11 +763,19 @@
       metricSelectedPairs.textContent = String(stats.selectedPairs);
 
       const lastCycleLabel = live.lastCycleAt ? fmtTime(live.lastCycleAt) : "n/a";
-      const sessionState = state && state.bot_enabled ? "enabled" : "disabled";
+      const sessionState = live.running ? "enabled" : "disabled";
+      const modeLabel = state
+        ? ((state.settings && state.settings.execution_mode) || "paper").toUpperCase()
+        : String(execModeEl.value || "paper").toUpperCase();
+      const driverLabel = state ? "CSVRG" : "STRATEGY";
       const sessionDrawdown = Math.max(0, Number(live.sessionPeakPnl || 0) - Number(stats.sessionPnl || 0));
       overviewEl.textContent =
         "Autotrader: " +
         (live.running ? "RUNNING" : "STOPPED") +
+        " | Driver: " +
+        driverLabel +
+        " | Mode: " +
+        modeLabel +
         " | Engine bot flag: " +
         sessionState +
         " | Cycles: " +
@@ -573,6 +834,14 @@
       pairsEl.disabled = live.running;
       cycleMsEl.disabled = live.running;
       maxPairsEl.disabled = live.running;
+      execModeEl.disabled = live.running;
+      liveStrategySelectEl.disabled = live.running;
+      liveInstrumentEl.disabled = live.running;
+      liveTfSecEl.disabled = live.running;
+      liveLookbackEl.disabled = live.running;
+      liveLotsEl.disabled = live.running;
+      liveTpTicksEl.disabled = live.running;
+      liveSlTicksEl.disabled = live.running;
       btnClearHistory.disabled = live.running;
     }
 
@@ -598,12 +867,199 @@
       pushSessionHistory(stopReason);
     }
 
+    async function closeStrategyTrade(reason) {
+      const rt = live.strategyRuntime;
+      if (!rt.openTrade) return 0;
+
+      const t = rt.openTrade;
+      const px = window.LCPro.MarketData.getBidAsk(t.instrumentId);
+      const exitPx = px && px.ok ? (t.side === "BUY" ? Number(px.bid) : Number(px.ask)) : Number(t.entryPrice || 0);
+      const pnl = t.side === "BUY" ? (exitPx - Number(t.entryPrice || exitPx)) * t.lots : (Number(t.entryPrice || exitPx) - exitPx) * t.lots;
+
+      if (String(execModeEl.value || "paper").toLowerCase() === "live") {
+        try {
+          await window.LCPro.Trading.closeSideOnInstrument(t.instrumentId, t.side);
+        } catch (e) {
+          log("[LIVE][WARN] Close side failed: " + (e && e.message ? e.message : String(e)));
+        }
+      }
+
+      rt.closedTrades.push({
+        time: new Date().toISOString(),
+        pair: t.instrumentId,
+        side: t.side,
+        reason: reason || "CLOSE",
+        pnl: Number.isFinite(pnl) ? pnl : 0
+      });
+      rt.openTrade = null;
+      return 1;
+    }
+
+    async function openStrategyTrade(side, signal) {
+      const rt = live.strategyRuntime;
+      const instrumentId = rt.instrumentId;
+      const lots = rt.lots;
+      const tpTicks = rt.tpTicks;
+      const slTicks = rt.slTicks;
+      const tickSize = 1;
+
+      const px = window.LCPro.MarketData.getBidAsk(instrumentId);
+      const entryPx = px && px.ok ? (side === "BUY" ? Number(px.ask) : Number(px.bid)) : Number(signal.price || 0);
+
+      if (String(execModeEl.value || "paper").toLowerCase() === "live") {
+        const orderStartedAt = Date.now();
+        let res = null;
+        if (tpTicks > 0 || slTicks > 0) {
+          res = await window.LCPro.Trading.sendMarketOrderWithTpSl(
+            instrumentId,
+            side,
+            lots,
+            Math.max(0, tpTicks),
+            Math.max(0, slTicks),
+            tickSize
+          );
+        } else {
+          res = await window.LCPro.Trading.sendMarketOrder(instrumentId, side, lots);
+        }
+
+        if (!res || res.ok !== true) {
+          throw new Error((res && res.reason) || "Broker rejected live entry");
+        }
+
+        rt.lastOrderAck = {
+          at: Date.now(),
+          latencyMs: Date.now() - orderStartedAt,
+          side,
+          instrumentId
+        };
+      }
+
+      rt.openTrade = {
+        side,
+        entryPrice: Number.isFinite(entryPx) ? entryPx : Number(signal.price || 0),
+        lots,
+        signalTime: signal.time,
+        instrumentId,
+        openedAt: Date.now()
+      };
+    }
+
+    async function runStrategyCycle() {
+      const rt = live.strategyRuntime;
+      const strategyApi = window.LCPro.Strategy;
+      const strategy = strategyApi && strategyApi.getStrategy ? strategyApi.getStrategy(rt.strategyId) : null;
+      if (!strategy) throw new Error("Selected strategy not found: " + rt.strategyId);
+
+      const cycleStartedAt = Date.now();
+      try {
+        window.LCPro.MarketData.requestPrices([rt.instrumentId]);
+      } catch (e) {}
+
+      const bidAsk = window.LCPro.MarketData.getBidAsk(rt.instrumentId);
+      const candleMsg = await window.LCPro.MarketData.requestCandles(rt.instrumentId, rt.timeframeSec, rt.lookback);
+      const newestFirst = (candleMsg && candleMsg.candles) || [];
+      const closed = newestFirst.slice(1);
+      const candlesChron = window.LCPro.MarketData.candlesToChron ? window.LCPro.MarketData.candlesToChron(closed) : closed.slice().reverse();
+
+      const newestClosed = closed[0] || null;
+      const rawTs = newestClosed ? newestClosed.date || newestClosed.t || newestClosed.ts || newestClosed.time : 0;
+      const closeMs = Number(rawTs) > 0 ? (Number(rawTs) < 1e12 ? Number(rawTs) * 1000 : Number(rawTs)) : 0;
+      const maxLagMs = Math.max(120000, rt.timeframeSec * 2000);
+      const dataFresh = closeMs > 0 ? Date.now() - closeMs <= maxLagMs : false;
+      const candleCountOk = candlesChron.length >= Math.min(200, rt.lookback - 5);
+      rt.lastDataHealth = bidAsk && bidAsk.ok && dataFresh && candleCountOk ? "verified" : "degraded";
+
+      const signals = await strategyApi.runSignals(rt.strategyId, {
+        strategyId: rt.strategyId,
+        instrumentId: rt.instrumentId,
+        timeframeSec: rt.timeframeSec,
+        lookback: rt.lookback,
+        keepN: 2,
+        params: rt.params
+      });
+
+      let tpSlPreview = null;
+      if (Number(rt.tpTicks || 0) > 0 || Number(rt.slTicks || 0) > 0) {
+        tpSlPreview = window.LCPro.Trading.calcTpSlAbsolute(
+          rt.instrumentId,
+          rt.openTrade ? rt.openTrade.side : signals && signals[0] ? signals[0].type : "BUY",
+          Math.max(0, Number(rt.tpTicks || 0)),
+          Math.max(0, Number(rt.slTicks || 0)),
+          1
+        );
+      }
+
+      const newest = signals && signals.length ? signals[0] : null;
+      const key = newest ? String(newest.type || "") + "|" + String(newest.time || newest.idx || "") : "";
+      const isNewSignal = !!(newest && key !== rt.lastSignalKey);
+
+      const metrics = buildStrategyMetrics(rt, candlesChron, signals || []);
+      const snapshot = {
+        id: "diag_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        ts: Date.now(),
+        strategyId: rt.strategyId,
+        instrumentId: rt.instrumentId,
+        timeframeSec: rt.timeframeSec,
+        cycleLatencyMs: Date.now() - cycleStartedAt,
+        dataHealth: rt.lastDataHealth,
+        market: {
+          bid: bidAsk && Number.isFinite(Number(bidAsk.bid)) ? Number(bidAsk.bid) : null,
+          ask: bidAsk && Number.isFinite(Number(bidAsk.ask)) ? Number(bidAsk.ask) : null,
+          spread: bidAsk && bidAsk.ok ? Number(bidAsk.ask) - Number(bidAsk.bid) : null,
+          lastClosedBarTime: closeMs || null,
+          dataFresh,
+          candleCountClosed: candlesChron.length,
+          candleCountOk
+        },
+        signal: newest
+          ? {
+              type: newest.type,
+              time: newest.time,
+              price: newest.price,
+              isNewSignal
+            }
+          : null,
+        gate: {
+          waitingFor: metrics.waitingFor,
+          hasOpenTrade: !!rt.openTrade,
+          openTradeSide: rt.openTrade ? rt.openTrade.side : null,
+          lastSignalKey: rt.lastSignalKey
+        },
+        metrics,
+        risk: {
+          lots: rt.lots,
+          tpTicks: rt.tpTicks,
+          slTicks: rt.slTicks,
+          tpSlPreview
+        },
+        broker: {
+          mode: String(execModeEl.value || "paper"),
+          lastOrderAck: rt.lastOrderAck
+        }
+      };
+      pushDiagnosticsSnapshot(snapshot);
+
+      if (!signals || !signals.length) return { ok: true, reason: "NO_SIGNAL" };
+      if (key === rt.lastSignalKey) return { ok: true, reason: "NO_NEW_SIGNAL" };
+
+      if (rt.openTrade && rt.openTrade.side !== newest.type) {
+        await closeStrategyTrade("OPPOSITE_SIGNAL");
+      }
+
+      if (!rt.openTrade) {
+        await openStrategyTrade(newest.type, newest);
+      }
+
+      rt.lastSignalKey = key;
+      return { ok: true, signal: newest };
+    }
+
     async function runCycle() {
       if (!live.running || !live.engine || live.inFlight) return;
       live.inFlight = true;
       try {
         const started = Date.now();
-        const result = await live.engine.run_cycle();
+        const result = live.engine.driverType === "strategy" ? await runStrategyCycle() : await live.engine.run_cycle();
         live.lastCycleDurationMs = Date.now() - started;
         live.lastCycleAt = Date.now();
         live.cycleCount += 1;
@@ -628,62 +1084,41 @@
     }
 
     function createEngineFromInputs() {
-      const defaults = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "EURJPY", "GBPJPY", "EURGBP"];
-      const parsedPairs = parsePairs(pairsEl.value);
-      const pairs = parsedPairs.length ? parsedPairs : defaults;
+      const strategyApi = window.LCPro.Strategy;
+      const strategyId = String(liveStrategySelectEl.value || "sma_crossover");
+      const strategy = strategyApi && strategyApi.getStrategy ? strategyApi.getStrategy(strategyId) : null;
+      if (!strategy) throw new Error("Strategy unavailable: " + strategyId);
 
-      if (!parsedPairs.length) {
-        pairsEl.value = defaults.join(",");
-        log("[LIVE][WARN] Pairs input was invalid/empty. Reverted to default pairs universe.");
-      }
-
-      if (!window.LCPro || !window.LCPro.CSVRG || !window.LCPro.CSVRG.Engine) {
-        throw new Error("CSVRG engine is unavailable. Verify csvrg scripts are loaded in index.html.");
-      }
-
-      const cycleMs = Math.max(1000, parseInt(cycleMsEl.value || "5000", 10));
-      const maxPairs = Math.max(1, parseInt(maxPairsEl.value || "4", 10));
-      live.cycleMs = cycleMs;
-
-      const csvrg = window.LCPro.CSVRG;
-      const customSettings = {
-        pairs_universe: pairs,
-        max_active_pairs: maxPairs
+      live.strategyRuntime = {
+        strategyId,
+        params: Object.assign({}, strategy.defaultParams || {}),
+        instrumentId: String(liveInstrumentEl.value || "NAS100").trim(),
+        timeframeSec: Math.max(60, parseInt(liveTfSecEl.value || "900", 10)),
+        lookback: Math.max(200, parseInt(liveLookbackEl.value || "900", 10)),
+        lots: Math.max(0.01, Number(liveLotsEl.value || "0.01")),
+        tpTicks: Math.max(0, Number(liveTpTicksEl.value || "0")),
+        slTicks: Math.max(0, Number(liveSlTicksEl.value || "0")),
+        lastSignalKey: "",
+        openTrade: null,
+        closedTrades: []
       };
 
-      // Primary path: normal engine factory.
-      if (csvrg.Engine && typeof csvrg.Engine.createEngine === "function") {
-        return csvrg.Engine.createEngine(customSettings);
-      }
+      const cycleMs = Math.max(1000, parseInt(cycleMsEl.value || "5000", 10));
+      live.cycleMs = cycleMs;
 
-      // Fallback path: compose runtime engine from available modules.
-      const hasFallbackPieces =
-        csvrg.Config &&
-        typeof csvrg.Config.createSettings === "function" &&
-        csvrg.State &&
-        typeof csvrg.State.createEngineState === "function" &&
-        csvrg.Engine &&
-        typeof csvrg.Engine.runCycle === "function";
-
-      if (!hasFallbackPieces) {
-        throw new Error("CSVRG engine startup dependencies are incomplete (missing createEngine and fallback modules).");
-      }
-
-      const settings = csvrg.Config.createSettings(customSettings);
-      const state = csvrg.State.createEngineState(settings);
-      log("[LIVE][WARN] Engine.createEngine missing. Using runtime fallback engine composition.");
+      const customSettings = {
+        execution_mode: String(execModeEl.value || "paper").toLowerCase() === "live" ? "live" : "paper"
+      };
 
       return {
+        driverType: "strategy",
         state,
-        settings,
+        settings: { execution_mode: customSettings.execution_mode },
         run_cycle: function () {
-          return csvrg.Engine.runCycle(state);
+          return runStrategyCycle();
         },
         close_all_positions: function () {
-          if (csvrg.TradeManager && typeof csvrg.TradeManager.close_all_positions === "function") {
-            return csvrg.TradeManager.close_all_positions(state, "MANUAL_CLOSE_ALL");
-          }
-          return 0;
+          return closeStrategyTrade("MANUAL_CLOSE_ALL");
         }
       };
     }
@@ -699,6 +1134,9 @@
         live.sessionStartMs = Date.now();
         live.sessionPeakPnl = 0;
         live.equityPoints = [];
+        live.diagnosticsSnapshots = [];
+        live.selectedDiagId = "";
+        renderDiagnosticsDropdown();
         live.running = true;
         setLiveStatus("Running", "ok");
         log("[LIVE] Autotrader started.");
@@ -721,6 +1159,9 @@
       live.running = false;
       clearTimer();
       const stopReason = reason || "MANUAL_STOP";
+      if (live.engine && live.engine.driverType === "strategy") {
+        closeStrategyTrade(stopReason).catch(function () {});
+      }
       setLiveStatus(isAutoStop ? "Auto-stopped" : "Stopped", isAutoStop ? "bad" : "warn");
       log("[LIVE] Autotrader stopped. reason=" + stopReason);
       finalizeRunningSession(stopReason);
@@ -730,9 +1171,16 @@
 
     function flattenPositions() {
       if (!live.engine) return;
-      const closed = live.engine.close_all_positions();
-      log("[LIVE] Closed positions: " + closed);
-      updateMetrics();
+      Promise.resolve(live.engine.close_all_positions())
+        .then(function (closed) {
+          log("[LIVE] Closed positions: " + closed);
+        })
+        .catch(function (e) {
+          log("[LIVE][ERR] Close all failed: " + (e && e.message ? e.message : String(e)));
+        })
+        .finally(function () {
+          updateMetrics();
+        });
     }
 
     btnStart.addEventListener("click", function () {
@@ -752,6 +1200,7 @@
 
     live.sessionHistory = loadHistory();
     renderHistory();
+    renderDiagnosticsDropdown();
     setLiveStatus("Disconnected", "warn");
     setControls();
     updateMetrics();

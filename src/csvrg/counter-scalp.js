@@ -4,7 +4,18 @@
   const LCPro = (window.LCPro = window.LCPro || {});
   const Logger = (LCPro.CSVRG && LCPro.CSVRG.LoggerAnalytics) || {};
   const Risk = (LCPro.CSVRG && LCPro.CSVRG.RiskManagement) || {};
+  const Trading = LCPro.Trading || {};
   LCPro.CSVRG = LCPro.CSVRG || {};
+
+  function isLive(state) {
+    return String((state && state.settings && state.settings.execution_mode) || "paper").toLowerCase() === "live";
+  }
+
+  function symbolToInstrument(symbol) {
+    const s = String(symbol || "").replace(/\//g, "").toUpperCase();
+    if (s.length !== 6) return symbol;
+    return s.slice(0, 3) + "/" + s.slice(3);
+  }
 
   function check_counter_scalp(state, pair) {
     const ps = state.pair_states[pair];
@@ -49,6 +60,21 @@
       timeout_at: Date.now() + state.settings.scalp_timeout_minutes * 60000
     };
 
+    if (isLive(state) && Trading && typeof Trading.sendMarketOrder === "function") {
+      const instrumentId = symbolToInstrument(pair);
+      Trading.sendMarketOrder(instrumentId, side, size)
+        .then(function (res) {
+          if (!(res && res.ok)) {
+            ps.scalp.active = false;
+            ps.scalp.side = "NONE";
+          }
+        })
+        .catch(function () {
+          ps.scalp.active = false;
+          ps.scalp.side = "NONE";
+        });
+    }
+
     if (Logger.log_trade_open) {
       Logger.log_trade_open(state, pair, {
         side,
@@ -79,6 +105,11 @@
     if (!reason && Date.now() >= sc.timeout_at) reason = "SCALP_TIMEOUT";
 
     if (!reason) return false;
+
+    if (isLive(state) && Trading && typeof Trading.closeSideOnInstrument === "function") {
+      const instrumentId = symbolToInstrument(pair);
+      Trading.closeSideOnInstrument(instrumentId, sc.side).catch(function () {});
+    }
 
     const pnl = sc.side === "BUY" ? (mid - sc.entry_price) * sc.size_lots : (sc.entry_price - mid) * sc.size_lots;
     ps.realized_pnl += pnl;

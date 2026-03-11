@@ -4,7 +4,18 @@
   const LCPro = (window.LCPro = window.LCPro || {});
   const Logger = (LCPro.CSVRG && LCPro.CSVRG.LoggerAnalytics) || {};
   const GridExecution = (LCPro.CSVRG && LCPro.CSVRG.GridExecution) || {};
+  const Trading = LCPro.Trading || {};
   LCPro.CSVRG = LCPro.CSVRG || {};
+
+  function isLive(state) {
+    return String((state && state.settings && state.settings.execution_mode) || "paper").toLowerCase() === "live";
+  }
+
+  function symbolToInstrument(symbol) {
+    const s = String(symbol || "").replace(/\//g, "").toUpperCase();
+    if (s.length !== 6) return symbol;
+    return s.slice(0, 3) + "/" + s.slice(3);
+  }
 
   function meanTarget(ps) {
     const bb = ps.indicators.BB || {};
@@ -14,14 +25,16 @@
   }
 
   function openLevelIfTriggered(ps, mid, level) {
-    if (level.active) return null;
+    if (level.active || level.order_in_flight) return null;
     if (level.side === "BUY" && mid <= level.entry_price) {
-      level.active = true;
+      // trigger reached
     }
     if (level.side === "SELL" && mid >= level.entry_price) {
-      level.active = true;
+      // trigger reached
     }
-    if (!level.active) return null;
+    const triggered =
+      (level.side === "BUY" && mid <= level.entry_price) || (level.side === "SELL" && mid >= level.entry_price);
+    if (!triggered) return null;
 
     const position = {
       side: level.side,
@@ -32,7 +45,58 @@
       level: level.level
     };
     ps.positions.push(position);
+    level.active = true;
     return position;
+  }
+
+  function openLevelLive(state, pair, ps, level) {
+    if (!Trading || typeof Trading.sendMarketOrder !== "function") return;
+    const now = Date.now();
+    const lastAttempt = Number(level.last_attempt_at || 0);
+    if (now - lastAttempt < 2000) return;
+
+    level.order_in_flight = true;
+    level.last_attempt_at = now;
+    const instrumentId = symbolToInstrument(pair);
+
+    Trading.sendMarketOrder(instrumentId, level.side, level.size_lots)
+      .then(function (res) {
+        const ok = !!(res && res.ok);
+        if (!ok) {
+          level.last_error = (res && res.reason) || "Live entry rejected";
+          return;
+        }
+
+        level.active = true;
+        const fillPrice = Number(ps.mid);
+        const position = {
+          side: level.side,
+          entry_price: Number.isFinite(fillPrice) ? fillPrice : level.entry_price,
+          size_lots: level.size_lots,
+          opened_at: Date.now(),
+          source: "GRID_LIVE",
+          level: level.level,
+          instrument_id: instrumentId,
+          broker_response: res && res.response ? res.response : null
+        };
+        ps.positions.push(position);
+
+        if (Logger.log_trade_open) {
+          Logger.log_trade_open(state, pair, {
+            side: position.side,
+            entry_price: position.entry_price,
+            size_lots: position.size_lots,
+            grid_level: position.level,
+            reason_for_entry: "GRID_LEVEL_TRIGGER_LIVE"
+          });
+        }
+      })
+      .catch(function (e) {
+        level.last_error = e && e.message ? e.message : String(e);
+      })
+      .finally(function () {
+        level.order_in_flight = false;
+      });
   }
 
   function calcUnrealized(ps) {
@@ -129,15 +193,23 @@
     if (!Number.isFinite(mid)) return;
 
     for (let i = 0; i < ps.grid.levels.length; i++) {
-      const opened = openLevelIfTriggered(ps, mid, ps.grid.levels[i]);
-      if (opened && Logger.log_trade_open) {
-        Logger.log_trade_open(state, pair, {
-          side: opened.side,
-          entry_price: opened.entry_price,
-          size_lots: opened.size_lots,
-          grid_level: opened.level,
-          reason_for_entry: "GRID_LEVEL_TRIGGER"
-        });
+      const level = ps.grid.levels[i];
+      const triggered = (level.side === "BUY" && mid <= level.entry_price) || (level.side === "SELL" && mid >= level.entry_price);
+      if (!triggered) continue;
+
+      if (isLive(state)) {
+        openLevelLive(state, pair, ps, level);
+      } else {
+        const opened = openLevelIfTriggered(ps, mid, level);
+        if (opened && Logger.log_trade_open) {
+          Logger.log_trade_open(state, pair, {
+            side: opened.side,
+            entry_price: opened.entry_price,
+            size_lots: opened.size_lots,
+            grid_level: opened.level,
+            reason_for_entry: "GRID_LEVEL_TRIGGER"
+          });
+        }
       }
     }
 
@@ -165,6 +237,10 @@
 
     for (let i = 0; i < ps.positions.length; i++) {
       const p = ps.positions[i];
+      if (isLive(state) && Trading && typeof Trading.closeSideOnInstrument === "function") {
+        const instrumentId = symbolToInstrument(pair);
+        Trading.closeSideOnInstrument(instrumentId, p.side).catch(function () {});
+      }
       if (!Number.isFinite(mid)) continue;
       const pnl = p.side === "BUY" ? (mid - p.entry_price) * p.size_lots : (p.entry_price - mid) * p.size_lots;
       ps.realized_pnl += pnl;
