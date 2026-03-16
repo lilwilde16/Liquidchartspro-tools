@@ -50,7 +50,7 @@
   }
 
   function openLevelLive(state, pair, ps, level) {
-    if (!Trading || typeof Trading.sendMarketOrder !== "function") return;
+    if (!Trading || typeof Trading.executeAction !== "function") return;
     const now = Date.now();
     const lastAttempt = Number(level.last_attempt_at || 0);
     if (now - lastAttempt < 2000) return;
@@ -59,7 +59,10 @@
     level.last_attempt_at = now;
     const instrumentId = symbolToInstrument(pair);
 
-    Trading.sendMarketOrder(instrumentId, level.side, level.size_lots)
+    Trading.executeAction(level.side, {
+      instrumentId,
+      lots: level.size_lots
+    })
       .then(function (res) {
         const ok = !!(res && res.ok);
         if (!ok) {
@@ -237,9 +240,9 @@
 
     for (let i = 0; i < ps.positions.length; i++) {
       const p = ps.positions[i];
-      if (isLive(state) && Trading && typeof Trading.closeSideOnInstrument === "function") {
+      if (isLive(state) && Trading && typeof Trading.executeAction === "function") {
         const instrumentId = symbolToInstrument(pair);
-        Trading.closeSideOnInstrument(instrumentId, p.side).catch(function () {});
+        Trading.executeAction("CLOSE_SIDE", { instrumentId, side: p.side }).catch(function () {});
       }
       if (!Number.isFinite(mid)) continue;
       const pnl = p.side === "BUY" ? (mid - p.entry_price) * p.size_lots : (p.entry_price - mid) * p.size_lots;

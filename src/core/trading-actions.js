@@ -88,6 +88,13 @@
     return { ok: true, payload, response };
   }
 
+  function normalizeSide(raw) {
+    const s = String(raw || "").toUpperCase();
+    if (s === "BUY" || s === "LONG") return "BUY";
+    if (s === "SELL" || s === "SHORT") return "SELL";
+    return "";
+  }
+
   function calcTpSlAbsolute(instrumentId, side, tpTicks, slTicks, tickSize) {
     const px = MarketData.getBidAsk(instrumentId);
     if (!px.ok) return { ok: false, reason: "No bid/ask" };
@@ -443,6 +450,73 @@
     };
   }
 
+  function listActions() {
+    return ["BUY", "SELL", "CLOSE_SIDE", "CLOSE_ALL", "CLOSE_ORDER", "MARKET_ORDER_TPSL"];
+  }
+
+  async function executeAction(actionName, payload) {
+    const action = String(actionName || "").toUpperCase();
+    const p = payload || {};
+
+    if (action === "BUY" || action === "SELL") {
+      const side = action;
+      const instrumentId = String(p.instrumentId || "");
+      const lots = Number(p.lots || p.size_lots || p.sizeLots || 0);
+      if (!instrumentId) return { ok: false, reason: "Missing instrumentId" };
+      if (!Number.isFinite(lots) || lots <= 0) return { ok: false, reason: "Invalid lots" };
+
+      const tpTicks = Number(p.tpTicks || 0);
+      const slTicks = Number(p.slTicks || 0);
+      const tickSize = Number(p.tickSize || 0);
+      if ((tpTicks > 0 || slTicks > 0) && Number.isFinite(tickSize) && tickSize > 0) {
+        return sendMarketOrderWithTpSl(instrumentId, side, lots, Math.max(0, tpTicks), Math.max(0, slTicks), tickSize);
+      }
+      return sendMarketOrder(instrumentId, side, lots);
+    }
+
+    if (action === "MARKET_ORDER_TPSL") {
+      const instrumentId = String(p.instrumentId || "");
+      const side = normalizeSide(p.side);
+      const lots = Number(p.lots || p.size_lots || p.sizeLots || 0);
+      const tpTicks = Number(p.tpTicks || 0);
+      const slTicks = Number(p.slTicks || 0);
+      const tickSize = Number(p.tickSize || 0);
+      if (!instrumentId) return { ok: false, reason: "Missing instrumentId" };
+      if (!side) return { ok: false, reason: "Missing/invalid side" };
+      if (!Number.isFinite(lots) || lots <= 0) return { ok: false, reason: "Invalid lots" };
+      if (!Number.isFinite(tickSize) || tickSize <= 0) return { ok: false, reason: "Invalid tickSize" };
+      return sendMarketOrderWithTpSl(
+        instrumentId,
+        side,
+        lots,
+        Math.max(0, Number.isFinite(tpTicks) ? tpTicks : 0),
+        Math.max(0, Number.isFinite(slTicks) ? slTicks : 0),
+        tickSize
+      );
+    }
+
+    if (action === "CLOSE_SIDE") {
+      const instrumentId = String(p.instrumentId || "");
+      const side = normalizeSide(p.side);
+      if (!instrumentId) return { ok: false, reason: "Missing instrumentId" };
+      if (!side) return { ok: false, reason: "Missing/invalid side" };
+      const res = await closeSideOnInstrument(instrumentId, side);
+      return { ok: true, result: res };
+    }
+
+    if (action === "CLOSE_ALL") {
+      const res = await closeAllPositions();
+      return { ok: true, result: res };
+    }
+
+    if (action === "CLOSE_ORDER") {
+      if (!p.orderId) return { ok: false, reason: "Missing orderId" };
+      return closeOrderById(String(p.orderId));
+    }
+
+    return { ok: false, reason: "Unknown action: " + action };
+  }
+
   LCPro.Trading = {
     openDealTicket,
     sendOrder,
@@ -460,6 +534,8 @@
     closeAllOnInstrument,
     closeSideOnInstrument,
     closeAllPositions,
-    closeOrderById
+    closeOrderById,
+    listActions,
+    executeAction
   };
 })();

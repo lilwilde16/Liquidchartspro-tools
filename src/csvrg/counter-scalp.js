@@ -60,9 +60,12 @@
       timeout_at: Date.now() + state.settings.scalp_timeout_minutes * 60000
     };
 
-    if (isLive(state) && Trading && typeof Trading.sendMarketOrder === "function") {
+    if (isLive(state) && Trading && typeof Trading.executeAction === "function") {
       const instrumentId = symbolToInstrument(pair);
-      Trading.sendMarketOrder(instrumentId, side, size)
+      Trading.executeAction(side, {
+        instrumentId,
+        lots: size
+      })
         .then(function (res) {
           if (!(res && res.ok)) {
             ps.scalp.active = false;
@@ -106,9 +109,9 @@
 
     if (!reason) return false;
 
-    if (isLive(state) && Trading && typeof Trading.closeSideOnInstrument === "function") {
+    if (isLive(state) && Trading && typeof Trading.executeAction === "function") {
       const instrumentId = symbolToInstrument(pair);
-      Trading.closeSideOnInstrument(instrumentId, sc.side).catch(function () {});
+      Trading.executeAction("CLOSE_SIDE", { instrumentId, side: sc.side }).catch(function () {});
     }
 
     const pnl = sc.side === "BUY" ? (mid - sc.entry_price) * sc.size_lots : (sc.entry_price - mid) * sc.size_lots;

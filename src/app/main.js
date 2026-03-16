@@ -1180,7 +1180,14 @@
 
         if (String(execModeEl.value || "paper").toLowerCase() === "live") {
           try {
-            await window.LCPro.Trading.closeSideOnInstrument(t.instrumentId, t.side);
+            if (window.LCPro.Trading && typeof window.LCPro.Trading.executeAction === "function") {
+              await window.LCPro.Trading.executeAction("CLOSE_SIDE", {
+                instrumentId: t.instrumentId,
+                side: t.side
+              });
+            } else {
+              await window.LCPro.Trading.closeSideOnInstrument(t.instrumentId, t.side);
+            }
           } catch (e) {
             log("[LIVE][WARN] Close side failed: " + (e && e.message ? e.message : String(e)));
           }
@@ -1217,17 +1224,35 @@
       if (String(execModeEl.value || "paper").toLowerCase() === "live") {
         const orderStartedAt = Date.now();
         let res = null;
-        if (tpTicks > 0 || slTicks > 0) {
-          res = await window.LCPro.Trading.sendMarketOrderWithTpSl(
-            instrumentId,
-            normSide,
-            lots,
-            Math.max(0, tpTicks),
-            Math.max(0, slTicks),
-            tickSize
-          );
+        if (window.LCPro.Trading && typeof window.LCPro.Trading.executeAction === "function") {
+          if (tpTicks > 0 || slTicks > 0) {
+            res = await window.LCPro.Trading.executeAction("MARKET_ORDER_TPSL", {
+              instrumentId,
+              side: normSide,
+              lots,
+              tpTicks: Math.max(0, tpTicks),
+              slTicks: Math.max(0, slTicks),
+              tickSize
+            });
+          } else {
+            res = await window.LCPro.Trading.executeAction(normSide, {
+              instrumentId,
+              lots
+            });
+          }
         } else {
-          res = await window.LCPro.Trading.sendMarketOrder(instrumentId, normSide, lots);
+          if (tpTicks > 0 || slTicks > 0) {
+            res = await window.LCPro.Trading.sendMarketOrderWithTpSl(
+              instrumentId,
+              normSide,
+              lots,
+              Math.max(0, tpTicks),
+              Math.max(0, slTicks),
+              tickSize
+            );
+          } else {
+            res = await window.LCPro.Trading.sendMarketOrder(instrumentId, normSide, lots);
+          }
         }
 
         if (!res || res.ok !== true) {
@@ -1750,9 +1775,13 @@
         },
         close_all_positions: async function () {
           let closed = 0;
-          if (window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.closeAllPositions === "function") {
+          if (window.LCPro && window.LCPro.Trading) {
             try {
-              await window.LCPro.Trading.closeAllPositions();
+              if (typeof window.LCPro.Trading.executeAction === "function") {
+                await window.LCPro.Trading.executeAction("CLOSE_ALL", {});
+              } else if (typeof window.LCPro.Trading.closeAllPositions === "function") {
+                await window.LCPro.Trading.closeAllPositions();
+              }
             } catch (e) {}
           }
           closed += await closeStrategyTrade("MANUAL_CLOSE_ALL");
@@ -2631,7 +2660,10 @@
       btnCloseAllPositions.addEventListener("click", async function () {
         write("Closing all open positions...");
         try {
-          const res = await window.LCPro.Trading.closeAllPositions();
+          const res =
+            window.LCPro.Trading && typeof window.LCPro.Trading.executeAction === "function"
+              ? await window.LCPro.Trading.executeAction("CLOSE_ALL", {})
+              : await window.LCPro.Trading.closeAllPositions();
           write({ action: "close_all_positions", result: res });
           refreshOrderDropdown();
         } catch (e) {
