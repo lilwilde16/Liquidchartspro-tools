@@ -1253,6 +1253,77 @@
       st.lastTradeActionMs = Date.now();
     }
 
+    async function executeStrategyEntry(instrumentId, side, signal, sourceTag) {
+      const normSide = normalizeSignalSide(side);
+      if (!normSide) throw new Error("Invalid execute side: " + String(side || ""));
+      const st = ensureInstrumentState(instrumentId);
+
+      await openStrategyTrade(instrumentId, normSide, signal);
+      st.lastExecutionNote = "OPENED_" + normSide;
+
+      const rt = live.strategyRuntime || {};
+      const tpTicks = Number(rt.tpTicks || 0);
+      const slTicks = Number(rt.slTicks || 0);
+      log(
+        "[LIVE][EXEC] Opened " +
+          normSide +
+          " on " +
+          instrumentId +
+          " via " +
+          String(sourceTag || "STRATEGY") +
+          " | tpTicks=" +
+          tpTicks +
+          " | slTicks=" +
+          slTicks
+      );
+    }
+
+    async function executeBuy(instrumentId, signal, sourceTag) {
+      return executeStrategyEntry(instrumentId, "BUY", signal, sourceTag || "STRATEGY");
+    }
+
+    async function executeSell(instrumentId, signal, sourceTag) {
+      return executeStrategyEntry(instrumentId, "SELL", signal, sourceTag || "STRATEGY");
+    }
+
+    async function executeSignalTrigger(instrumentId, st, executionSignal, closeMs) {
+      log(
+        "[LIVE][TRIGGER] " +
+          instrumentId +
+          " " +
+          executionSignal.type +
+          " on closed candle " +
+          fmtTime(closeMs || executionSignal.time || Date.now())
+      );
+
+      const sinceLastActionMs = Date.now() - Number(st.lastTradeActionMs || 0);
+      if (sinceLastActionMs < MIN_TRADE_GAP_MS) {
+        await new Promise(function (resolve) {
+          setTimeout(resolve, MIN_TRADE_GAP_MS - sinceLastActionMs);
+        });
+      }
+      await new Promise(function (resolve) {
+        setTimeout(resolve, TRADE_EXECUTION_GRACE_MS);
+      });
+
+      if (st.openTrade && st.openTrade.side !== executionSignal.type) {
+        await closeStrategyTrade("OPPOSITE_SIGNAL", instrumentId);
+      }
+
+      if (!st.openTrade) {
+        if (executionSignal.type === "BUY") {
+          await executeBuy(instrumentId, executionSignal, "TRIGGER");
+        } else if (executionSignal.type === "SELL") {
+          await executeSell(instrumentId, executionSignal, "TRIGGER");
+        } else {
+          throw new Error("Unsupported trigger side: " + String(executionSignal.type || ""));
+        }
+      } else {
+        st.lastExecutionNote = "ALREADY_OPEN_" + st.openTrade.side;
+        log("[LIVE][EXEC] Skipped open on " + instrumentId + " because " + st.openTrade.side + " is already open.");
+      }
+    }
+
     async function runStrategyCycle() {
       const rt = live.strategyRuntime;
       const strategyApi = window.LCPro.Strategy;
@@ -1371,49 +1442,19 @@
         if (isNewSignal) newSignalCount += 1;
 
         if (executionSignal && isNewSignal) {
-          log(
-            "[LIVE][TRIGGER] " +
-              instrumentId +
-              " " +
-              executionSignal.type +
-              " on closed candle " +
-              fmtTime(closeMs || executionSignal.time || Date.now())
-          );
-
-          const sinceLastActionMs = Date.now() - Number(st.lastTradeActionMs || 0);
-          if (sinceLastActionMs < MIN_TRADE_GAP_MS) {
-            await new Promise(function (resolve) {
-              setTimeout(resolve, MIN_TRADE_GAP_MS - sinceLastActionMs);
-            });
-          }
-          await new Promise(function (resolve) {
-            setTimeout(resolve, TRADE_EXECUTION_GRACE_MS);
-          });
-
-          if (st.openTrade && st.openTrade.side !== executionSignal.type) {
-            await closeStrategyTrade("OPPOSITE_SIGNAL", instrumentId);
-          }
-
-          if (!st.openTrade) {
-            try {
-              await openStrategyTrade(instrumentId, executionSignal.type, executionSignal);
-              st.lastExecutionNote = "OPENED_" + executionSignal.type;
-              log("[LIVE][EXEC] Opened " + executionSignal.type + " on " + instrumentId + ".");
-            } catch (e) {
-              st.lastExecutionNote = "OPEN_FAILED";
-              log(
-                "[LIVE][ERR] Open failed on " +
-                  instrumentId +
-                  " for " +
-                  executionSignal.type +
-                  ": " +
-                  (e && e.message ? e.message : String(e))
-              );
-              throw e;
-            }
-          } else {
-            st.lastExecutionNote = "ALREADY_OPEN_" + st.openTrade.side;
-            log("[LIVE][EXEC] Skipped open on " + instrumentId + " because " + st.openTrade.side + " is already open.");
+          try {
+            await executeSignalTrigger(instrumentId, st, executionSignal, closeMs);
+          } catch (e) {
+            st.lastExecutionNote = "OPEN_FAILED";
+            log(
+              "[LIVE][ERR] Open failed on " +
+                instrumentId +
+                " for " +
+                executionSignal.type +
+                ": " +
+                (e && e.message ? e.message : String(e))
+            );
+            throw e;
           }
 
           st.lastSignalKey = key;
@@ -1829,7 +1870,8 @@
       if (mode !== "live") {
         log("[LIVE][SIM] Execution mode is PAPER. This validates logic path only and does not place broker orders.");
       }
-      await openStrategyTrade(instrumentId, side, signal);
+      if (side === "BUY") await executeBuy(instrumentId, signal, "SIMULATION");
+      else await executeSell(instrumentId, signal, "SIMULATION");
       const openedAt = Date.now();
       const afterOpenCount = countPositionsForInstrument();
       await new Promise(function (resolve) {
