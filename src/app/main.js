@@ -1524,9 +1524,17 @@
           const instrumentId = instruments[i];
           const st = ensureInstrumentState(instrumentId);
 
-          const candleMsg = await window.LCPro.MarketData.requestCandles(instrumentId, rt.timeframeSec, Math.min(rt.lookback, 10));
+          const candleMsg = await window.LCPro.MarketData.requestCandles(
+            instrumentId,
+            rt.timeframeSec,
+            Math.min(rt.lookback, 400)
+          );
           const newestFirst = (candleMsg && candleMsg.candles) || [];
           const newestClosed = newestFirst.length > 1 ? newestFirst[1] : null;
+          const closed = newestFirst.slice(1);
+          const candlesChron = window.LCPro.MarketData.candlesToChron
+            ? window.LCPro.MarketData.candlesToChron(closed)
+            : closed.slice().reverse();
           const rawTs = newestClosed ? newestClosed.date || newestClosed.t || newestClosed.ts || newestClosed.time : 0;
           const closeMs = Number(rawTs) > 0 ? (Number(rawTs) < 1e12 ? Number(rawTs) * 1000 : Number(rawTs)) : 0;
           if (closeMs > 0) st.lastProcessedCloseMs = closeMs;
@@ -1540,13 +1548,48 @@
             params: rt.params
           });
 
-          if (signals && signals.length) {
-            const s = signals[0];
-            st.lastSignalKey = String(s.type || "") + "|" + String(s.time || s.idx || "");
-            st.lastSignals = signals.slice(0, 2);
-          } else {
-            st.lastSignals = [];
+          const newest = signals && signals.length ? signals[0] : null;
+          const newestType = normalizeSignalSide(newest && newest.type);
+          const newestNorm = newestType ? Object.assign({}, newest, { type: newestType }) : null;
+          const metrics = buildStrategyMetrics(rt, candlesChron, signals || []);
+
+          let baselineSignal = newestNorm;
+          if (rt.strategyId === "sma_crossover") {
+            const crossSide =
+              metrics.waitingFor === "buy_cross_triggered"
+                ? "BUY"
+                : metrics.waitingFor === "sell_cross_triggered"
+                  ? "SELL"
+                  : "";
+            if (crossSide) {
+              const lastClosePx =
+                candlesChron && candlesChron.length ? Number(candlesChron[candlesChron.length - 1].c) : Number.NaN;
+              baselineSignal = {
+                type: crossSide,
+                time: closeMs || Date.now(),
+                price: Number.isFinite(lastClosePx) ? lastClosePx : Number.NaN,
+                synthetic: true
+              };
+            }
           }
+
+          if (baselineSignal) {
+            st.lastSignal = {
+              type: baselineSignal.type,
+              time: baselineSignal.time,
+              price: baselineSignal.price
+            };
+          }
+
+          if (rt.strategyId === "sma_crossover" && closeMs > 0 && baselineSignal) {
+            st.lastSignalKey = String(baselineSignal.type || "") + "|" + String(closeMs);
+          } else if (baselineSignal) {
+            st.lastSignalKey = String(baselineSignal.type || "") + "|" + String(baselineSignal.time || baselineSignal.idx || "");
+          } else {
+            st.lastSignalKey = "";
+          }
+
+          st.lastSignals = Array.isArray(signals) ? signals.slice(0, 2) : [];
         }
         log("[LIVE] Primed startup signal baseline for " + instruments.length + " pair(s).");
       } catch (e) {
