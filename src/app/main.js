@@ -1286,6 +1286,36 @@
       return executeStrategyEntry(instrumentId, "SELL", signal, sourceTag || "STRATEGY");
     }
 
+    function getStrategyActionHandlers() {
+      return {
+        BUY: async function (payload) {
+          return executeBuy(payload.instrumentId, payload.signal, payload.sourceTag || "STRATEGY");
+        },
+        SELL: async function (payload) {
+          return executeSell(payload.instrumentId, payload.signal, payload.sourceTag || "STRATEGY");
+        },
+        CLOSE_OPPOSITE: async function (payload) {
+          return closeStrategyTrade(payload.reason || "OPPOSITE_SIGNAL", payload.instrumentId);
+        },
+        CLOSE_ALL: async function (payload) {
+          return closeStrategyTrade(payload.reason || "MANUAL_CLOSE_ALL");
+        }
+      };
+    }
+
+    function listStrategyActions() {
+      return Object.keys(getStrategyActionHandlers());
+    }
+
+    async function runStrategyAction(actionName, payload) {
+      const key = String(actionName || "").toUpperCase();
+      const actions = getStrategyActionHandlers();
+      if (!actions[key]) {
+        throw new Error("Unknown strategy action: " + key);
+      }
+      return actions[key](payload || {});
+    }
+
     async function executeSignalTrigger(instrumentId, st, executionSignal, closeMs) {
       log(
         "[LIVE][TRIGGER] " +
@@ -1307,17 +1337,18 @@
       });
 
       if (st.openTrade && st.openTrade.side !== executionSignal.type) {
-        await closeStrategyTrade("OPPOSITE_SIGNAL", instrumentId);
+        await runStrategyAction("CLOSE_OPPOSITE", {
+          instrumentId,
+          reason: "OPPOSITE_SIGNAL"
+        });
       }
 
       if (!st.openTrade) {
-        if (executionSignal.type === "BUY") {
-          await executeBuy(instrumentId, executionSignal, "TRIGGER");
-        } else if (executionSignal.type === "SELL") {
-          await executeSell(instrumentId, executionSignal, "TRIGGER");
-        } else {
-          throw new Error("Unsupported trigger side: " + String(executionSignal.type || ""));
-        }
+        await runStrategyAction(String(executionSignal.type || ""), {
+          instrumentId,
+          signal: executionSignal,
+          sourceTag: "TRIGGER"
+        });
       } else {
         st.lastExecutionNote = "ALREADY_OPEN_" + st.openTrade.side;
         log("[LIVE][EXEC] Skipped open on " + instrumentId + " because " + st.openTrade.side + " is already open.");
@@ -1505,6 +1536,7 @@
             waitingFor: metrics.waitingFor,
             hasOpenTrade: !!st.openTrade,
             openTradeSide: st.openTrade ? st.openTrade.side : null,
+            actionsAvailable: listStrategyActions(),
             lastSignalKey: st.lastSignalKey,
             lastExecutionNote: st.lastExecutionNote || null,
             lastProcessedCloseMs: st.lastProcessedCloseMs || null,
@@ -1761,6 +1793,7 @@
         }
         setLiveStatus("Running", "ok");
         log("[LIVE] Autotrader started.");
+        log("[LIVE] Strategy action registry ready: " + listStrategyActions().join(", "));
         setControls();
         updateMetrics();
         await primeStrategySignalBaseline();
@@ -1870,8 +1903,11 @@
       if (mode !== "live") {
         log("[LIVE][SIM] Execution mode is PAPER. This validates logic path only and does not place broker orders.");
       }
-      if (side === "BUY") await executeBuy(instrumentId, signal, "SIMULATION");
-      else await executeSell(instrumentId, signal, "SIMULATION");
+      await runStrategyAction(side, {
+        instrumentId,
+        signal,
+        sourceTag: "SIMULATION"
+      });
       const openedAt = Date.now();
       const afterOpenCount = countPositionsForInstrument();
       await new Promise(function (resolve) {
