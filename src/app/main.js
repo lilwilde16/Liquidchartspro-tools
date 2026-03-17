@@ -3111,24 +3111,63 @@
           write("Nothing to copy yet.");
           return;
         }
+
+        function tryLegacyCopy(value) {
+          try {
+            const ta = document.createElement("textarea");
+            ta.value = value;
+            ta.setAttribute("readonly", "readonly");
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            ta.style.top = "0";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            ta.setSelectionRange(0, ta.value.length);
+            const ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            return !!ok;
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function selectOutputForManualCopy() {
+          try {
+            if (!out) return false;
+            const selection = window.getSelection ? window.getSelection() : null;
+            if (!selection || !document.createRange) return false;
+            const range = document.createRange();
+            range.selectNodeContents(out);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }
+
         try {
           if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
             await navigator.clipboard.writeText(text);
-          } else {
-            const ta = document.createElement("textarea");
-            ta.value = text;
-            ta.setAttribute("readonly", "readonly");
-            ta.style.position = "absolute";
-            ta.style.left = "-9999px";
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand("copy");
-            document.body.removeChild(ta);
+            write("Copied output to clipboard.");
+            return;
           }
-          write("Copied output to clipboard.");
         } catch (e) {
-          write("Copy failed: " + (e && e.message ? e.message : String(e)));
+          // Continue into legacy fallback path.
         }
+
+        if (tryLegacyCopy(text)) {
+          write("Copied output to clipboard (legacy fallback).");
+          return;
+        }
+
+        if (selectOutputForManualCopy()) {
+          write("Clipboard is blocked by page policy. Output was selected - press Ctrl+C (or Cmd+C). ");
+          return;
+        }
+
+        write("Copy failed: Clipboard API blocked and fallback methods are unavailable in this context.");
       });
     }
 
