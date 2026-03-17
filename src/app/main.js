@@ -2743,8 +2743,9 @@
 
     async function runRegisteredAction(actionName) {
       const action = String(actionName || "").toUpperCase();
-      if (!window.LCPro || !window.LCPro.Trading || typeof window.LCPro.Trading.executeAction !== "function") {
-        write("Trading action executor is unavailable.");
+      const Trading = window.LCPro && window.LCPro.Trading ? window.LCPro.Trading : null;
+      if (!Trading) {
+        write("Trading module is unavailable.");
         return;
       }
 
@@ -2754,7 +2755,44 @@
       const payload = Object.assign({}, buildDefaultActionPayload(action), override);
       write({ action, payload, status: "running" });
       try {
-        const result = await window.LCPro.Trading.executeAction(action, payload);
+        let result = null;
+        if (typeof Trading.executeAction === "function") {
+          result = await Trading.executeAction(action, payload);
+        } else {
+          if (action === "BUY" || action === "SELL") {
+            const side = action;
+            const lots = Number(payload.lots || payload.size_lots || payload.sizeLots || 0);
+            if (!payload.instrumentId) throw new Error("Missing instrumentId");
+            if (!Number.isFinite(lots) || lots <= 0) throw new Error("Invalid lots");
+            result = await Trading.sendMarketOrder(String(payload.instrumentId), side, lots);
+          } else if (action === "MARKET_ORDER_TPSL") {
+            const side = String(payload.side || "").toUpperCase();
+            const lots = Number(payload.lots || payload.size_lots || payload.sizeLots || 0);
+            const tpTicks = Math.max(0, Number(payload.tpTicks || 0));
+            const slTicks = Math.max(0, Number(payload.slTicks || 0));
+            const tickSize = Math.max(0.00001, Number(payload.tickSize || 1));
+            if (!payload.instrumentId) throw new Error("Missing instrumentId");
+            if (side !== "BUY" && side !== "SELL") throw new Error("Missing/invalid side");
+            if (!Number.isFinite(lots) || lots <= 0) throw new Error("Invalid lots");
+            if (tpTicks > 0 || slTicks > 0) {
+              result = await Trading.entryThenModify(String(payload.instrumentId), side, lots, tpTicks, slTicks, tickSize);
+            } else {
+              result = await Trading.sendMarketOrder(String(payload.instrumentId), side, lots);
+            }
+          } else if (action === "CLOSE_SIDE") {
+            const side = String(payload.side || "").toUpperCase();
+            if (!payload.instrumentId) throw new Error("Missing instrumentId");
+            if (side !== "BUY" && side !== "SELL") throw new Error("Missing/invalid side");
+            result = await Trading.closeSideOnInstrument(String(payload.instrumentId), side);
+          } else if (action === "CLOSE_ALL") {
+            result = await Trading.closeAllPositions();
+          } else if (action === "CLOSE_ORDER") {
+            if (!payload.orderId) throw new Error("Missing orderId");
+            result = await Trading.closeOrderById(String(payload.orderId));
+          } else {
+            throw new Error("Unsupported action without executeAction: " + action);
+          }
+        }
         write({ action, payload, result });
         refreshOrderDropdown();
       } catch (e) {
