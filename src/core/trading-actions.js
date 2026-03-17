@@ -527,48 +527,40 @@
     const attempts = [];
     const closeTradeAction = orderType("CLOSETRADE", 4);
 
-    // Some brokers require extra fields (like entry/close price) for close-by-id.
-    const payloads = [];
+    // Use a single best identifier to avoid repeated broker errors for unsupported id fields.
+    const payload = { tradingAction: closeTradeAction };
+    if (instrumentId) payload.instrumentId = String(instrumentId);
 
-    const p1 = { tradingAction: closeTradeAction, orderId: id };
-    if (instrumentId) p1.instrumentId = String(instrumentId);
-    payloads.push(p1);
+    const raw = tradeRef && tradeRef.raw ? tradeRef.raw : order;
+    const source = String((tradeRef && tradeRef.source) || "");
+    const preferredKey =
+      source.indexOf("position") >= 0 || (raw && raw.positionId != null)
+        ? "positionId"
+        : raw && raw.tradeId != null
+          ? "tradeId"
+          : raw && raw.orderId != null
+            ? "orderId"
+            : raw && raw.ticket != null
+              ? "ticket"
+              : "orderId";
 
-    // Some implementations use alternate key names for the trade identifier.
-    const p1b = { tradingAction: closeTradeAction, tradeId: id };
-    if (instrumentId) p1b.instrumentId = String(instrumentId);
-    payloads.push(p1b);
-
-    const p1c = { tradingAction: closeTradeAction, ticket: id };
-    if (instrumentId) p1c.instrumentId = String(instrumentId);
-    payloads.push(p1c);
-
-    const p1d = { tradingAction: closeTradeAction, positionId: id };
-    if (instrumentId) p1d.instrumentId = String(instrumentId);
-    payloads.push(p1d);
-
-    if (Number.isFinite(entryPrice) && entryPrice > 0) {
-      const p2 = { tradingAction: closeTradeAction, orderId: id };
-      if (instrumentId) p2.instrumentId = String(instrumentId);
-      p2.entryPrice = entryPrice;
-      p2.price = entryPrice;
-      payloads.push(p2);
+    payload[preferredKey] = id;
+    if (preferredKey === "orderId" && Number.isFinite(entryPrice) && entryPrice > 0) {
+      payload.entryPrice = entryPrice;
+      payload.price = entryPrice;
     }
 
-    for (let i = 0; i < payloads.length; i++) {
-      const payload = payloads[i];
-      try {
-        const response = await sendOrder(payload);
-        attempts.push({ payload, response });
-        if (
-          response &&
-          (response.okay === true || response.success === true || response.code === 0 || response.ResultCode === 0)
-        ) {
-          return { ok: true, fallbackUsed: false, payload, response, attempts };
-        }
-      } catch (e) {
-        attempts.push({ payload, error: e.message || String(e) });
+    try {
+      const response = await sendOrder(payload);
+      attempts.push({ payload, response });
+      if (
+        response &&
+        (response.okay === true || response.success === true || response.code === 0 || response.ResultCode === 0)
+      ) {
+        return { ok: true, fallbackUsed: false, payload, response, attempts };
       }
+    } catch (e) {
+      attempts.push({ payload, error: e.message || String(e) });
     }
 
     // Fallback: close selected side on selected instrument.
