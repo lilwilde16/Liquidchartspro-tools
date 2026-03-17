@@ -2711,8 +2711,10 @@
     const btnCheckHarnessConnection = $("btnCheckHarnessConnection");
     const btnCopyToolsOutput = $("btnCopyToolsOutput");
     const btnExportCsvFromDate = $("btnExportCsvFromDate");
+    const btnCopyCsvText = $("btnCopyCsvText");
     const toolCsvExportStatus = $("toolCsvExportStatus");
     const toolCsvDownloadLink = $("toolCsvDownloadLink");
+    const toolCsvPreview = $("toolCsvPreview");
     const toolActionButtons = $("toolActionButtons");
     const toolActionPayload = $("toolActionPayload");
     const toolActionStatus = $("toolActionStatus");
@@ -2765,6 +2767,13 @@
         toolCsvDownloadLink.style.display = "none";
         toolCsvDownloadLink.textContent = "Download Prepared CSV";
       }
+      if (toolCsvPreview) {
+        toolCsvPreview.value = "";
+        toolCsvPreview.style.display = "none";
+      }
+      if (btnCopyCsvText) {
+        btnCopyCsvText.style.display = "none";
+      }
     }
 
     function setPreparedCsvLink(url, fileName, count) {
@@ -2773,11 +2782,41 @@
       toolCsvDownloadLink.download = fileName;
       toolCsvDownloadLink.textContent = "Download Prepared CSV (" + count + " rows)";
       toolCsvDownloadLink.style.display = "inline-block";
+      if (btnCopyCsvText) btnCopyCsvText.style.display = "inline-block";
     }
 
     function setCsvExportStatus(text) {
       if (!toolCsvExportStatus) return;
       toolCsvExportStatus.textContent = text;
+    }
+
+    function tryLegacyCopyText(value) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = value;
+        ta.setAttribute("readonly", "readonly");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        ta.style.top = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return !!ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function selectCsvPreview() {
+      if (!toolCsvPreview) return false;
+      toolCsvPreview.style.display = "block";
+      toolCsvPreview.focus();
+      toolCsvPreview.select();
+      toolCsvPreview.setSelectionRange(0, toolCsvPreview.value.length);
+      return true;
     }
 
     async function exportCsvFromDate() {
@@ -2846,7 +2885,11 @@
       const fileName = instrument.replace(/[^A-Za-z0-9_-]/g, "_") + "_" + timeframeSec + "s_" + fromTag + "_" + toTag + ".csv";
       activeCsvUrl = url;
       setPreparedCsvLink(url, fileName, filtered.length);
-      setCsvExportStatus("CSV prepared. If the browser does not auto-download, click the download link below.");
+      if (toolCsvPreview) {
+        toolCsvPreview.value = csv;
+        toolCsvPreview.style.display = "block";
+      }
+      setCsvExportStatus("CSV prepared. If download is blocked, use the download link or copy the CSV text below.");
 
       try {
         if (toolCsvDownloadLink) {
@@ -3572,6 +3615,36 @@
         } finally {
           btnExportCsvFromDate.disabled = false;
         }
+      });
+    }
+
+    if (btnCopyCsvText) {
+      btnCopyCsvText.addEventListener("click", async function () {
+        const text = toolCsvPreview ? String(toolCsvPreview.value || "") : "";
+        if (!text.trim()) {
+          setCsvExportStatus("No CSV text is prepared yet.");
+          return;
+        }
+
+        try {
+          if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(text);
+            setCsvExportStatus("CSV text copied to clipboard.");
+            return;
+          }
+        } catch (e) {}
+
+        if (tryLegacyCopyText(text)) {
+          setCsvExportStatus("CSV text copied to clipboard.");
+          return;
+        }
+
+        if (selectCsvPreview()) {
+          setCsvExportStatus("CSV text selected. Use Ctrl+C to copy it manually.");
+          return;
+        }
+
+        setCsvExportStatus("CSV is ready, but copy failed. Select the preview manually.");
       });
     }
 
