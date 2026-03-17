@@ -1311,8 +1311,19 @@
       return executeStrategyEntry(instrumentId, "SELL", signal, sourceTag || "STRATEGY");
     }
 
+    function getTradingActionNames() {
+      if (!window.LCPro || !window.LCPro.Trading || typeof window.LCPro.Trading.listActions !== "function") return [];
+      const list = window.LCPro.Trading.listActions();
+      if (!Array.isArray(list)) return [];
+      return list
+        .map(function (name) {
+          return String(name || "").toUpperCase();
+        })
+        .filter(Boolean);
+    }
+
     function getStrategyActionHandlers() {
-      return {
+      const handlers = {
         BUY: async function (payload) {
           return executeBuy(payload.instrumentId, payload.signal, payload.sourceTag || "STRATEGY");
         },
@@ -1326,10 +1337,24 @@
           return closeStrategyTrade(payload.reason || "MANUAL_CLOSE_ALL");
         }
       };
+
+      const tradingActionNames = getTradingActionNames();
+      for (let i = 0; i < tradingActionNames.length; i++) {
+        const actionName = tradingActionNames[i];
+        if (handlers[actionName]) continue;
+        handlers[actionName] = async function (payload) {
+          if (!window.LCPro || !window.LCPro.Trading || typeof window.LCPro.Trading.executeAction !== "function") {
+            throw new Error("Trading action executor unavailable");
+          }
+          return window.LCPro.Trading.executeAction(actionName, payload || {});
+        };
+      }
+
+      return handlers;
     }
 
     function listStrategyActions() {
-      return Object.keys(getStrategyActionHandlers());
+      return Object.keys(getStrategyActionHandlers()).sort();
     }
 
     async function runStrategyAction(actionName, payload) {
