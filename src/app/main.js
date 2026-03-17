@@ -2465,6 +2465,15 @@
     const toolActionStatus = $("toolActionStatus");
     const toolOrderId = $("toolOrderId");
     let entrySubmitInFlight = false;
+    const actionControls = {
+      closeSideSelect: null,
+      closeOrderSelect: null,
+      marketSideSelect: null,
+      marketTpInput: null,
+      marketSlInput: null,
+      marketTickInput: null,
+      marketLotsInput: null
+    };
 
     function readToolTradeInput() {
       return {
@@ -2604,11 +2613,17 @@
         orders = window.LCPro.Trading.listOpenOrdersDetailed();
       } catch (e) {
         toolOrderId.innerHTML = '<option value="">-- Orders unavailable --</option>';
+        if (actionControls.closeOrderSelect) {
+          actionControls.closeOrderSelect.innerHTML = '<option value="">-- Orders unavailable --</option>';
+        }
         return;
       }
 
       if (!orders.length) {
         toolOrderId.innerHTML = '<option value="">-- No open orders --</option>';
+        if (actionControls.closeOrderSelect) {
+          actionControls.closeOrderSelect.innerHTML = '<option value="">-- No open orders --</option>';
+        }
         return;
       }
 
@@ -2623,6 +2638,14 @@
       }
       toolOrderId.innerHTML = opts.join("");
       if (prev && orders.some((o) => String(o.orderId) === prev)) toolOrderId.value = prev;
+
+      if (actionControls.closeOrderSelect) {
+        const prevHarness = actionControls.closeOrderSelect.value;
+        actionControls.closeOrderSelect.innerHTML = opts.join("");
+        if (prevHarness && orders.some((o) => String(o.orderId) === prevHarness)) {
+          actionControls.closeOrderSelect.value = prevHarness;
+        }
+      }
     }
 
     function readToolActionOverridePayload() {
@@ -2657,22 +2680,38 @@
       if (action === "MARKET_ORDER_TPSL") {
         return {
           instrumentId: input.instrument,
-          side: input.side,
-          lots: input.lots,
-          tpTicks: Math.max(0, Number(input.tpTicks || 0)),
-          slTicks: Math.max(0, Number(input.slTicks || 0)),
-          tickSize: Math.max(0.00001, Number(input.tickSize || 1))
+          side: actionControls.marketSideSelect ? String(actionControls.marketSideSelect.value || input.side) : input.side,
+          lots: actionControls.marketLotsInput ? Number(actionControls.marketLotsInput.value || input.lots) : input.lots,
+          tpTicks: Math.max(
+            0,
+            actionControls.marketTpInput ? Number(actionControls.marketTpInput.value || input.tpTicks || 0) : Number(input.tpTicks || 0)
+          ),
+          slTicks: Math.max(
+            0,
+            actionControls.marketSlInput ? Number(actionControls.marketSlInput.value || input.slTicks || 0) : Number(input.slTicks || 0)
+          ),
+          tickSize: Math.max(
+            0.00001,
+            actionControls.marketTickInput
+              ? Number(actionControls.marketTickInput.value || input.tickSize || 1)
+              : Number(input.tickSize || 1)
+          )
         };
       }
       if (action === "CLOSE_SIDE") {
         return {
           instrumentId: input.instrument,
-          side: input.side
+          side: actionControls.closeSideSelect ? String(actionControls.closeSideSelect.value || input.side) : input.side
         };
       }
       if (action === "CLOSE_ORDER") {
         return {
-          orderId: toolOrderId && toolOrderId.value ? String(toolOrderId.value) : ""
+          orderId:
+            actionControls.closeOrderSelect && actionControls.closeOrderSelect.value
+              ? String(actionControls.closeOrderSelect.value)
+              : toolOrderId && toolOrderId.value
+                ? String(toolOrderId.value)
+                : ""
         };
       }
       if (action === "CLOSE_ALL") {
@@ -2743,8 +2782,22 @@
         toolActionStatus.textContent = "Loaded " + names.length + " action(s): " + names.join(", ");
       }
 
+      actionControls.closeSideSelect = null;
+      actionControls.closeOrderSelect = null;
+      actionControls.marketSideSelect = null;
+      actionControls.marketTpInput = null;
+      actionControls.marketSlInput = null;
+      actionControls.marketTickInput = null;
+      actionControls.marketLotsInput = null;
+
       for (let i = 0; i < names.length; i++) {
         const actionName = names[i];
+        const row = document.createElement("div");
+        row.className = "row";
+        row.style.width = "100%";
+        row.style.gap = "8px";
+        row.style.alignItems = "center";
+
         const btn = document.createElement("button");
         btn.type = "button";
         btn.textContent = "Test " + actionName;
@@ -2756,8 +2809,73 @@
             btn.disabled = false;
           }
         });
-        toolActionButtons.appendChild(btn);
+        row.appendChild(btn);
+
+        if (actionName === "CLOSE_SIDE") {
+          const sideSelect = document.createElement("select");
+          sideSelect.style.width = "150px";
+          sideSelect.innerHTML = '<option value="BUY">BUY</option><option value="SELL">SELL</option>';
+          actionControls.closeSideSelect = sideSelect;
+          row.appendChild(sideSelect);
+        }
+
+        if (actionName === "CLOSE_ORDER") {
+          const orderSelect = document.createElement("select");
+          orderSelect.style.minWidth = "260px";
+          orderSelect.innerHTML = '<option value="">-- No open orders --</option>';
+          actionControls.closeOrderSelect = orderSelect;
+          row.appendChild(orderSelect);
+        }
+
+        if (actionName === "MARKET_ORDER_TPSL") {
+          const sideSelect = document.createElement("select");
+          sideSelect.style.width = "120px";
+          sideSelect.innerHTML = '<option value="BUY">BUY</option><option value="SELL">SELL</option>';
+
+          const lotsInput = document.createElement("input");
+          lotsInput.type = "number";
+          lotsInput.step = "0.01";
+          lotsInput.min = "0.01";
+          lotsInput.style.width = "120px";
+          lotsInput.value = String(readToolTradeInput().lots || 0.01);
+          lotsInput.title = "Lots";
+
+          const tpInput = document.createElement("input");
+          tpInput.type = "number";
+          tpInput.style.width = "110px";
+          tpInput.value = String(readToolTradeInput().tpTicks || 0);
+          tpInput.title = "TP Ticks";
+
+          const slInput = document.createElement("input");
+          slInput.type = "number";
+          slInput.style.width = "110px";
+          slInput.value = String(readToolTradeInput().slTicks || 0);
+          slInput.title = "SL Ticks";
+
+          const tickInput = document.createElement("input");
+          tickInput.type = "number";
+          tickInput.step = "0.0001";
+          tickInput.style.width = "110px";
+          tickInput.value = String(readToolTradeInput().tickSize || 1);
+          tickInput.title = "Tick Size";
+
+          actionControls.marketSideSelect = sideSelect;
+          actionControls.marketLotsInput = lotsInput;
+          actionControls.marketTpInput = tpInput;
+          actionControls.marketSlInput = slInput;
+          actionControls.marketTickInput = tickInput;
+
+          row.appendChild(sideSelect);
+          row.appendChild(lotsInput);
+          row.appendChild(tpInput);
+          row.appendChild(slInput);
+          row.appendChild(tickInput);
+        }
+
+        toolActionButtons.appendChild(row);
       }
+
+      refreshOrderDropdown();
     }
 
     if (btnHealthCheck) {
