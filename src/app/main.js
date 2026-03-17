@@ -59,7 +59,10 @@
     const liveParamsInput = $("strategyLiveParams");
     const btnSave = $("btnSaveStrategyLiveParams");
     const btnReset = $("btnResetStrategyLiveParams");
+    const btnTestConnection = $("btnTestStrategyConnection");
     const statusEl = $("strategyParamsStatus");
+    const connectionStatusEl = $("strategyConnectionStatus");
+    const connectionOutEl = $("strategyConnectionOutput");
     const registry = window.LCPro.Strategy && window.LCPro.Strategy.STRATEGIES;
 
     if (!strategySelect || !strategyInfo || !liveParamsInput || !btnSave || !btnReset || !statusEl || !registry) return;
@@ -137,6 +140,123 @@
       }
     }
 
+    function writeConnectionOutput(obj) {
+      if (!connectionOutEl) return;
+      try {
+        connectionOutEl.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+      } catch (e) {
+        connectionOutEl.textContent = String(obj);
+      }
+    }
+
+    function setConnectionStatus(text, cls) {
+      if (!connectionStatusEl) return;
+      connectionStatusEl.textContent = text;
+      connectionStatusEl.className = "pill " + (cls || "warn");
+    }
+
+    async function runStrategyConnectionTest() {
+      const id = strategySelect.value;
+      const selected = items.find((s) => s.id === id);
+      if (!selected) {
+        setConnectionStatus("Strategy Missing", "bad");
+        writeConnectionOutput({ ok: false, reason: "No strategy selected" });
+        return;
+      }
+
+      const parsed = readJsonSafe(liveParamsInput.value || "{}");
+      const override = parsed.ok && parsed.value && typeof parsed.value === "object" ? parsed.value : {};
+      const params = Object.assign({}, selected.defaultParams || {}, override || {});
+      const liveDefaults = selected.liveDefaults || {};
+      const instrumentId = String(liveDefaults.instrumentId || "NAS100");
+      const timeframeSec = Number(params.timeframeSec || liveDefaults.timeframeSec || 900);
+      const lookback = Math.max(200, Number(liveDefaults.lookback || 900));
+
+      const diagnostics = {
+        ts: new Date().toISOString(),
+        strategy: {
+          id: selected.id,
+          name: selected.name,
+          hasRunner: typeof selected.runSignals === "function"
+        },
+        input: {
+          instrumentId,
+          timeframeSec,
+          lookback,
+          params
+        },
+        modules: {
+          strategyApi: !!(window.LCPro && window.LCPro.Strategy),
+          marketDataApi: !!(window.LCPro && window.LCPro.MarketData),
+          tradingApi: !!(window.LCPro && window.LCPro.Trading)
+        },
+        tradingMethods: {
+          listActions: !!(window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.listActions === "function"),
+          executeAction: !!(
+            window.LCPro &&
+            window.LCPro.Trading &&
+            typeof window.LCPro.Trading.executeAction === "function"
+          )
+        },
+        actionsAvailable: [],
+        chartData: {
+          candlesReceived: 0,
+          candlesClosed: 0,
+          priceStreamChecked: false
+        },
+        signals: {
+          ok: false,
+          count: 0,
+          latest: null
+        }
+      };
+
+      try {
+        if (window.LCPro && window.LCPro.Core && typeof window.LCPro.Core.ensureFramework === "function") {
+          window.LCPro.Core.ensureFramework();
+        }
+
+        try {
+          if (window.LCPro && window.LCPro.MarketData && typeof window.LCPro.MarketData.requestPrices === "function") {
+            window.LCPro.MarketData.requestPrices([instrumentId]);
+            diagnostics.chartData.priceStreamChecked = true;
+          }
+        } catch (e) {}
+
+        if (window.LCPro && window.LCPro.MarketData && typeof window.LCPro.MarketData.requestCandles === "function") {
+          const candleMsg = await window.LCPro.MarketData.requestCandles(instrumentId, timeframeSec, lookback);
+          const candles = candleMsg && Array.isArray(candleMsg.candles) ? candleMsg.candles : [];
+          diagnostics.chartData.candlesReceived = candles.length;
+          diagnostics.chartData.candlesClosed = candles.length > 0 ? Math.max(0, candles.length - 1) : 0;
+        }
+
+        diagnostics.actionsAvailable =
+          window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.listActions === "function"
+            ? window.LCPro.Trading.listActions()
+            : ["BUY", "SELL", "CLOSE_SIDE", "CLOSE_ALL", "CLOSE_ORDER", "MARKET_ORDER_TPSL"];
+
+        const signals = await window.LCPro.Strategy.runSignals(id, {
+          strategyId: id,
+          instrumentId,
+          timeframeSec,
+          lookback,
+          keepN: 3,
+          params
+        });
+        diagnostics.signals.ok = true;
+        diagnostics.signals.count = Array.isArray(signals) ? signals.length : 0;
+        diagnostics.signals.latest = Array.isArray(signals) && signals.length ? signals[0] : null;
+
+        setConnectionStatus("Connected", "ok");
+        writeConnectionOutput(diagnostics);
+      } catch (e) {
+        diagnostics.signals.ok = false;
+        diagnostics.error = e && e.message ? e.message : String(e);
+        setConnectionStatus("Connection Failed", "bad");
+        writeConnectionOutput(diagnostics);
+      }
+    }
+
     btnSave.addEventListener("click", function () {
       const id = strategySelect.value;
       const parsed = readJsonSafe(liveParamsInput.value || "{}");
@@ -160,6 +280,13 @@
       statusEl.textContent = "Using Defaults";
       statusEl.className = "pill warn";
     });
+
+    if (btnTestConnection) {
+      btnTestConnection.addEventListener("click", function () {
+        setConnectionStatus("Testing...", "warn");
+        runStrategyConnectionTest();
+      });
+    }
 
     if (smaTfPreset) smaTfPreset.addEventListener("change", applyQuickControlsToJson);
     if (smaFastPreset) smaFastPreset.addEventListener("change", applyQuickControlsToJson);
@@ -1159,6 +1286,42 @@
       return rt.instrumentState[instrumentId];
     }
 
+    async function executeTradingActionShared(actionName, payload) {
+      const action = String(actionName || "").toUpperCase();
+      const Trading = window.LCPro && window.LCPro.Trading ? window.LCPro.Trading : null;
+      if (!Trading) throw new Error("Trading module unavailable");
+
+      if (typeof Trading.executeAction === "function") {
+        return Trading.executeAction(action, payload || {});
+      }
+
+      const p = payload || {};
+      if (action === "BUY" || action === "SELL") {
+        return Trading.sendMarketOrder(String(p.instrumentId || ""), action, Number(p.lots || 0));
+      }
+      if (action === "MARKET_ORDER_TPSL") {
+        const side = String(p.side || "").toUpperCase();
+        const lots = Number(p.lots || 0);
+        const tpTicks = Math.max(0, Number(p.tpTicks || 0));
+        const slTicks = Math.max(0, Number(p.slTicks || 0));
+        const tickSize = Math.max(0.00001, Number(p.tickSize || 1));
+        if (tpTicks > 0 || slTicks > 0) {
+          return Trading.entryThenModify(String(p.instrumentId || ""), side, lots, tpTicks, slTicks, tickSize);
+        }
+        return Trading.sendMarketOrder(String(p.instrumentId || ""), side, lots);
+      }
+      if (action === "CLOSE_SIDE") {
+        return Trading.closeSideOnInstrument(String(p.instrumentId || ""), String(p.side || ""));
+      }
+      if (action === "CLOSE_ALL") {
+        return Trading.closeAllPositions();
+      }
+      if (action === "CLOSE_ORDER") {
+        return Trading.closeOrderById(String(p.orderId || ""));
+      }
+      throw new Error("Unsupported Trading action: " + action);
+    }
+
     async function closeStrategyTrade(reason, instrumentId) {
       const rt = live.strategyRuntime;
       const keys = instrumentId
@@ -1180,14 +1343,10 @@
 
         if (String(execModeEl.value || "paper").toLowerCase() === "live") {
           try {
-            if (window.LCPro.Trading && typeof window.LCPro.Trading.executeAction === "function") {
-              await window.LCPro.Trading.executeAction("CLOSE_SIDE", {
-                instrumentId: t.instrumentId,
-                side: t.side
-              });
-            } else {
-              await window.LCPro.Trading.closeSideOnInstrument(t.instrumentId, t.side);
-            }
+            await executeTradingActionShared("CLOSE_SIDE", {
+              instrumentId: t.instrumentId,
+              side: t.side
+            });
           } catch (e) {
             log("[LIVE][WARN] Close side failed: " + (e && e.message ? e.message : String(e)));
           }
@@ -1223,37 +1382,20 @@
 
       if (String(execModeEl.value || "paper").toLowerCase() === "live") {
         const orderStartedAt = Date.now();
-        let res = null;
-        if (window.LCPro.Trading && typeof window.LCPro.Trading.executeAction === "function") {
-          if (tpTicks > 0 || slTicks > 0) {
-            res = await window.LCPro.Trading.executeAction("MARKET_ORDER_TPSL", {
-              instrumentId,
-              side: normSide,
-              lots,
-              tpTicks: Math.max(0, tpTicks),
-              slTicks: Math.max(0, slTicks),
-              tickSize
-            });
-          } else {
-            res = await window.LCPro.Trading.executeAction(normSide, {
-              instrumentId,
-              lots
-            });
-          }
-        } else {
-          if (tpTicks > 0 || slTicks > 0) {
-            res = await window.LCPro.Trading.sendMarketOrderWithTpSl(
-              instrumentId,
-              normSide,
-              lots,
-              Math.max(0, tpTicks),
-              Math.max(0, slTicks),
-              tickSize
-            );
-          } else {
-            res = await window.LCPro.Trading.sendMarketOrder(instrumentId, normSide, lots);
-          }
-        }
+        const res =
+          tpTicks > 0 || slTicks > 0
+            ? await executeTradingActionShared("MARKET_ORDER_TPSL", {
+                instrumentId,
+                side: normSide,
+                lots,
+                tpTicks: Math.max(0, tpTicks),
+                slTicks: Math.max(0, slTicks),
+                tickSize
+              })
+            : await executeTradingActionShared(normSide, {
+                instrumentId,
+                lots
+              });
 
         if (!res || res.ok !== true) {
           throw new Error((res && res.reason) || "Broker rejected live entry");
@@ -2448,7 +2590,7 @@
       }
     };
 
-    write("Tools ready (build 20260317-4). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260317-5). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
