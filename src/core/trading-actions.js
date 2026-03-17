@@ -527,6 +527,22 @@
     const attempts = [];
     const closeTradeAction = orderType("CLOSETRADE", 4);
 
+    // On this broker, close-by-id frequently returns code 116 (trade not specified),
+    // while side-close succeeds reliably. Prefer side-close when we can infer side.
+    const preferredSide = inferOrderSide(order);
+    if (instrumentId && preferredSide) {
+      const fallbackSide = await closeSideOnInstrument(String(instrumentId), preferredSide);
+      return {
+        ok: true,
+        fallbackUsed: true,
+        reason: "Used side close directly to avoid close-by-id broker rejection.",
+        instrumentId: String(instrumentId),
+        side: preferredSide,
+        attempts,
+        fallback: fallbackSide
+      };
+    }
+
     // Use a single best identifier to avoid repeated broker errors for unsupported id fields.
     const payload = { tradingAction: closeTradeAction };
     if (instrumentId) payload.instrumentId = String(instrumentId);
