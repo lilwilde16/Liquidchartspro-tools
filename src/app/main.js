@@ -2238,20 +2238,20 @@
   function initBacktesterTab() {
     const strategySelect = $("btStrategySelect");
     const strategyInfo = $("btInfo");
-    const paramsInput = $("btParams");
-    const tradeMgmtInput = $("btTradeMgmt");
     const rangePresetEl = $("btRangePreset");
     const summaryEl = $("btSummary");
     const verificationEl = $("btVerification");
     const optimizerReportEl = $("btOptimizerReport");
     const showVerificationEl = $("btShowVerification");
     const btnRun = $("btnRunStrategyBacktest");
+    const btnTestConnection = $("btnTestBacktestConnection");
     const btnOptimize = $("btnOptimizeBacktest");
-    const btnReset = $("btnResetBtParams");
     const targetWinRateEl = $("btTargetWinRate");
     const maxCandidatesEl = $("btMaxCandidates");
     const execModeEl = $("btExecMode");
     const statusEl = $("btStatus");
+    const connectionStatusEl = $("btConnectionStatus");
+    const connectionOutputEl = $("btConnectionOutput");
     const log = window.LCPro.Debug.createLogger($("btLog"));
     const setStatus = (text, cls) => window.LCPro.Debug.setStatus(statusEl, text, cls);
 
@@ -2260,18 +2260,18 @@
     if (
       !strategySelect ||
       !strategyInfo ||
-      !paramsInput ||
-      !tradeMgmtInput ||
       !rangePresetEl ||
       !summaryEl ||
       !verificationEl ||
       !optimizerReportEl ||
       !btnRun ||
+      !btnTestConnection ||
       !btnOptimize ||
-      !btnReset ||
       !targetWinRateEl ||
       !maxCandidatesEl ||
       !execModeEl ||
+      !connectionStatusEl ||
+      !connectionOutputEl ||
       !registry
     )
       return;
@@ -2281,28 +2281,33 @@
       .map((s) => '<option value="' + s.id + '">' + s.name + "</option>")
       .join("");
 
-    function parseJsonField(raw, label) {
-      try {
-        return JSON.parse(raw || "{}");
-      } catch (e) {
-        throw new Error(label + " JSON is invalid");
-      }
+    function getStrategyDefaults(strategyId) {
+      const s = strategyApi.getStrategy(strategyId);
+      if (!s) throw new Error("Strategy not found: " + strategyId);
+      const params = Object.assign({}, s.defaultParams || {});
+      const tradeManagement = Object.assign({}, s.tradeManagementDefaults || {});
+      const liveDefaults = s.liveDefaults || {};
+      return { strategy: s, params, tradeManagement, liveDefaults };
     }
 
     function getBacktestInputs() {
-      const params = parseJsonField(paramsInput.value || "{}", "Strategy params");
-      const tradeManagement = parseJsonField(tradeMgmtInput.value || "{}", "Trade management");
+      const defaults = getStrategyDefaults(strategySelect.value);
+      const params = defaults.params;
+      const tradeManagement = defaults.tradeManagement;
       if (execModeEl && execModeEl.value) {
         params.strategy_execution_mode = execModeEl.value;
       }
+
+      const defaultLookback = Math.max(200, Number(defaults.liveDefaults.lookback || 900));
+      const defaultKeepN = Math.max(1, Number(defaults.liveDefaults.keepN || 25));
 
       return {
         strategyId: strategySelect.value,
         instrumentId: $("btSym") ? $("btSym").value : "NAS100",
         timeframeSec: parseInt($("btTfSec") ? $("btTfSec").value : "900", 10),
         rangePreset: rangePresetEl.value || "week",
-        lookback: Math.max(200, parseInt($("btLookback") ? $("btLookback").value || "900" : "900", 10)),
-        keepN: Math.max(1, parseInt($("btKeepN") ? $("btKeepN").value || "5" : "5", 10)),
+        lookback: defaultLookback,
+        keepN: Math.max(1, parseInt($("btKeepN") ? $("btKeepN").value || String(defaultKeepN) : String(defaultKeepN), 10)),
         params,
         tradeManagement
       };
@@ -2320,17 +2325,108 @@
         s.id +
         " | " +
         (s.notes || "No notes") +
+        " | liveDefaults=" +
+        JSON.stringify(s.liveDefaults || {}) +
         " | defaultParams=" +
         JSON.stringify(s.defaultParams || {}) +
         " | tradeDefaults=" +
         JSON.stringify(s.tradeManagementDefaults || {});
     }
 
-    function resetParamsToDefault() {
-      const s = strategyApi.getStrategy(strategySelect.value);
-      paramsInput.value = JSON.stringify((s && s.defaultParams) || {}, null, 0);
-      tradeMgmtInput.value = JSON.stringify((s && s.tradeManagementDefaults) || {}, null, 0);
-      updateStrategyInfo();
+    function setBacktestConnectionStatus(text, cls) {
+      if (!connectionStatusEl) return;
+      connectionStatusEl.textContent = text;
+      connectionStatusEl.className = "pill " + (cls || "warn");
+    }
+
+    function writeBacktestConnectionOutput(obj) {
+      if (!connectionOutputEl) return;
+      try {
+        connectionOutputEl.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+      } catch (e) {
+        connectionOutputEl.textContent = String(obj);
+      }
+    }
+
+    async function runBacktestConnectionTest() {
+      setBacktestConnectionStatus("Testing...", "warn");
+      try {
+        const input = getBacktestInputs();
+        const diagnostics = {
+          ts: new Date().toISOString(),
+          strategyId: input.strategyId,
+          instrumentId: input.instrumentId,
+          timeframeSec: input.timeframeSec,
+          rangePreset: input.rangePreset,
+          lookback: input.lookback,
+          keepN: input.keepN,
+          modules: {
+            strategyApi: !!(window.LCPro && window.LCPro.Strategy),
+            marketDataApi: !!(window.LCPro && window.LCPro.MarketData),
+            tradingApi: !!(window.LCPro && window.LCPro.Trading)
+          },
+          tradingMethods: {
+            listActions: !!(window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.listActions === "function"),
+            executeAction: !!(
+              window.LCPro &&
+              window.LCPro.Trading &&
+              typeof window.LCPro.Trading.executeAction === "function"
+            )
+          },
+          chartData: {
+            priceStreamChecked: false,
+            candlesReceived: 0,
+            candlesClosed: 0
+          },
+          runSignalsProbe: {
+            ok: false,
+            count: 0,
+            latest: null
+          },
+          runBacktestProbe: {
+            ok: false,
+            tradeCount: 0,
+            winRate: 0
+          }
+        };
+
+        try {
+          if (window.LCPro && window.LCPro.MarketData && typeof window.LCPro.MarketData.requestPrices === "function") {
+            window.LCPro.MarketData.requestPrices([input.instrumentId]);
+            diagnostics.chartData.priceStreamChecked = true;
+          }
+        } catch (e) {}
+
+        if (window.LCPro && window.LCPro.MarketData && typeof window.LCPro.MarketData.requestCandles === "function") {
+          const msg = await window.LCPro.MarketData.requestCandles(input.instrumentId, input.timeframeSec, input.lookback);
+          const candles = msg && Array.isArray(msg.candles) ? msg.candles : [];
+          diagnostics.chartData.candlesReceived = candles.length;
+          diagnostics.chartData.candlesClosed = candles.length > 0 ? Math.max(0, candles.length - 1) : 0;
+        }
+
+        const signals = await strategyApi.runSignals(input.strategyId, input);
+        diagnostics.runSignalsProbe.ok = true;
+        diagnostics.runSignalsProbe.count = Array.isArray(signals) ? signals.length : 0;
+        diagnostics.runSignalsProbe.latest = Array.isArray(signals) && signals.length ? signals[0] : null;
+
+        const report = await strategyApi.runBacktest(input.strategyId, input);
+        diagnostics.runBacktestProbe.ok = true;
+        diagnostics.runBacktestProbe.tradeCount =
+          report && report.summary && Number.isFinite(Number(report.summary.totalTrades))
+            ? Number(report.summary.totalTrades)
+            : 0;
+        diagnostics.runBacktestProbe.winRate =
+          report && report.summary && Number.isFinite(Number(report.summary.winRate)) ? Number(report.summary.winRate) : 0;
+
+        setBacktestConnectionStatus("Connected", "ok");
+        writeBacktestConnectionOutput(diagnostics);
+      } catch (e) {
+        setBacktestConnectionStatus("Connection Failed", "bad");
+        writeBacktestConnectionOutput({
+          ts: new Date().toISOString(),
+          error: e && e.message ? e.message : String(e)
+        });
+      }
     }
 
     function renderSummary(report) {
@@ -2524,9 +2620,6 @@
           maxCandidates
         });
 
-        paramsInput.value = JSON.stringify(result.bestParams || {}, null, 0);
-        tradeMgmtInput.value = JSON.stringify(result.bestTradeManagement || {}, null, 0);
-
         if (result.best) {
           renderSummary(result.best);
           renderTrades(result.best);
@@ -2553,20 +2646,22 @@
     }
 
     strategySelect.addEventListener("change", function () {
-      resetParamsToDefault();
+      updateStrategyInfo();
+      setBacktestConnectionStatus("Not Tested", "warn");
     });
     btnRun.addEventListener("click", runSelectedStrategyBacktest);
+    btnTestConnection.addEventListener("click", runBacktestConnectionTest);
     btnOptimize.addEventListener("click", runOptimizer);
-    btnReset.addEventListener("click", resetParamsToDefault);
 
     updateStrategyInfo();
-    if (!paramsInput.value || paramsInput.value.trim() === "") resetParamsToDefault();
+    setBacktestConnectionStatus("Not Tested", "warn");
 
     window.LCPro.AppBacktester = {
       run: runSelectedStrategyBacktest,
-      resetParams: resetParamsToDefault,
+      resetParams: updateStrategyInfo,
       setEnabled: function (enabled) {
         btnRun.disabled = !enabled;
+        btnTestConnection.disabled = !enabled;
         btnOptimize.disabled = !enabled;
       },
       setStatus
@@ -2590,7 +2685,7 @@
       }
     };
 
-    write("Tools ready (build 20260317-5). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260317-6). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");

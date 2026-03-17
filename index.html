@@ -383,10 +383,6 @@
         </select>
       </div>
       <div class="field">
-        <label>Lookback candles</label>
-        <input id="btLookback" type="number" min="200" max="5000" value="900" />
-      </div>
-      <div class="field">
         <label>Backtest range</label>
         <select id="btRangePreset">
           <option value="day">Last Day</option>
@@ -400,20 +396,11 @@
       </div>
     </div>
     <div class="row" style="margin-top:10px;">
-      <div class="field" style="min-width:280px;">
-        <label>Strategy signal params (JSON)</label>
-        <textarea id="btParams" rows="3">{"fastLen":9,"slowLen":21}</textarea>
-      </div>
-      <div class="field" style="min-width:280px;">
-        <label>Trade management (JSON)</label>
-        <textarea id="btTradeMgmt" rows="3">{"slTicks":55,"tpTicks":55,"tickSize":1,"exitOnOpposite":true,"bothHitModel":"sl_first"}</textarea>
-      </div>
-    </div>
-    <div class="row" style="margin-top:10px;">
       <button id="btnRunStrategyBacktest" class="primary" type="button" disabled>Run Strategy Backtest</button>
+      <button id="btnTestBacktestConnection" type="button" disabled>Test Backtest Connection</button>
       <button id="btnOptimizeBacktest" type="button" disabled>Optimize To Target Win Rate</button>
-      <button id="btnResetBtParams" type="button">Reset Params</button>
       <span class="pill" id="btStatus">Waiting...</span>
+      <span class="pill" id="btConnectionStatus">Not Tested</span>
       <label style="display:flex;align-items:center;gap:6px;margin:0;">
         <input id="btShowVerification" type="checkbox" checked style="width:auto;" />
         Show verification diagnostics
@@ -438,6 +425,7 @@
       </div>
     </div>
     <div id="btInfo" class="small">Choose a strategy and run.</div>
+    <pre id="btConnectionOutput">Backtester connection diagnostics will appear here.</pre>
   </div>
 
   <div class="card">
@@ -502,28 +490,28 @@
   </div>
 </div>
 </div>
-<script src="./src/core/framework.js?v=20260317-5"></script>
-<script src="./src/core/market-data.js?v=20260317-5"></script>
-<script src="./src/core/trading-actions.js?v=20260317-5"></script>
-<script src="./src/backtest/sma-crossover.js?v=20260317-5"></script>
-<script src="./src/strategy/actions.js?v=20260317-5"></script>
-<script src="./src/debug/logger.js?v=20260317-5"></script>
-<script src="./src/csvrg/config.js?v=20260317-5"></script>
-<script src="./src/csvrg/state.js?v=20260317-5"></script>
-<script src="./src/csvrg/indicators.js?v=20260317-5"></script>
-<script src="./src/csvrg/market-data-module.js?v=20260317-5"></script>
-<script src="./src/csvrg/session-manager.js?v=20260317-5"></script>
-<script src="./src/csvrg/logger-analytics.js?v=20260317-5"></script>
-<script src="./src/csvrg/currency-strength.js?v=20260317-5"></script>
-<script src="./src/csvrg/pair-selection.js?v=20260317-5"></script>
-<script src="./src/csvrg/regime-filter.js?v=20260317-5"></script>
-<script src="./src/csvrg/volatility-reversion.js?v=20260317-5"></script>
-<script src="./src/csvrg/grid-execution.js?v=20260317-5"></script>
-<script src="./src/csvrg/trade-manager.js?v=20260317-5"></script>
-<script src="./src/csvrg/risk-management.js?v=20260317-5"></script>
-<script src="./src/csvrg/scoring.js?v=20260317-5"></script>
-<script src="./src/csvrg/counter-scalp.js?v=20260317-5"></script>
-<script src="./src/csvrg/engine.js?v=20260317-5"></script>
-<script src="./src/app/main.js?v=20260317-5"></script>
+<script src="./src/core/framework.js?v=20260317-6"></script>
+<script src="./src/core/market-data.js?v=20260317-6"></script>
+<script src="./src/core/trading-actions.js?v=20260317-6"></script>
+<script src="./src/backtest/sma-crossover.js?v=20260317-6"></script>
+<script src="./src/strategy/actions.js?v=20260317-6"></script>
+<script src="./src/debug/logger.js?v=20260317-6"></script>
+<script src="./src/csvrg/config.js?v=20260317-6"></script>
+<script src="./src/csvrg/state.js?v=20260317-6"></script>
+<script src="./src/csvrg/indicators.js?v=20260317-6"></script>
+<script src="./src/csvrg/market-data-module.js?v=20260317-6"></script>
+<script src="./src/csvrg/session-manager.js?v=20260317-6"></script>
+<script src="./src/csvrg/logger-analytics.js?v=20260317-6"></script>
+<script src="./src/csvrg/currency-strength.js?v=20260317-6"></script>
+<script src="./src/csvrg/pair-selection.js?v=20260317-6"></script>
+<script src="./src/csvrg/regime-filter.js?v=20260317-6"></script>
+<script src="./src/csvrg/volatility-reversion.js?v=20260317-6"></script>
+<script src="./src/csvrg/grid-execution.js?v=20260317-6"></script>
+<script src="./src/csvrg/trade-manager.js?v=20260317-6"></script>
+<script src="./src/csvrg/risk-management.js?v=20260317-6"></script>
+<script src="./src/csvrg/scoring.js?v=20260317-6"></script>
+<script src="./src/csvrg/counter-scalp.js?v=20260317-6"></script>
+<script src="./src/csvrg/engine.js?v=20260317-6"></script>
+<script src="./src/app/main.js?v=20260317-6"></script>
 </body>
 </html>
