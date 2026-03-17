@@ -80,3 +80,23 @@ engine.state.analytics.events.slice(-20);
 - `LCPro.Debug.dumpOrderPositionState()`
 - `LCPro.MarketData.requestCandles("NAS100", 900, 300)`
 - `LCPro.Trading.entryThenModify(...)`
+
+## Repo CSV Export Server
+
+To save CSV exports directly into the workspace repo, run:
+
+```bash
+node repo-export-server.js
+```
+
+Then open the app through the server at:
+
+```text
+http://localhost:8787
+```
+
+The Tools tab `Save CSV To Repo` button writes files into:
+
+```text
+exports/
+```

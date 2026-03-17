@@ -2712,6 +2712,7 @@
     const btnCopyToolsOutput = $("btnCopyToolsOutput");
     const btnExportCsvFromDate = $("btnExportCsvFromDate");
     const btnCopyCsvText = $("btnCopyCsvText");
+    const btnSaveCsvToRepo = $("btnSaveCsvToRepo");
     const toolCsvExportStatus = $("toolCsvExportStatus");
     const toolCsvDownloadLink = $("toolCsvDownloadLink");
     const toolCsvPreview = $("toolCsvPreview");
@@ -2730,6 +2731,7 @@
       marketLotsInput: null
     };
     let activeCsvUrl = "";
+    let activeCsvFileName = "";
 
     function candleTimeMs(c) {
       if (!c || typeof c !== "object") return 0;
@@ -2774,6 +2776,10 @@
       if (btnCopyCsvText) {
         btnCopyCsvText.style.display = "none";
       }
+      if (btnSaveCsvToRepo) {
+        btnSaveCsvToRepo.style.display = "none";
+      }
+      activeCsvFileName = "";
     }
 
     function setPreparedCsvLink(url, fileName, count) {
@@ -2783,6 +2789,8 @@
       toolCsvDownloadLink.textContent = "Download Prepared CSV (" + count + " rows)";
       toolCsvDownloadLink.style.display = "inline-block";
       if (btnCopyCsvText) btnCopyCsvText.style.display = "inline-block";
+      if (btnSaveCsvToRepo) btnSaveCsvToRepo.style.display = "inline-block";
+      activeCsvFileName = fileName;
     }
 
     function setCsvExportStatus(text) {
@@ -2817,6 +2825,53 @@
       toolCsvPreview.select();
       toolCsvPreview.setSelectionRange(0, toolCsvPreview.value.length);
       return true;
+    }
+
+    function getRepoExportBaseUrl() {
+      const loc = window.location;
+      if (loc && /^https?:$/i.test(String(loc.protocol || ""))) {
+        return String(loc.origin || "");
+      }
+      return "http://127.0.0.1:8787";
+    }
+
+    async function saveCsvToRepo() {
+      const csvText = toolCsvPreview ? String(toolCsvPreview.value || "") : "";
+      if (!csvText.trim()) {
+        setCsvExportStatus("Prepare a CSV before saving it to the repo.");
+        return;
+      }
+
+      const instrument = $("toolCsvInstrument") ? String($("toolCsvInstrument").value || "NAS100") : "NAS100";
+      const timeframeSec = Math.max(10, parseInt($("toolCsvTimeframeSec") ? $("toolCsvTimeframeSec").value : "60", 10) || 60);
+      const fromRaw = $("toolCsvFromDate") ? String($("toolCsvFromDate").value || "").trim() : "from";
+      const toRaw = $("toolCsvToDate") ? String($("toolCsvToDate").value || "").trim() : "now";
+      const fileName =
+        activeCsvFileName ||
+        instrument.replace(/[^A-Za-z0-9_-]/g, "_") + "_" + timeframeSec + "s_" + fromRaw + "_" + toRaw + ".csv";
+      const endpoint = getRepoExportBaseUrl().replace(/\/$/, "") + "/api/save-csv";
+
+      setCsvExportStatus("Saving CSV to repo...");
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: fileName, csvText: csvText })
+      });
+
+      let payload = null;
+      try {
+        payload = await res.json();
+      } catch (e) {
+        payload = null;
+      }
+
+      if (!res.ok || !payload || payload.ok !== true) {
+        const msg = payload && payload.error ? payload.error : "Repo save service is unavailable";
+        throw new Error(msg + ". Open the app from the repo export server on port 8787 or make sure it is running.");
+      }
+
+      setCsvExportStatus("Saved to repo: " + payload.relativePath);
+      write({ action: "save_csv_to_repo", status: "saved", fileName: fileName, relativePath: payload.relativePath, bytes: payload.bytes });
     }
 
     async function exportCsvFromDate() {
@@ -3645,6 +3700,20 @@
         }
 
         setCsvExportStatus("CSV is ready, but copy failed. Select the preview manually.");
+      });
+    }
+
+    if (btnSaveCsvToRepo) {
+      btnSaveCsvToRepo.addEventListener("click", async function () {
+        btnSaveCsvToRepo.disabled = true;
+        try {
+          await saveCsvToRepo();
+        } catch (e) {
+          setCsvExportStatus(e && e.message ? e.message : String(e));
+          write({ action: "save_csv_to_repo", error: e && e.message ? e.message : String(e) });
+        } finally {
+          btnSaveCsvToRepo.disabled = false;
+        }
       });
     }
 
