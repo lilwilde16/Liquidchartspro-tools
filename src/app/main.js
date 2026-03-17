@@ -2459,6 +2459,9 @@
     const btnChangeTpSlSelected = $("btnChangeTpSlSelected");
     const btnCloseAllPositions = $("btnCloseAllPositions");
     const btnCloseOrderById = $("btnCloseOrderById");
+    const btnRefreshActionButtons = $("btnRefreshActionButtons");
+    const toolActionButtons = $("toolActionButtons");
+    const toolActionPayload = $("toolActionPayload");
     const toolOrderId = $("toolOrderId");
     let entrySubmitInFlight = false;
 
@@ -2621,6 +2624,132 @@
       if (prev && orders.some((o) => String(o.orderId) === prev)) toolOrderId.value = prev;
     }
 
+    function readToolActionOverridePayload() {
+      if (!toolActionPayload) return {};
+      const raw = String(toolActionPayload.value || "{}").trim();
+      if (!raw) return {};
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          write("Payload override must be a JSON object.");
+          return null;
+        }
+        return parsed;
+      } catch (e) {
+        write("Invalid payload override JSON: " + (e && e.message ? e.message : String(e)));
+        return null;
+      }
+    }
+
+    function buildDefaultActionPayload(actionName) {
+      const input = readToolTradeInput();
+      const action = String(actionName || "").toUpperCase();
+      if (action === "BUY" || action === "SELL") {
+        return {
+          instrumentId: input.instrument,
+          lots: input.lots,
+          tpTicks: Math.max(0, Number(input.tpTicks || 0)),
+          slTicks: Math.max(0, Number(input.slTicks || 0)),
+          tickSize: Math.max(0.00001, Number(input.tickSize || 1))
+        };
+      }
+      if (action === "MARKET_ORDER_TPSL") {
+        return {
+          instrumentId: input.instrument,
+          side: input.side,
+          lots: input.lots,
+          tpTicks: Math.max(0, Number(input.tpTicks || 0)),
+          slTicks: Math.max(0, Number(input.slTicks || 0)),
+          tickSize: Math.max(0.00001, Number(input.tickSize || 1))
+        };
+      }
+      if (action === "CLOSE_SIDE") {
+        return {
+          instrumentId: input.instrument,
+          side: input.side
+        };
+      }
+      if (action === "CLOSE_ORDER") {
+        return {
+          orderId: toolOrderId && toolOrderId.value ? String(toolOrderId.value) : ""
+        };
+      }
+      if (action === "CLOSE_ALL") {
+        return {};
+      }
+      return {
+        instrumentId: input.instrument,
+        side: input.side,
+        lots: input.lots,
+        tpTicks: Math.max(0, Number(input.tpTicks || 0)),
+        slTicks: Math.max(0, Number(input.slTicks || 0)),
+        tickSize: Math.max(0.00001, Number(input.tickSize || 1)),
+        orderId: toolOrderId && toolOrderId.value ? String(toolOrderId.value) : ""
+      };
+    }
+
+    async function runRegisteredAction(actionName) {
+      const action = String(actionName || "").toUpperCase();
+      if (!window.LCPro || !window.LCPro.Trading || typeof window.LCPro.Trading.executeAction !== "function") {
+        write("Trading action executor is unavailable.");
+        return;
+      }
+
+      const override = readToolActionOverridePayload();
+      if (override == null) return;
+
+      const payload = Object.assign({}, buildDefaultActionPayload(action), override);
+      write({ action, payload, status: "running" });
+      try {
+        const result = await window.LCPro.Trading.executeAction(action, payload);
+        write({ action, payload, result });
+        refreshOrderDropdown();
+      } catch (e) {
+        write({ action, payload, error: e && e.message ? e.message : String(e) });
+      }
+    }
+
+    function renderActionButtons() {
+      if (!toolActionButtons) return;
+      const actions =
+        window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.listActions === "function"
+          ? window.LCPro.Trading.listActions()
+          : [];
+      const names = Array.isArray(actions)
+        ? actions
+            .map(function (name) {
+              return String(name || "").toUpperCase();
+            })
+            .filter(Boolean)
+            .sort()
+        : [];
+
+      toolActionButtons.innerHTML = "";
+      if (!names.length) {
+        const msg = document.createElement("div");
+        msg.className = "small";
+        msg.textContent = "No trading actions found in registry.";
+        toolActionButtons.appendChild(msg);
+        return;
+      }
+
+      for (let i = 0; i < names.length; i++) {
+        const actionName = names[i];
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Test " + actionName;
+        btn.addEventListener("click", async function () {
+          btn.disabled = true;
+          try {
+            await runRegisteredAction(actionName);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+        toolActionButtons.appendChild(btn);
+      }
+    }
+
     if (btnHealthCheck) {
       btnHealthCheck.addEventListener("click", function () {
         write(window.LCPro.Debug.healthCheck());
@@ -2720,7 +2849,15 @@
       });
     }
 
+    if (btnRefreshActionButtons) {
+      btnRefreshActionButtons.addEventListener("click", function () {
+        renderActionButtons();
+        write("Action buttons refreshed from trading registry.");
+      });
+    }
+
     refreshOrderDropdown();
+    renderActionButtons();
     setInterval(refreshOrderDropdown, 5000);
   }
 

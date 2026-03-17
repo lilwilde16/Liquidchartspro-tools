@@ -514,6 +514,21 @@
     </div>
     <pre id="toolsOutput">Tools output...</pre>
   </div>
+
+  <div class="card">
+    <div class="title">Strategy Action Test Harness</div>
+    <div class="small">Buttons are generated from the trading action registry so you can test the same action names strategy execution uses.</div>
+    <div class="row" style="margin-top:10px;">
+      <button id="btnRefreshActionButtons" type="button">Refresh Action Buttons</button>
+    </div>
+    <div id="toolActionButtons" class="row" style="margin-top:10px;"></div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field" style="min-width:280px;">
+        <label>Optional Payload Override (JSON merged on top)</label>
+        <textarea id="toolActionPayload" rows="4">{}</textarea>
+      </div>
+    </div>
+  </div>
 </div>
 </div>
 <script src="./src/core/framework.js"></script>
