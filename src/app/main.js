@@ -2487,22 +2487,10 @@
           : $("toolLots")
             ? Number($("toolLots").value)
             : 0.01,
-        side: $("toolActionSide") ? $("toolActionSide").value : $("toolSide") ? $("toolSide").value : "BUY",
-        tpTicks: $("toolActionTpTicks")
-          ? Number($("toolActionTpTicks").value)
-          : $("toolTpTicks")
-            ? Number($("toolTpTicks").value)
-            : 55,
-        slTicks: $("toolActionSlTicks")
-          ? Number($("toolActionSlTicks").value)
-          : $("toolSlTicks")
-            ? Number($("toolSlTicks").value)
-            : 55,
-        tickSize: $("toolActionTickSize")
-          ? Number($("toolActionTickSize").value)
-          : $("toolTickSize")
-            ? Number($("toolTickSize").value)
-            : 1
+        side: $("toolSide") ? $("toolSide").value : "BUY",
+        tpTicks: $("toolTpTicks") ? Number($("toolTpTicks").value) : 0,
+        slTicks: $("toolSlTicks") ? Number($("toolSlTicks").value) : 0,
+        tickSize: $("toolTickSize") ? Number($("toolTickSize").value) : 1
       };
     }
 
@@ -2699,10 +2687,7 @@
       if (action === "BUY" || action === "SELL") {
         return {
           instrumentId: input.instrument,
-          lots: input.lots,
-          tpTicks: Math.max(0, Number(input.tpTicks || 0)),
-          slTicks: Math.max(0, Number(input.slTicks || 0)),
-          tickSize: Math.max(0.00001, Number(input.tickSize || 1))
+          lots: input.lots
         };
       }
       if (action === "MARKET_ORDER_TPSL") {
