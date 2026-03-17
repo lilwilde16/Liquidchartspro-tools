@@ -258,6 +258,17 @@
     return rrTarget;
   }
 
+  function toMs(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return n < 1e12 ? Math.round(n * 1000) : Math.round(n);
+  }
+
+  function candleTimeMs(c) {
+    if (!c || typeof c !== "object") return 0;
+    return toMs(c.date || c.t || c.ts || c.time || 0);
+  }
+
   function parseHmToMinutes(hhmm, fallback) {
     const src = String(hhmm || fallback || "08:30").trim();
     const m = /^(\d{1,2}):(\d{2})$/.exec(src);
