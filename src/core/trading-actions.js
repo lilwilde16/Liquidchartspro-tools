@@ -485,14 +485,14 @@
       if (!side) return { ok: false, reason: "Missing/invalid side" };
       if (!Number.isFinite(lots) || lots <= 0) return { ok: false, reason: "Invalid lots" };
       if (!Number.isFinite(tickSize) || tickSize <= 0) return { ok: false, reason: "Invalid tickSize" };
-      return sendMarketOrderWithTpSl(
-        instrumentId,
-        side,
-        lots,
-        Math.max(0, Number.isFinite(tpTicks) ? tpTicks : 0),
-        Math.max(0, Number.isFinite(slTicks) ? slTicks : 0),
-        tickSize
-      );
+
+      const tp = Math.max(0, Number.isFinite(tpTicks) ? tpTicks : 0);
+      const sl = Math.max(0, Number.isFinite(slTicks) ? slTicks : 0);
+      if (tp <= 0 && sl <= 0) {
+        return sendMarketOrder(instrumentId, side, lots);
+      }
+
+      return entryThenModify(instrumentId, side, lots, tp, sl, tickSize);
     }
 
     if (action === "CLOSE_SIDE") {

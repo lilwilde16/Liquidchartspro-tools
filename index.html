@@ -465,60 +465,43 @@
 
 <div id="pageTools" class="page hidden">
   <div class="card">
-    <div class="title">Tools</div>
-    <div class="row">
-      <button id="btnHealthCheck" type="button">Health Check</button>
-      <button id="btnDumpState" type="button">Dump Orders/Positions</button>
-      <button id="btnRefreshOrders" type="button">Refresh Order IDs</button>
-      <button id="btnTestCalc" type="button">Test TP/SL Calc</button>
-      <button id="btnTestBuyTpSl" class="primary" type="button">Enter BUY w/ TP+SL</button>
-      <button id="btnTestSellTpSl" class="primary" type="button">Enter SELL w/ TP+SL</button>
-      <button id="btnChangeTpSlSelected" type="button">Change TP/SL (Selected)</button>
-      <button id="btnCloseAllPositions" type="button">Close All Positions</button>
-      <button id="btnCloseOrderById" type="button">Close Selected Position</button>
-    </div>
+    <div class="title">Strategy Action Test Harness</div>
+    <div class="small">Buttons are generated from the trading action registry so you can test the same action names strategy execution uses.</div>
+    <div id="toolActionStatus" class="small" style="margin-top:6px;">Loading action registry...</div>
     <div class="row" style="margin-top:10px;">
       <div class="field">
-        <label>Instrument</label>
-        <input id="toolInstrument" type="text" value="NAS100" />
+        <label>Pair Selection</label>
+        <select id="toolActionInstrument">
+          <option value="NAS100" selected>NAS100</option>
+          <option value="EUR/USD">EUR/USD</option>
+          <option value="GBP/USD">GBP/USD</option>
+          <option value="USD/JPY">USD/JPY</option>
+        </select>
       </div>
       <div class="field">
-        <label>Lots</label>
-        <input id="toolLots" type="number" value="0.01" step="0.01" min="0.01" />
+        <label>Lots (Default)</label>
+        <input id="toolActionLots" type="number" value="0.01" step="0.01" min="0.01" />
       </div>
       <div class="field">
-        <label>Side</label>
-        <select id="toolSide">
-          <option value="BUY">BUY</option>
+        <label>Side (Default)</label>
+        <select id="toolActionSide">
+          <option value="BUY" selected>BUY</option>
           <option value="SELL">SELL</option>
         </select>
       </div>
       <div class="field">
-        <label>TP Ticks</label>
-        <input id="toolTpTicks" type="number" value="55" />
+        <label>TP Ticks (Default)</label>
+        <input id="toolActionTpTicks" type="number" value="55" />
       </div>
       <div class="field">
-        <label>SL Ticks</label>
-        <input id="toolSlTicks" type="number" value="55" />
+        <label>SL Ticks (Default)</label>
+        <input id="toolActionSlTicks" type="number" value="55" />
       </div>
       <div class="field">
-        <label>Tick Size</label>
-        <input id="toolTickSize" type="number" value="1" step="0.0001" />
-      </div>
-      <div class="field">
-        <label>Open Order ID</label>
-        <select id="toolOrderId">
-          <option value="">-- No open orders --</option>
-        </select>
+        <label>Tick Size (Default)</label>
+        <input id="toolActionTickSize" type="number" value="1" step="0.0001" />
       </div>
     </div>
-    <pre id="toolsOutput">Tools output...</pre>
-  </div>
-
-  <div class="card">
-    <div class="title">Strategy Action Test Harness</div>
-    <div class="small">Buttons are generated from the trading action registry so you can test the same action names strategy execution uses.</div>
-    <div id="toolActionStatus" class="small" style="margin-top:6px;">Loading action registry...</div>
     <div class="row" style="margin-top:10px;">
       <button id="btnRefreshActionButtons" type="button">Refresh Action Buttons</button>
     </div>
@@ -529,6 +512,7 @@
         <textarea id="toolActionPayload" rows="4">{}</textarea>
       </div>
     </div>
+    <pre id="toolsOutput">Tools output...</pre>
   </div>
 </div>
 </div>

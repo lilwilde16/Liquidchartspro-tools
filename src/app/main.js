@@ -2477,12 +2477,32 @@
 
     function readToolTradeInput() {
       return {
-        instrument: $("toolInstrument") ? $("toolInstrument").value : "NAS100",
-        lots: $("toolLots") ? Number($("toolLots").value) : 0.01,
-        side: $("toolSide") ? $("toolSide").value : "BUY",
-        tpTicks: $("toolTpTicks") ? Number($("toolTpTicks").value) : 55,
-        slTicks: $("toolSlTicks") ? Number($("toolSlTicks").value) : 55,
-        tickSize: $("toolTickSize") ? Number($("toolTickSize").value) : 1
+        instrument: $("toolActionInstrument")
+          ? $("toolActionInstrument").value
+          : $("toolInstrument")
+            ? $("toolInstrument").value
+            : "NAS100",
+        lots: $("toolActionLots")
+          ? Number($("toolActionLots").value)
+          : $("toolLots")
+            ? Number($("toolLots").value)
+            : 0.01,
+        side: $("toolActionSide") ? $("toolActionSide").value : $("toolSide") ? $("toolSide").value : "BUY",
+        tpTicks: $("toolActionTpTicks")
+          ? Number($("toolActionTpTicks").value)
+          : $("toolTpTicks")
+            ? Number($("toolTpTicks").value)
+            : 55,
+        slTicks: $("toolActionSlTicks")
+          ? Number($("toolActionSlTicks").value)
+          : $("toolSlTicks")
+            ? Number($("toolSlTicks").value)
+            : 55,
+        tickSize: $("toolActionTickSize")
+          ? Number($("toolActionTickSize").value)
+          : $("toolTickSize")
+            ? Number($("toolTickSize").value)
+            : 1
       };
     }
 
@@ -2606,13 +2626,13 @@
     }
 
     function refreshOrderDropdown() {
-      if (!toolOrderId) return;
+      if (!toolOrderId && !actionControls.closeOrderSelect) return;
 
       let orders = [];
       try {
         orders = window.LCPro.Trading.listOpenOrdersDetailed();
       } catch (e) {
-        toolOrderId.innerHTML = '<option value="">-- Orders unavailable --</option>';
+        if (toolOrderId) toolOrderId.innerHTML = '<option value="">-- Orders unavailable --</option>';
         if (actionControls.closeOrderSelect) {
           actionControls.closeOrderSelect.innerHTML = '<option value="">-- Orders unavailable --</option>';
         }
@@ -2620,14 +2640,14 @@
       }
 
       if (!orders.length) {
-        toolOrderId.innerHTML = '<option value="">-- No open orders --</option>';
+        if (toolOrderId) toolOrderId.innerHTML = '<option value="">-- No open orders --</option>';
         if (actionControls.closeOrderSelect) {
           actionControls.closeOrderSelect.innerHTML = '<option value="">-- No open orders --</option>';
         }
         return;
       }
 
-      const prev = toolOrderId.value;
+      const prev = toolOrderId ? toolOrderId.value : "";
       const opts = ['<option value="">-- Select order --</option>'];
       for (let i = 0; i < orders.length; i++) {
         const id = String(orders[i].orderId || "");
@@ -2636,8 +2656,10 @@
         if (!id) continue;
         opts.push('<option value="' + id + '">' + instrument + " | " + side + " | #" + id + "</option>");
       }
-      toolOrderId.innerHTML = opts.join("");
-      if (prev && orders.some((o) => String(o.orderId) === prev)) toolOrderId.value = prev;
+      if (toolOrderId) {
+        toolOrderId.innerHTML = opts.join("");
+        if (prev && orders.some((o) => String(o.orderId) === prev)) toolOrderId.value = prev;
+      }
 
       if (actionControls.closeOrderSelect) {
         const prevHarness = actionControls.closeOrderSelect.value;
