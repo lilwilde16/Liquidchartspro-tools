@@ -1354,7 +1354,7 @@
       bothHitModel: tmInput.bothHitModel === "tp_first" ? "tp_first" : "sl_first"
     };
 
-    const signalSet = await runNas100HybridScalper({
+      const signalArray = await runNas100HybridScalper({
       instrumentId: input.instrumentId,
       timeframeSec: input.timeframeSec || 300,
       lookback: input.lookback,
@@ -1362,7 +1362,27 @@
       params: p
     });
 
-    const report = evaluateSmaFromSignalSet({ signals: signalSet }, strategy, p, tm);
+      // Load candles to map signals to indices
+      const m5Msg = await window.LCPro.MarketData.requestCandles(input.instrumentId, 300, input.lookback * 5);
+      const candles = m5Msg && m5Msg.candles ? m5Msg.candles : [];
+
+      // Build candle time map for fast lookup
+      const candleTimeMap = {};
+      for (let i = 0; i < candles.length; i++) {
+        const t = candleTimeMs(candles[i]);
+        if (t > 0) candleTimeMap[t] = i;
+      }
+
+      // Map signals to include idx property
+      const allSignals = signalArray.map((sig) => ({
+        type: sig.type,
+        price: sig.price,
+        time: sig.time,
+        label: sig.label,
+        idx: candleTimeMap[sig.time] !== undefined ? candleTimeMap[sig.time] : 0
+      }));
+
+      const report = evaluateSmaFromSignalSet({ allSignals: allSignals, candlesChron: candles }, strategy, p, tm);
     report.rangePreset = input.rangePreset || "week";
     return report;
   }
