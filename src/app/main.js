@@ -2696,7 +2696,7 @@
       }
     };
 
-    write("Tools ready (build 20260317-10). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260317-14). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
@@ -2746,6 +2746,47 @@
       const suffix = endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z";
       const ms = Date.parse(raw + suffix);
       return Number.isFinite(ms) ? ms : 0;
+    }
+
+    async function requestCandlesForDateRange(instrument, timeframeSec, fromMs, toMs) {
+      const spanMs = Math.max(1, toMs - fromMs);
+      const roughBars = Math.ceil(spanMs / (timeframeSec * 1000)) + 20;
+      const retryTargets = [
+        Math.max(200, roughBars),
+        Math.max(400, roughBars * 2),
+        Math.max(800, roughBars * 4)
+      ];
+      const maxLookback = 500000;
+
+      let candles = [];
+      let requestedLookback = 0;
+      let tries = 0;
+
+      for (let i = 0; i < retryTargets.length; i++) {
+        tries += 1;
+        requestedLookback = Math.min(maxLookback, retryTargets[i]);
+
+        const msg = await window.LCPro.MarketData.requestCandles(instrument, timeframeSec, requestedLookback);
+        candles = msg && Array.isArray(msg.candles) ? msg.candles : [];
+
+        if (!candles.length) break;
+
+        const oldestMs = candleTimeMs(candles[candles.length - 1]);
+        const newestMs = candleTimeMs(candles[0]);
+        const reachedFrom = oldestMs > 0 && oldestMs <= fromMs;
+        const exhaustedSource = candles.length < requestedLookback;
+        const invalidWindow = newestMs > 0 && oldestMs > newestMs;
+
+        if (reachedFrom || exhaustedSource || invalidWindow || requestedLookback >= maxLookback) {
+          break;
+        }
+      }
+
+      return {
+        candles,
+        requestedLookback,
+        tries
+      };
     }
 
     function toCsvCell(v) {
@@ -2891,16 +2932,13 @@
         return;
       }
 
-      const spanMs = toMs - fromMs;
-      const roughBars = Math.ceil(spanMs / (timeframeSec * 1000)) + 20;
-      const lookback = Math.max(200, Math.min(50000, roughBars));
       clearPreparedCsvLink();
       setCsvExportStatus("Preparing CSV...");
 
-      write({ action: "export_csv_from_date", status: "requesting", instrument, timeframeSec, lookback, fromRaw, toRaw: toRaw || "now" });
+      write({ action: "export_csv_from_date", status: "requesting", instrument, timeframeSec, fromRaw, toRaw: toRaw || "now" });
 
-      const msg = await window.LCPro.MarketData.requestCandles(instrument, timeframeSec, lookback);
-      const candles = msg && Array.isArray(msg.candles) ? msg.candles : [];
+      const fetchResult = await requestCandlesForDateRange(instrument, timeframeSec, fromMs, toMs);
+      const candles = fetchResult.candles;
       const filtered = candles
         .filter(function (c) {
           const t = candleTimeMs(c);
@@ -2910,9 +2948,23 @@
           return candleTimeMs(a) - candleTimeMs(b);
         });
 
+      const oldestFetchedMs = candles.length ? candleTimeMs(candles[candles.length - 1]) : 0;
+      const newestFetchedMs = candles.length ? candleTimeMs(candles[0]) : 0;
+
       if (!filtered.length) {
+        const oldestNote = oldestFetchedMs ? new Date(oldestFetchedMs).toISOString() : "n/a";
+        const newestNote = newestFetchedMs ? new Date(newestFetchedMs).toISOString() : "n/a";
         setCsvExportStatus("No candles found for the selected date range.");
-        write({ action: "export_csv_from_date", status: "empty", reason: "No candles in selected date window", candlesReceived: candles.length });
+        write({
+          action: "export_csv_from_date",
+          status: "empty",
+          reason: "No candles in selected date window",
+          candlesReceived: candles.length,
+          oldestFetched: oldestNote,
+          newestFetched: newestNote,
+          requestedLookback: fetchResult.requestedLookback,
+          fetchTries: fetchResult.tries
+        });
         return;
       }
 
@@ -2944,7 +2996,14 @@
         toolCsvPreview.value = csv;
         toolCsvPreview.style.display = "block";
       }
-      setCsvExportStatus("CSV prepared. If download is blocked, use the download link or copy the CSV text below.");
+      const earliestExportMs = candleTimeMs(filtered[0]);
+      const reachedRequestedFrom = oldestFetchedMs > 0 && oldestFetchedMs <= fromMs;
+      if (reachedRequestedFrom) {
+        setCsvExportStatus("CSV prepared. If download is blocked, use the download link or copy the CSV text below.");
+      } else {
+        const earliestNote = earliestExportMs ? new Date(earliestExportMs).toISOString() : "unknown";
+        setCsvExportStatus("CSV prepared, but source candles currently begin at " + earliestNote + ".");
+      }
 
       try {
         if (toolCsvDownloadLink) {
@@ -2958,9 +3017,12 @@
         instrument,
         timeframeSec,
         fileName,
-        requestedLookback: lookback,
+        requestedLookback: fetchResult.requestedLookback,
+        fetchTries: fetchResult.tries,
         candlesReceived: candles.length,
         candlesExported: filtered.length,
+        oldestFetched: oldestFetchedMs ? new Date(oldestFetchedMs).toISOString() : null,
+        newestFetched: newestFetchedMs ? new Date(newestFetchedMs).toISOString() : null,
         from: new Date(fromMs).toISOString(),
         to: new Date(toMs).toISOString()
       });
