@@ -2462,6 +2462,7 @@
     const btnRefreshActionButtons = $("btnRefreshActionButtons");
     const toolActionButtons = $("toolActionButtons");
     const toolActionPayload = $("toolActionPayload");
+    const toolActionStatus = $("toolActionStatus");
     const toolOrderId = $("toolOrderId");
     let entrySubmitInFlight = false;
 
@@ -2715,7 +2716,7 @@
         window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.listActions === "function"
           ? window.LCPro.Trading.listActions()
           : [];
-      const names = Array.isArray(actions)
+      let names = Array.isArray(actions)
         ? actions
             .map(function (name) {
               return String(name || "").toUpperCase();
@@ -2724,13 +2725,22 @@
             .sort()
         : [];
 
+      if (!names.length) {
+        names = ["BUY", "SELL", "CLOSE_SIDE", "CLOSE_ALL", "CLOSE_ORDER", "MARKET_ORDER_TPSL"];
+      }
+
       toolActionButtons.innerHTML = "";
       if (!names.length) {
         const msg = document.createElement("div");
         msg.className = "small";
         msg.textContent = "No trading actions found in registry.";
         toolActionButtons.appendChild(msg);
+        if (toolActionStatus) toolActionStatus.textContent = "No actions found in registry.";
         return;
+      }
+
+      if (toolActionStatus) {
+        toolActionStatus.textContent = "Loaded " + names.length + " action(s): " + names.join(", ");
       }
 
       for (let i = 0; i < names.length; i++) {
@@ -2852,7 +2862,12 @@
     if (btnRefreshActionButtons) {
       btnRefreshActionButtons.addEventListener("click", function () {
         renderActionButtons();
-        write("Action buttons refreshed from trading registry.");
+        const names =
+          window.LCPro && window.LCPro.Trading && typeof window.LCPro.Trading.listActions === "function"
+            ? window.LCPro.Trading.listActions()
+            : [];
+        const count = Array.isArray(names) ? names.length : 0;
+        write("Action buttons refreshed from trading registry. Count=" + count);
       });
     }
 
