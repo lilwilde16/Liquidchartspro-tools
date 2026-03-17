@@ -2696,7 +2696,7 @@
       }
     };
 
-    write("Tools ready (build 20260317-14). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260317-15). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
@@ -2751,41 +2751,74 @@
     async function requestCandlesForDateRange(instrument, timeframeSec, fromMs, toMs) {
       const spanMs = Math.max(1, toMs - fromMs);
       const roughBars = Math.ceil(spanMs / (timeframeSec * 1000)) + 20;
-      const retryTargets = [
-        Math.max(200, roughBars),
-        Math.max(400, roughBars * 2),
-        Math.max(800, roughBars * 4)
-      ];
-      const maxLookback = 500000;
+      const perRequestCap = 8000;
+      const requestedLookback = Math.max(200, Math.min(perRequestCap, roughBars));
+      const stepMs = Math.max(1, timeframeSec * 1000);
+      const maxBatches = Math.max(1, Math.min(60, Math.ceil(roughBars / requestedLookback) + 3));
+      const extraKeys = ["to", "timeTo", "endTime", "toDate", "end", "until", "before"];
 
-      let candles = [];
-      let requestedLookback = 0;
       let tries = 0;
+      let cursorSupported = true;
+      let cursorToMs = toMs;
+      const byTime = Object.create(null);
+      let oldestFetchedMs = 0;
+      let newestFetchedMs = 0;
 
-      for (let i = 0; i < retryTargets.length; i++) {
+      for (let i = 0; i < maxBatches; i++) {
         tries += 1;
-        requestedLookback = Math.min(maxLookback, retryTargets[i]);
 
-        const msg = await window.LCPro.MarketData.requestCandles(instrument, timeframeSec, requestedLookback);
-        candles = msg && Array.isArray(msg.candles) ? msg.candles : [];
+        const extra = { to: cursorToMs };
+        for (let k = 0; k < extraKeys.length; k++) {
+          extra[extraKeys[k]] = cursorToMs;
+        }
 
-        if (!candles.length) break;
+        const msg = await window.LCPro.MarketData.requestCandles(instrument, timeframeSec, requestedLookback, extra);
+        const batch = msg && Array.isArray(msg.candles) ? msg.candles : [];
+        if (!batch.length) break;
 
-        const oldestMs = candleTimeMs(candles[candles.length - 1]);
-        const newestMs = candleTimeMs(candles[0]);
-        const reachedFrom = oldestMs > 0 && oldestMs <= fromMs;
-        const exhaustedSource = candles.length < requestedLookback;
-        const invalidWindow = newestMs > 0 && oldestMs > newestMs;
+        const batchNewestMs = candleTimeMs(batch[0]);
+        const batchOldestMs = candleTimeMs(batch[batch.length - 1]);
+        if (!(batchNewestMs > 0 && batchOldestMs > 0)) break;
 
-        if (reachedFrom || exhaustedSource || invalidWindow || requestedLookback >= maxLookback) {
+        if (newestFetchedMs === 0 || batchNewestMs > newestFetchedMs) newestFetchedMs = batchNewestMs;
+        if (oldestFetchedMs === 0 || batchOldestMs < oldestFetchedMs) oldestFetchedMs = batchOldestMs;
+
+        for (let j = 0; j < batch.length; j++) {
+          const c = batch[j];
+          const t = candleTimeMs(c);
+          if (t > 0 && !byTime[t]) byTime[t] = c;
+        }
+
+        if (batchOldestMs <= fromMs) break;
+
+        const nextCursorToMs = batchOldestMs - stepMs;
+        if (!(nextCursorToMs < cursorToMs)) break;
+
+        if (i > 0 && batchNewestMs >= cursorToMs - stepMs) {
+          cursorSupported = false;
           break;
         }
+
+        if (batch.length < requestedLookback) break;
+        cursorToMs = nextCursorToMs;
       }
+
+      const keys = Object.keys(byTime);
+      const candles = keys
+        .map(function (k) {
+          return byTime[k];
+        })
+        .sort(function (a, b) {
+          return candleTimeMs(b) - candleTimeMs(a);
+        });
 
       return {
         candles,
         requestedLookback,
-        tries
+        tries,
+        cursorSupported,
+        oldestFetchedMs,
+        newestFetchedMs
       };
     }
 
@@ -2948,8 +2981,8 @@
           return candleTimeMs(a) - candleTimeMs(b);
         });
 
-      const oldestFetchedMs = candles.length ? candleTimeMs(candles[candles.length - 1]) : 0;
-      const newestFetchedMs = candles.length ? candleTimeMs(candles[0]) : 0;
+      const oldestFetchedMs = fetchResult.oldestFetchedMs || (candles.length ? candleTimeMs(candles[candles.length - 1]) : 0);
+      const newestFetchedMs = fetchResult.newestFetchedMs || (candles.length ? candleTimeMs(candles[0]) : 0);
 
       if (!filtered.length) {
         const oldestNote = oldestFetchedMs ? new Date(oldestFetchedMs).toISOString() : "n/a";
@@ -3019,6 +3052,7 @@
         fileName,
         requestedLookback: fetchResult.requestedLookback,
         fetchTries: fetchResult.tries,
+        cursorSupported: fetchResult.cursorSupported,
         candlesReceived: candles.length,
         candlesExported: filtered.length,
         oldestFetched: oldestFetchedMs ? new Date(oldestFetchedMs).toISOString() : null,

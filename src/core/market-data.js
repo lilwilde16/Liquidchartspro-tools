@@ -136,23 +136,24 @@
     };
   }
 
-  async function requestCandles(instrumentId, timeframeSec, count) {
+  async function requestCandles(instrumentId, timeframeSec, count, extra) {
     const Framework = Core.ensureFramework();
-
-    if (Framework.pRequestCandles) {
-      return await Framework.pRequestCandles({
+    const payload = Object.assign(
+      {
         instrumentId,
         timeframe: timeframeSec,
         count,
         streaming: false
-      });
+      },
+      extra && typeof extra === "object" ? extra : {}
+    );
+
+    if (Framework.pRequestCandles) {
+      return await Framework.pRequestCandles(payload);
     }
 
     return await new Promise((resolve) => {
-      Framework.RequestCandles(
-        { instrumentId, timeframe: timeframeSec, count, streaming: false },
-        (m) => resolve(m)
-      );
+      Framework.RequestCandles(payload, (m) => resolve(m));
     });
   }
 
