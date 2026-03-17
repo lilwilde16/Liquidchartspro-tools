@@ -1173,6 +1173,8 @@
     const slTicks = Math.max(1, toNum(tm.slTicks, 55));
     const tpTicks = Math.max(1, toNum(tm.tpTicks, 55));
     const tickSize = Math.max(0.00001, toNum(tm.tickSize, 1));
+    const lots = Math.max(0.00001, toNum(tm.lots, 1));
+    const pointValue = Math.max(0, toNum(tm.pointValue, 1));
     const exitOnOpposite = tm.exitOnOpposite !== false;
     const bothHitModel = tm.bothHitModel === "tp_first" ? "tp_first" : "sl_first";
 
@@ -1185,6 +1187,7 @@
     let wins = 0;
     let losses = 0;
     let grossTicks = 0;
+    let grossCurrency = 0;
 
     for (let i = 0; i < signals.length; i++) {
       const sig = signals[i];
@@ -1244,11 +1247,13 @@
 
       const pnlTicksRaw = side === "BUY" ? (exitPrice - entry) / tickSize : (entry - exitPrice) / tickSize;
       const pnlTicks = Number.isFinite(pnlTicksRaw) ? pnlTicksRaw : 0;
+      const pnlCurrency = pnlTicks * lots * pointValue;
       const pnlR = slTicks > 0 ? pnlTicks / slTicks : 0;
 
       if (pnlTicks >= 0) wins += 1;
       else losses += 1;
       grossTicks += pnlTicks;
+      grossCurrency += pnlCurrency;
 
       trades.push({
         trade: trades.length + 1,
@@ -1259,6 +1264,7 @@
         exitPrice,
         exitReason,
         pnlTicks,
+        pnlCurrency,
         pnlR
       });
     }
@@ -1278,6 +1284,7 @@
         losses,
         winRate,
         grossTicks,
+        grossCurrency,
         avgR
       },
       trades,
@@ -1300,6 +1307,8 @@
       slTicks: Math.max(1, toNum(tmInput.slTicks, toNum(tmDefaults.slTicks, 55))),
       tpTicks: Math.max(1, toNum(tmInput.tpTicks, toNum(tmDefaults.tpTicks, 55))),
       tickSize: Math.max(0.00001, toNum(tmInput.tickSize, toNum(tmDefaults.tickSize, 1))),
+      lots: Math.max(0.00001, toNum(tmInput.lots, toNum(strategy && strategy.liveDefaults && strategy.liveDefaults.lots, 1))),
+      pointValue: Math.max(0, toNum(tmInput.pointValue, toNum(tmDefaults.pointValue, 1))),
       exitOnOpposite: tmInput.exitOnOpposite !== false,
       bothHitModel: tmInput.bothHitModel === "tp_first" ? "tp_first" : "sl_first"
     };
@@ -1350,6 +1359,8 @@
       slTicks: Math.max(1, toNum(tmInput.slTicks, toNum(tmDefaults.slTicks, 25))),
       tpTicks: Math.max(1, toNum(tmInput.tpTicks, toNum(tmDefaults.tpTicks, 35))),
       tickSize: Math.max(0.00001, toNum(tmInput.tickSize, toNum(tmDefaults.tickSize, 1))),
+      lots: Math.max(0.00001, toNum(tmInput.lots, toNum(strategy && strategy.liveDefaults && strategy.liveDefaults.lots, 1))),
+      pointValue: Math.max(0, toNum(tmInput.pointValue, toNum(tmDefaults.pointValue, 1))),
       exitOnOpposite: tmInput.exitOnOpposite !== false,
       bothHitModel: tmInput.bothHitModel === "tp_first" ? "tp_first" : "sl_first"
     };
@@ -1660,6 +1671,7 @@
         slTicks: 55,
         tpTicks: 55,
         tickSize: 1,
+        pointValue: 1,
         exitOnOpposite: true,
         bothHitModel: "sl_first"
       },
@@ -1704,6 +1716,7 @@
         slTicks: 25,
         tpTicks: 35,
         tickSize: 1,
+        pointValue: 1,
         exitOnOpposite: true,
         bothHitModel: "sl_first"
       },

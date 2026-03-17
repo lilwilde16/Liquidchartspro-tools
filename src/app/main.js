@@ -2434,6 +2434,10 @@
 
     function renderSummary(report) {
       const s = report.summary || {};
+      const formatMoney = function (v) {
+        const n = Number(v || 0);
+        return "$" + n.toFixed(2);
+      };
       let html =
         "<strong>Trades:</strong> " +
         (s.totalTrades || 0) +
@@ -2446,6 +2450,8 @@
         "%" +
         "<br><strong>Gross Ticks:</strong> " +
         Number(s.grossTicks || 0).toFixed(1) +
+        " | <strong>Gross ($ est):</strong> " +
+        formatMoney(s.grossCurrency || 0) +
         " | <strong>Avg R:</strong> " +
         Number(s.avgR || 0).toFixed(2) +
         "<br><strong>Range:</strong> " +
@@ -2457,7 +2463,7 @@
         const m = s.bySystem.MAIN || {};
         const b = s.bySystem.BURST || {};
         html +=
-          '<br><div style="margin-top:8px;overflow-x:auto;"><table><thead><tr><th>System</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Gross Ticks</th><th>Gross Currency</th></tr></thead><tbody>' +
+          '<br><div style="margin-top:8px;overflow-x:auto;"><table><thead><tr><th>System</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Gross Ticks</th><th>Gross ($)</th></tr></thead><tbody>' +
           "<tr><td>MAIN</td><td>" +
           Number(m.totalTrades || 0) +
           "</td><td>" +
@@ -2469,7 +2475,7 @@
           "%</td><td>" +
           Number(m.grossTicks || 0).toFixed(1) +
           "</td><td>" +
-          Number(m.grossCurrency || 0).toFixed(2) +
+          formatMoney(m.grossCurrency || 0) +
           "</td></tr>" +
           "<tr><td>BURST</td><td>" +
           Number(b.totalTrades || 0) +
@@ -2482,7 +2488,7 @@
           "%</td><td>" +
           Number(b.grossTicks || 0).toFixed(1) +
           "</td><td>" +
-          Number(b.grossCurrency || 0).toFixed(2) +
+            formatMoney(b.grossCurrency || 0) +
           "</td></tr>" +
           "</tbody></table></div>";
       }
@@ -2498,7 +2504,7 @@
       }
 
       let html =
-        '<div style="overflow-x:auto;"><table><thead><tr><th>#</th><th>System</th><th>Label</th><th>Side</th><th>Entry Time</th><th>Entry</th><th>Exit Time</th><th>Exit</th><th>Reason</th><th>PnL Ticks</th><th>R</th></tr></thead><tbody>';
+        '<div style="overflow-x:auto;"><table><thead><tr><th>#</th><th>System</th><th>Label</th><th>Side</th><th>Entry Time</th><th>Entry</th><th>Exit Time</th><th>Exit</th><th>Reason</th><th>PnL Ticks</th><th>PnL ($ est)</th><th>R</th></tr></thead><tbody>';
 
       rows.forEach((t) => {
         html +=
@@ -2523,6 +2529,8 @@
           "</td><td>" +
           Number(t.pnlTicks).toFixed(1) +
           "</td><td>" +
+            "$" + Number(t.pnlCurrency || 0).toFixed(2) +
+            "</td><td>" +
           Number(t.pnlR).toFixed(2) +
           "</td></tr>";
       });
@@ -2688,7 +2696,7 @@
       }
     };
 
-    write("Tools ready (build 20260317-6). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260317-10). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
@@ -2702,6 +2710,7 @@
     const btnRefreshActionButtons = $("btnRefreshActionButtons");
     const btnCheckHarnessConnection = $("btnCheckHarnessConnection");
     const btnCopyToolsOutput = $("btnCopyToolsOutput");
+    const btnExportCsvFromDate = $("btnExportCsvFromDate");
     const toolActionButtons = $("toolActionButtons");
     const toolActionPayload = $("toolActionPayload");
     const toolActionStatus = $("toolActionStatus");
@@ -2716,6 +2725,110 @@
       marketTickInput: null,
       marketLotsInput: null
     };
+
+    function candleTimeMs(c) {
+      if (!c || typeof c !== "object") return 0;
+      const n = Number(c.date || c.t || c.ts || c.time || 0);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      return n < 1e12 ? Math.round(n * 1000) : Math.round(n);
+    }
+
+    function parseDateMs(value, endOfDay) {
+      const raw = String(value || "").trim();
+      if (!raw) return 0;
+      const suffix = endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z";
+      const ms = Date.parse(raw + suffix);
+      return Number.isFinite(ms) ? ms : 0;
+    }
+
+    function toCsvCell(v) {
+      const s = String(v == null ? "" : v);
+      if (s.indexOf(",") >= 0 || s.indexOf('"') >= 0 || s.indexOf("\n") >= 0) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+
+    async function exportCsvFromDate() {
+      const instrument = $("toolCsvInstrument") ? String($("toolCsvInstrument").value || "NAS100") : "NAS100";
+      const timeframeSec = Math.max(10, parseInt($("toolCsvTimeframeSec") ? $("toolCsvTimeframeSec").value : "60", 10) || 60);
+      const fromRaw = $("toolCsvFromDate") ? String($("toolCsvFromDate").value || "").trim() : "";
+      const toRaw = $("toolCsvToDate") ? String($("toolCsvToDate").value || "").trim() : "";
+
+      const fromMs = parseDateMs(fromRaw, false);
+      const toMs = parseDateMs(toRaw, true) || Date.now();
+      if (!fromMs) {
+        write("Pick a valid From Date for CSV export.");
+        return;
+      }
+      if (toMs <= fromMs) {
+        write("To Date must be after From Date.");
+        return;
+      }
+
+      const spanMs = toMs - fromMs;
+      const roughBars = Math.ceil(spanMs / (timeframeSec * 1000)) + 20;
+      const lookback = Math.max(200, Math.min(50000, roughBars));
+
+      write({ action: "export_csv_from_date", status: "requesting", instrument, timeframeSec, lookback, fromRaw, toRaw: toRaw || "now" });
+
+      const msg = await window.LCPro.MarketData.requestCandles(instrument, timeframeSec, lookback);
+      const candles = msg && Array.isArray(msg.candles) ? msg.candles : [];
+      const filtered = candles
+        .filter(function (c) {
+          const t = candleTimeMs(c);
+          return t >= fromMs && t <= toMs;
+        })
+        .sort(function (a, b) {
+          return candleTimeMs(a) - candleTimeMs(b);
+        });
+
+      if (!filtered.length) {
+        write({ action: "export_csv_from_date", status: "empty", reason: "No candles in selected date window", candlesReceived: candles.length });
+        return;
+      }
+
+      const lines = ["time_iso,time_ms,open,high,low,close,volume"]; 
+      for (let i = 0; i < filtered.length; i++) {
+        const c = filtered[i] || {};
+        const t = candleTimeMs(c);
+        const row = [
+          new Date(t).toISOString(),
+          t,
+          Number(c.o),
+          Number(c.h),
+          Number(c.l),
+          Number(c.c),
+          c.v == null ? "" : Number(c.v)
+        ].map(toCsvCell);
+        lines.push(row.join(","));
+      }
+
+      const csv = lines.join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const fromTag = fromRaw || "from";
+      const toTag = toRaw || "now";
+      a.href = url;
+      a.download = instrument.replace(/[^A-Za-z0-9_-]/g, "_") + "_" + timeframeSec + "s_" + fromTag + "_" + toTag + ".csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      write({
+        action: "export_csv_from_date",
+        status: "downloaded",
+        instrument,
+        timeframeSec,
+        requestedLookback: lookback,
+        candlesReceived: candles.length,
+        candlesExported: filtered.length,
+        from: new Date(fromMs).toISOString(),
+        to: new Date(toMs).toISOString()
+      });
+    }
 
     function getHarnessConnectionDiagnostics() {
       const lc = window.LCPro || null;
@@ -3408,6 +3521,19 @@
         }
 
         write("Copy failed: Clipboard API blocked and fallback methods are unavailable in this context.");
+      });
+    }
+
+    if (btnExportCsvFromDate) {
+      btnExportCsvFromDate.addEventListener("click", async function () {
+        btnExportCsvFromDate.disabled = true;
+        try {
+          await exportCsvFromDate();
+        } catch (e) {
+          write({ action: "export_csv_from_date", error: e && e.message ? e.message : String(e) });
+        } finally {
+          btnExportCsvFromDate.disabled = false;
+        }
       });
     }
 
