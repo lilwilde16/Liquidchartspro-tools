@@ -206,7 +206,6 @@
     if (s.toLowerCase() === "unknown") return "";
     return s;
   }
-  }
 
   function listOpenOrdersDetailed() {
     const d = getOrderDict();
@@ -234,19 +233,43 @@
   }
 
   function listActiveTradesDetailed() {
-    const out = [];
-    const seen = new Set();
+    const byId = {};
     const orders = listOpenOrdersDetailed();
     const positions = listOpenPositionsDetailed();
+
+    function upsert(item) {
+      if (!item || !item.tradeId) return;
+      const id = String(item.tradeId);
+      const existing = byId[id];
+      if (!existing) {
+        byId[id] = item;
+        return;
+      }
+
+      if (!existing.instrumentId && item.instrumentId) {
+        byId[id] = item;
+        return;
+      }
+
+      if (existing.source !== item.source) {
+        existing.source = [existing.source, item.source]
+          .filter(Boolean)
+          .join("+")
+          .replace("order+order", "order")
+          .replace("position+position", "position");
+      }
+
+      if (!existing.raw && item.raw) existing.raw = item.raw;
+      if (!existing.instrumentId && item.instrumentId) existing.instrumentId = item.instrumentId;
+    }
 
     for (let i = 0; i < orders.length; i++) {
       const item = orders[i];
       const tradeId = pickTradeIdentifier(item.raw, item.orderId);
-      if (!tradeId || seen.has("order:" + tradeId)) continue;
-      seen.add("order:" + tradeId);
-      out.push({
+      if (!tradeId) continue;
+      upsert({
         tradeId,
-        instrumentId: String(item.instrumentId || ""),
+        instrumentId: cleanInstrumentId(item.instrumentId || ""),
         source: "order",
         raw: item.raw
       });
@@ -254,18 +277,19 @@
 
     for (let i = 0; i < positions.length; i++) {
       const item = positions[i];
-      const tradeId = pickTradeIdentifier(item.raw, item.instrumentId);
-      if (!tradeId || seen.has("position:" + tradeId)) continue;
-      seen.add("position:" + tradeId);
-      out.push({
+      const tradeId = pickTradeIdentifier(item.raw, "");
+      if (!tradeId) continue;
+      upsert({
         tradeId,
-        instrumentId: String(item.instrumentId || ""),
+        instrumentId: cleanInstrumentId(item.instrumentId || ""),
         source: "position",
         raw: item.raw
       });
     }
 
-    return out;
+    return Object.keys(byId)
+      .map((id) => byId[id])
+      .filter((item) => item && item.tradeId);
   }
 
   function listActiveTradeIds() {
