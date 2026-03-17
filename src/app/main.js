@@ -2300,13 +2300,16 @@
 
       const defaultLookback = Math.max(200, Number(defaults.liveDefaults.lookback || 900));
       const defaultKeepN = Math.max(1, Number(defaults.liveDefaults.keepN || 25));
+      const lookbackOverrideRaw = $("btLookbackOverride") ? String($("btLookbackOverride").value || "").trim() : "";
+      const lookbackOverride = lookbackOverrideRaw ? Number(lookbackOverrideRaw) : NaN;
+      const lookback = Number.isFinite(lookbackOverride) && lookbackOverride >= 200 ? Math.floor(lookbackOverride) : defaultLookback;
 
       return {
         strategyId: strategySelect.value,
         instrumentId: $("btSym") ? $("btSym").value : "NAS100",
         timeframeSec: parseInt($("btTfSec") ? $("btTfSec").value : "900", 10),
         rangePreset: rangePresetEl.value || "week",
-        lookback: defaultLookback,
+        lookback,
         keepN: Math.max(1, parseInt($("btKeepN") ? $("btKeepN").value || String(defaultKeepN) : String(defaultKeepN), 10)),
         params,
         tradeManagement
