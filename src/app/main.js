@@ -2448,7 +2448,7 @@
       }
     };
 
-    write("Tools ready (build 20260317-3). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260317-4). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
@@ -2461,6 +2461,7 @@
     const btnCloseOrderById = $("btnCloseOrderById");
     const btnRefreshActionButtons = $("btnRefreshActionButtons");
     const btnCheckHarnessConnection = $("btnCheckHarnessConnection");
+    const btnCopyToolsOutput = $("btnCopyToolsOutput");
     const toolActionButtons = $("toolActionButtons");
     const toolActionPayload = $("toolActionPayload");
     const toolActionStatus = $("toolActionStatus");
@@ -3100,6 +3101,34 @@
     if (btnCheckHarnessConnection) {
       btnCheckHarnessConnection.addEventListener("click", function () {
         write({ action: "check_connection", diagnostics: getHarnessConnectionDiagnostics() });
+      });
+    }
+
+    if (btnCopyToolsOutput) {
+      btnCopyToolsOutput.addEventListener("click", async function () {
+        const text = out ? String(out.textContent || "") : "";
+        if (!text.trim()) {
+          write("Nothing to copy yet.");
+          return;
+        }
+        try {
+          if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "readonly");
+            ta.style.position = "absolute";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+          }
+          write("Copied output to clipboard.");
+        } catch (e) {
+          write("Copy failed: " + (e && e.message ? e.message : String(e)));
+        }
       });
     }
 

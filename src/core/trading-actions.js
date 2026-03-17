@@ -449,47 +449,19 @@
     try {
       out.push(
         await sendOrder({
-          const byId = {};
+          instrumentId,
+          tradingAction: orderType("CLOSEPOSLONG", 5)
         })
       );
-
-          function upsert(item) {
-            if (!item || !item.tradeId) return;
-            const id = String(item.tradeId);
-            const existing = byId[id];
-            if (!existing) {
-              byId[id] = item;
-              return;
-            }
-
-            // Prefer entries with known instrument id.
-            if (!existing.instrumentId && item.instrumentId) {
-              byId[id] = item;
-              return;
-            }
-
-            // Merge source labels if both dictionaries report the same trade.
-            if (existing.source !== item.source) {
-              const merged = [existing.source, item.source]
-                .filter(Boolean)
-                .join("+")
-                .replace("order+order", "order")
-                .replace("position+position", "position");
-              existing.source = merged;
-            }
-
-            // If existing has no raw, keep richer payload.
-            if (!existing.raw && item.raw) existing.raw = item.raw;
-            if (!existing.instrumentId && item.instrumentId) existing.instrumentId = item.instrumentId;
-          }
     } catch (e) {
       out.push({ error: e.message || String(e), side: "long" });
     }
 
-            if (!tradeId) continue;
-            upsert({
+    try {
+      out.push(
+        await sendOrder({
           instrumentId,
-              instrumentId: cleanInstrumentId(item.instrumentId || ""),
+          tradingAction: orderType("CLOSEPOSSHORT", 6)
         })
       );
     } catch (e) {
@@ -497,19 +469,18 @@
     }
     return out;
   }
-            const tradeId = pickTradeIdentifier(item.raw, "");
-            if (!tradeId) continue;
-            upsert({
+
+  async function closeSideOnInstrument(instrumentId, side) {
+    const s = String(side || "").toUpperCase();
+    const action = s === "SELL" ? orderType("CLOSEPOSSHORT", 6) : orderType("CLOSEPOSLONG", 5);
     const payload = { instrumentId, tradingAction: action };
-              instrumentId: cleanInstrumentId(item.instrumentId || ""),
+    const response = await sendOrder(payload);
     return { payload, response };
   }
 
   function inferOrderSide(order) {
     if (!order || typeof order !== "object") return null;
-          return Object.keys(byId)
-            .map((id) => byId[id])
-            .filter((item) => item && item.tradeId);
+
     const sideRaw = String(order.side || order.direction || "").toUpperCase();
     if (sideRaw === "BUY" || sideRaw === "LONG") return "BUY";
     if (sideRaw === "SELL" || sideRaw === "SHORT") return "SELL";
@@ -524,7 +495,6 @@
   async function closeAllPositions() {
     const instrumentIds = listOpenPositionsDetailed().map((p) => p.instrumentId);
     if (!instrumentIds.length) {
-      // Fallback to instruments inferred from open orders.
       const fromOrders = listOpenOrdersDetailed()
         .map((o) => o.instrumentId)
         .filter(Boolean);
@@ -534,13 +504,11 @@
     }
 
     const out = [];
-
     for (let i = 0; i < instrumentIds.length; i++) {
       const instrumentId = instrumentIds[i];
       const res = await closeAllOnInstrument(instrumentId);
       out.push({ instrumentId, result: res });
     }
-
     return out;
   }
 
