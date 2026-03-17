@@ -149,6 +149,16 @@
     return listOpenOrdersDetailed().map((o) => String(o.orderId)).filter(Boolean);
   }
 
+  function pickTradeIdentifier(obj, fallbackKey) {
+    if (!obj || typeof obj !== "object") return fallbackKey ? String(fallbackKey) : "";
+    const candidates = [obj.orderId, obj.tradeId, obj.positionId, obj.id, obj.ticket, obj.dealId, fallbackKey];
+    for (let i = 0; i < candidates.length; i++) {
+      const value = candidates[i];
+      if (value != null && String(value).trim()) return String(value);
+    }
+    return "";
+  }
+
   function getOrder(orderId) {
     const target = String(orderId);
     const all = listOpenOrdersDetailed();
@@ -194,6 +204,56 @@
     });
   }
 
+  function listActiveTradesDetailed() {
+    const out = [];
+    const seen = new Set();
+    const orders = listOpenOrdersDetailed();
+    const positions = listOpenPositionsDetailed();
+
+    for (let i = 0; i < orders.length; i++) {
+      const item = orders[i];
+      const tradeId = pickTradeIdentifier(item.raw, item.orderId);
+      if (!tradeId || seen.has("order:" + tradeId)) continue;
+      seen.add("order:" + tradeId);
+      out.push({
+        tradeId,
+        instrumentId: String(item.instrumentId || ""),
+        source: "order",
+        raw: item.raw
+      });
+    }
+
+    for (let i = 0; i < positions.length; i++) {
+      const item = positions[i];
+      const tradeId = pickTradeIdentifier(item.raw, item.instrumentId);
+      if (!tradeId || seen.has("position:" + tradeId)) continue;
+      seen.add("position:" + tradeId);
+      out.push({
+        tradeId,
+        instrumentId: String(item.instrumentId || ""),
+        source: "position",
+        raw: item.raw
+      });
+    }
+
+    return out;
+  }
+
+  function listActiveTradeIds() {
+    return listActiveTradesDetailed()
+      .map((item) => String(item.tradeId || ""))
+      .filter(Boolean);
+  }
+
+  function getActiveTradeById(tradeId) {
+    const target = String(tradeId || "");
+    const all = listActiveTradesDetailed();
+    for (let i = 0; i < all.length; i++) {
+      if (String(all[i].tradeId) === target) return all[i];
+    }
+    return null;
+  }
+
   function listOpenPositionsDetailed() {
     const d = getPositionDict();
     const keys = collectDictKeys(d);
@@ -217,15 +277,48 @@
   }
 
   async function modifyOrderTpSl(orderId, tpAbs, slAbs) {
-    const payload = {
+    const id = String(orderId);
+    const tradeRef = getActiveTradeById(id);
+    const instrumentId =
+      tradeRef && tradeRef.instrumentId
+        ? String(tradeRef.instrumentId)
+        : tradeRef && tradeRef.raw
+          ? String(tradeRef.raw.instrumentId || tradeRef.raw.instrument || tradeRef.raw.symbol || "")
+          : "";
+    const attempts = [];
+    const base = {
       tradingAction: orderType("CHANGE", 101),
-      orderId: String(orderId),
       tp: Number(tpAbs),
       sl: Number(slAbs)
     };
-    const res = await sendOrder(payload);
-    const reason = getOrderFailureReason(res);
-    return { ok: !reason, reason: reason || "", payload, response: res };
+    const payloads = [
+      Object.assign({}, base, { orderId: id }),
+      Object.assign({}, base, { tradeId: id }),
+      Object.assign({}, base, { positionId: id }),
+      Object.assign({}, base, { ticket: id })
+    ];
+
+    for (let i = 0; i < payloads.length; i++) {
+      const payload = payloads[i];
+      if (instrumentId) payload.instrumentId = instrumentId;
+      try {
+        const response = await sendOrder(payload);
+        const reason = getOrderFailureReason(response);
+        attempts.push({ payload, response, reason: reason || "" });
+        if (!reason) return { ok: true, reason: "", payload, response, attempts };
+      } catch (e) {
+        attempts.push({ payload, error: e.message || String(e) });
+      }
+    }
+
+    const last = attempts.length ? attempts[attempts.length - 1] : null;
+    return {
+      ok: false,
+      reason: (last && last.reason) || (last && last.error) || "Modify TP/SL rejected",
+      payload: last ? last.payload : null,
+      response: last ? last.response : null,
+      attempts
+    };
   }
 
   async function entryThenModify(instrumentId, side, lots, tpTicks, slTicks, tickSize, timeoutMs) {
@@ -235,7 +328,7 @@
 
     entryModifyInFlight = true;
     try {
-      const before = new Set(listOpenOrderIds());
+      const before = new Set(listActiveTradeIds());
       const entryResult = await sendMarketOrder(instrumentId, side, lots);
       if (!entryResult.ok) {
         return { ok: false, reason: entryResult.reason || "Entry order rejected", entryResponse: entryResult };
@@ -243,14 +336,16 @@
       const entryResponse = entryResult.response;
 
       // Prefer broker-returned id first for immediate modify.
-      let newId = entryResponse && (entryResponse.orderId || entryResponse.id || entryResponse.ticket || null);
+      let newId =
+        entryResponse &&
+        (entryResponse.orderId || entryResponse.tradeId || entryResponse.positionId || entryResponse.id || entryResponse.ticket || null);
       if (newId) newId = String(newId);
 
       if (!newId) {
         const deadline = Date.now() + (Number(timeoutMs) || 8000);
         while (Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 250));
-          const nowIds = listOpenOrderIds();
+          const nowIds = listActiveTradeIds();
           for (let i = 0; i < nowIds.length; i++) {
             if (!before.has(nowIds[i])) {
               newId = nowIds[i];
@@ -366,8 +461,12 @@
 
   async function closeOrderById(orderId) {
     const id = String(orderId);
-    const order = getOrder(id);
-    const instrumentId = order && (order.instrumentId || order.instrument || order.symbol || "");
+    const tradeRef = getActiveTradeById(id);
+    const order = tradeRef ? tradeRef.raw : getOrder(id);
+    const instrumentId =
+      tradeRef && tradeRef.instrumentId
+        ? tradeRef.instrumentId
+        : order && (order.instrumentId || order.instrument || order.symbol || "");
     const entryPrice = Number(
       (order && (order.entryPrice || order.openPrice || order.price || order.rate || order.open)) || NaN
     );
@@ -390,6 +489,10 @@
     const p1c = { tradingAction: closeTradeAction, ticket: id };
     if (instrumentId) p1c.instrumentId = String(instrumentId);
     payloads.push(p1c);
+
+    const p1d = { tradingAction: closeTradeAction, positionId: id };
+    if (instrumentId) p1d.instrumentId = String(instrumentId);
+    payloads.push(p1d);
 
     if (Number.isFinite(entryPrice) && entryPrice > 0) {
       const p2 = { tradingAction: closeTradeAction, orderId: id };
@@ -528,6 +631,9 @@
     listOpenOrderIds,
     listOpenOrdersDetailed,
     listOpenPositionsDetailed,
+    listActiveTradesDetailed,
+    listActiveTradeIds,
+    getActiveTradeById,
     getOrder,
     modifyOrderTpSl,
     entryThenModify,

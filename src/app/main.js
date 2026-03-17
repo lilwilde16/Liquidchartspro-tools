@@ -2628,9 +2628,12 @@
     function refreshOrderDropdown() {
       if (!toolOrderId && !actionControls.closeOrderSelect) return;
 
-      let orders = [];
+      let trades = [];
       try {
-        orders = window.LCPro.Trading.listOpenOrdersDetailed();
+        trades =
+          window.LCPro.Trading && typeof window.LCPro.Trading.listActiveTradesDetailed === "function"
+            ? window.LCPro.Trading.listActiveTradesDetailed()
+            : window.LCPro.Trading.listOpenOrdersDetailed();
       } catch (e) {
         if (toolOrderId) toolOrderId.innerHTML = '<option value="">-- Orders unavailable --</option>';
         if (actionControls.closeOrderSelect) {
@@ -2639,7 +2642,7 @@
         return;
       }
 
-      if (!orders.length) {
+      if (!trades.length) {
         if (toolOrderId) toolOrderId.innerHTML = '<option value="">-- No open orders --</option>';
         if (actionControls.closeOrderSelect) {
           actionControls.closeOrderSelect.innerHTML = '<option value="">-- No open orders --</option>';
@@ -2649,22 +2652,25 @@
 
       const prev = toolOrderId ? toolOrderId.value : "";
       const opts = ['<option value="">-- Select order --</option>'];
-      for (let i = 0; i < orders.length; i++) {
-        const id = String(orders[i].orderId || "");
-        const instrument = orders[i].instrumentId || "Unknown";
-        const side = inferOrderSideLabel(orders[i].raw);
+      for (let i = 0; i < trades.length; i++) {
+        const id = String(trades[i].tradeId || trades[i].orderId || "");
+        const instrument = trades[i].instrumentId || "Unknown";
+        const side = inferOrderSideLabel(trades[i].raw);
+        const source = String(trades[i].source || "trade").toUpperCase();
         if (!id) continue;
-        opts.push('<option value="' + id + '">' + instrument + " | " + side + " | #" + id + "</option>");
+        opts.push(
+          '<option value="' + id + '">' + instrument + " | " + side + " | " + source + " | #" + id + "</option>"
+        );
       }
       if (toolOrderId) {
         toolOrderId.innerHTML = opts.join("");
-        if (prev && orders.some((o) => String(o.orderId) === prev)) toolOrderId.value = prev;
+        if (prev && trades.some((o) => String(o.tradeId || o.orderId) === prev)) toolOrderId.value = prev;
       }
 
       if (actionControls.closeOrderSelect) {
         const prevHarness = actionControls.closeOrderSelect.value;
         actionControls.closeOrderSelect.innerHTML = opts.join("");
-        if (prevHarness && orders.some((o) => String(o.orderId) === prevHarness)) {
+        if (prevHarness && trades.some((o) => String(o.tradeId || o.orderId) === prevHarness)) {
           actionControls.closeOrderSelect.value = prevHarness;
         }
       }
