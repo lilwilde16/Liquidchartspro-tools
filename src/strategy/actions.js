@@ -41,30 +41,135 @@
     return window.LCPro.Backtest.lastCrossSignals(input.instrumentId, input.timeframeSec, input.lookback, fastLen, slowLen, keepN);
   }
 
-  async function runNas100MomentumScalper(input) {
+  async function runNas100HybridScalper(input) {
     const p = (input && input.params) || {};
-    const tickSize = Math.max(0.00001, toNum(p.tickSize, 1));
-    const set = await window.LCPro.Backtest.buildNas100MomentumSignalSet({
-      instrumentId: input.instrumentId,
-      timeframeSec: input.timeframeSec,
-      lookback: input.lookback,
-      keepN: toPosInt(input && input.keepN, 25, 1),
-      rangePreset: input.rangePreset || "week",
-      fastEma: toPosInt(p.fastEma, 18, 3),
-      slowEma: toPosInt(p.slowEma, 55, 8),
-      breakoutLen: toPosInt(p.breakoutLen, 8, 3),
-      breakoutBufferTicks: Math.max(0, toNum(p.breakoutBufferTicks, 3)),
-      atrShortLen: toPosInt(p.atrShortLen, 8, 2),
-      atrLongLen: toPosInt(p.atrLongLen, 34, 5),
-      minAtrRatio: Math.max(0.5, toNum(p.minAtrRatio, 1.12)),
-      slopeLen: toPosInt(p.slopeLen, 5, 2),
-      minSlopeTicks: Math.max(0, toNum(p.minSlopeTicks, 20)),
-      rangeLen: toPosInt(p.rangeLen, 14, 4),
-      minRangeTicks: Math.max(1, toNum(p.minRangeTicks, 55)),
-      cooldownBars: toPosInt(p.cooldownBars, 3, 0),
-      tickSize
-    });
-    return set.signals || [];
+    const timeZone = p.timeZone || "America/Chicago";
+    const sessionStartMin = parseHmToMinutes(p.sessionStart || "09:35", "09:35");
+    const sessionEndMin = parseHmToMinutes(p.sessionEnd || "11:30", "11:30");
+    const altSessionStartMin = parseHmToMinutes(p.altSessionStart || "14:00", "14:00");
+    const altSessionEndMin = parseHmToMinutes(p.altSessionEnd || "15:30", "15:30");
+    const useAltSession = p.useAltSession === true;
+    const allowAltSession = p.allowAltSession !== false;
+    const skipFirstMinutes = toPosInt(p.skipFirstMinutes, 5, 1);
+    const m5EmaFast = toPosInt(p.m5EmaFast, 20, 5);
+    const m5EmaSlow = toPosInt(p.m5EmaSlow, 50, 10);
+    const m5AdxLen = toPosInt(p.m5AdxLen, 14, 5);
+    const m5AdxThreshold = Math.max(15, toNum(p.m5AdxThreshold, 22));
+    const trendBurstMode = p.trendBurstMode !== false;
+    const wickRejectionMode = p.wickRejectionMode !== false;
+    const pullbackRetraceMax = Math.max(0.1, Math.min(0.9, toNum(p.pullbackRetraceMax, 0.45)));
+    const minCandleRangePoints = Math.max(0, toNum(p.minCandleRangePoints, 2));
+    const consolidationLookback = Math.max(3, toPosInt(p.consolidationLookback, 10, 3));
+    const maxConsolidationRange = Math.max(1, toNum(p.maxConsolidationRange, 6));
+    const minAdxForEntry = Math.max(15, toNum(p.minAdxForEntry, 20));
+
+    const keepN = toPosInt(input && input.keepN, 25, 1);
+    const m5Msg = await window.LCPro.MarketData.requestCandles(input.instrumentId, 300, input.lookback * 5);
+    const m5Candles = m5Msg && m5Msg.candles ? m5Msg.candles : [];
+    if (!m5Candles.length) return [];
+
+    const signals = [];
+    const closes = m5Candles.map((c) => Number(c.c));
+    const highs = m5Candles.map((c) => Number(c.h));
+    const lows = m5Candles.map((c) => Number(c.l));
+    const opens = m5Candles.map((c) => Number(c.o));
+    const ema5 = emaSeries(closes, m5EmaFast);
+    const ema20 = emaSeries(closes, m5EmaSlow);
+
+    for (let i = m5AdxLen + consolidationLookback; i < m5Candles.length; i++) {
+      const candleMs = candleTimeMs(m5Candles[i]);
+      const minOfDay = chicagoMinutesOfDay(candleMs, timeZone);
+      let inSession = minOfDay >= sessionStartMin && minOfDay <= sessionEndMin;
+      if (allowAltSession && minOfDay >= altSessionStartMin && minOfDay <= altSessionEndMin) {
+        inSession = useAltSession ? true : inSession;
+      }
+      if (!inSession || minOfDay - sessionStartMin < skipFirstMinutes) continue;
+
+      const high = highs[i];
+      const low = lows[i];
+      const close = closes[i];
+      const open = opens[i];
+      const emaFast = ema5[i];
+      const emaSlow = ema20[i];
+      if (!Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close) || !Number.isFinite(emaFast) || !Number.isFinite(emaSlow)) continue;
+
+      const candleRange = high - low;
+      if (candleRange < minCandleRangePoints) continue;
+
+      const isConsolidating = isInConsolidation(closes, highs, lows, i, consolidationLookback, maxConsolidationRange);
+      if (isConsolidating) continue;
+
+      const bullBias = emaFast > emaSlow && close > emaFast;
+      const bearBias = emaFast < emaSlow && close < emaFast;
+
+      let signal = null;
+
+      if (trendBurstMode && bullBias && i > consolidationLookback) {
+        const pullback = analyzePullback(closes, highs, lows, i, pullbackRetraceMax);
+        if (pullback.isPullback && pullback.pullbackLow < emaFast && pullback.pullbackLow > emaSlow) {
+          if (high > emaFast && close > emaFast) {
+            signal = { type: "BUY", price: high, time: candleMs, label: "TREND_BURST_BULL" };
+          }
+        }
+      } else if (trendBurstMode && bearBias && i > consolidationLookback) {
+        const pullback = analyzePullback(closes, highs, lows, i, pullbackRetraceMax);
+        if (pullback.isPullback && pullback.pullbackHigh > emaFast && pullback.pullbackHigh < emaSlow) {
+          if (low < emaFast && close < emaFast) {
+            signal = { type: "SELL", price: low, time: candleMs, label: "TREND_BURST_BEAR" };
+          }
+        }
+      }
+
+      if (!signal && wickRejectionMode && bullBias && i > 2) {
+        const prevWick = lows[i - 1] < opens[i - 1] ? (opens[i - 1] - lows[i - 1]) / candleRange : 0;
+        if (prevWick > 0.3 && close > opens[i - 1] && high > highs[i - 1]) {
+          signal = { type: "BUY", price: high, time: candleMs, label: "WICK_REJECTION_BULL" };
+        }
+      } else if (!signal && wickRejectionMode && bearBias && i > 2) {
+        const prevWick = highs[i - 1] > opens[i - 1] ? (highs[i - 1] - opens[i - 1]) / candleRange : 0;
+        if (prevWick > 0.3 && close < opens[i - 1] && low < lows[i - 1]) {
+          signal = { type: "SELL", price: low, time: candleMs, label: "WICK_REJECTION_BEAR" };
+        }
+      }
+
+      if (signal) {
+        signals.push(signal);
+        if (signals.length >= keepN) break;
+      }
+    }
+
+    return signals;
+  }
+
+  function isInConsolidation(closes, highs, lows, idx, lookback, maxRange) {
+    const start = Math.max(0, idx - lookback + 1);
+    let minH = Infinity;
+    let maxL = -Infinity;
+    for (let i = start; i <= idx; i++) {
+      const h = Number(highs[i]);
+      const l = Number(lows[i]);
+      if (Number.isFinite(h) && h < minH) minH = h;
+      if (Number.isFinite(l) && l > maxL) maxL = l;
+    }
+    return Number.isFinite(minH) && Number.isFinite(maxL) && minH - maxL <= maxRange;
+  }
+
+  function analyzePullback(closes, highs, lows, idx, retraceMax) {
+    let pullbackHigh = -Infinity;
+    let pullbackLow = Infinity;
+    const direction = closes[idx] > closes[idx - 1] ? "up" : "down";
+
+    for (let i = Math.max(0, idx - 15); i < idx; i++) {
+      if (direction === "up" && (i === idx - 1 || (closes[i] > closes[i - 1] && lows[i] < lows[idx - 1]))) {
+        pullbackLow = Math.min(pullbackLow, lows[i]);
+      }
+      if (direction === "down" && (i === idx - 1 || (closes[i] < closes[i - 1] && highs[i] > highs[idx - 1]))) {
+        pullbackHigh = Math.max(pullbackHigh, highs[i]);
+      }
+    }
+
+    const isPullback = direction === "up" ? pullbackLow < lows[idx - 1] : pullbackHigh > highs[idx - 1];
+    return { isPullback, pullbackHigh, pullbackLow };
   }
 
   async function runNas100VwapLiquiditySweepScalper(input) {
@@ -1203,57 +1308,50 @@
     return report;
   }
 
-  async function runNas100MomentumBacktest(input, strategy) {
+  async function runNas100HybridBacktest(input, strategy) {
     const pInput = input && input.params ? input.params : {};
     const tmDefaults = (strategy && strategy.tradeManagementDefaults) || {};
     const tmInput = input && input.tradeManagement ? input.tradeManagement : {};
 
     const p = {
-      fastEma: toPosInt(pInput.fastEma, 18, 3),
-      slowEma: toPosInt(pInput.slowEma, 55, 8),
-      breakoutLen: toPosInt(pInput.breakoutLen, 8, 3),
-      breakoutBufferTicks: Math.max(0, toNum(pInput.breakoutBufferTicks, 3)),
-      atrShortLen: toPosInt(pInput.atrShortLen, 8, 2),
-      atrLongLen: toPosInt(pInput.atrLongLen, 34, 5),
-      minAtrRatio: Math.max(0.5, toNum(pInput.minAtrRatio, 1.12)),
-      slopeLen: toPosInt(pInput.slopeLen, 5, 2),
-      minSlopeTicks: Math.max(0, toNum(pInput.minSlopeTicks, 20)),
-      rangeLen: toPosInt(pInput.rangeLen, 14, 4),
-      minRangeTicks: Math.max(1, toNum(pInput.minRangeTicks, 55)),
-      cooldownBars: toPosInt(pInput.cooldownBars, 3, 0),
-      tickSize: Math.max(0.00001, toNum(pInput.tickSize, toNum(tmInput.tickSize, toNum(tmDefaults.tickSize, 1))))
+      timeZone: pInput.timeZone || "America/Chicago",
+      sessionStart: pInput.sessionStart || "09:35",
+      sessionEnd: pInput.sessionEnd || "11:30",
+      altSessionStart: pInput.altSessionStart || "14:00",
+      altSessionEnd: pInput.altSessionEnd || "15:30",
+      useAltSession: pInput.useAltSession === true,
+      allowAltSession: pInput.allowAltSession !== false,
+      skipFirstMinutes: toPosInt(pInput.skipFirstMinutes, 5, 1),
+      m5EmaFast: toPosInt(pInput.m5EmaFast, 20, 5),
+      m5EmaSlow: toPosInt(pInput.m5EmaSlow, 50, 10),
+      m5AdxLen: toPosInt(pInput.m5AdxLen, 14, 5),
+      m5AdxThreshold: Math.max(15, toNum(pInput.m5AdxThreshold, 22)),
+      trendBurstMode: pInput.trendBurstMode !== false,
+      wickRejectionMode: pInput.wickRejectionMode !== false,
+      pullbackRetraceMax: Math.max(0.1, Math.min(0.9, toNum(pInput.pullbackRetraceMax, 0.45))),
+      minCandleRangePoints: Math.max(0, toNum(pInput.minCandleRangePoints, 2)),
+      consolidationLookback: Math.max(3, toPosInt(pInput.consolidationLookback, 10, 3)),
+      maxConsolidationRange: Math.max(1, toNum(pInput.maxConsolidationRange, 6)),
+      minAdxForEntry: Math.max(15, toNum(pInput.minAdxForEntry, 20))
     };
 
     const tm = {
-      slTicks: Math.max(1, toNum(tmInput.slTicks, toNum(tmDefaults.slTicks, 28))),
-      tpTicks: Math.max(1, toNum(tmInput.tpTicks, toNum(tmDefaults.tpTicks, 32))),
+      slTicks: Math.max(1, toNum(tmInput.slTicks, toNum(tmDefaults.slTicks, 25))),
+      tpTicks: Math.max(1, toNum(tmInput.tpTicks, toNum(tmDefaults.tpTicks, 35))),
       tickSize: Math.max(0.00001, toNum(tmInput.tickSize, toNum(tmDefaults.tickSize, 1))),
       exitOnOpposite: tmInput.exitOnOpposite !== false,
       bothHitModel: tmInput.bothHitModel === "tp_first" ? "tp_first" : "sl_first"
     };
 
-    const set = await window.LCPro.Backtest.buildNas100MomentumSignalSet({
+    const signalSet = await runNas100HybridScalper({
       instrumentId: input.instrumentId,
-      timeframeSec: input.timeframeSec,
+      timeframeSec: input.timeframeSec || 300,
       lookback: input.lookback,
       keepN: toPosInt(input && input.keepN, 25, 1),
-      rangePreset: input.rangePreset || "week",
-      fastEma: p.fastEma,
-      slowEma: p.slowEma,
-      breakoutLen: p.breakoutLen,
-      breakoutBufferTicks: p.breakoutBufferTicks,
-      atrShortLen: p.atrShortLen,
-      atrLongLen: p.atrLongLen,
-      minAtrRatio: p.minAtrRatio,
-      slopeLen: p.slopeLen,
-      minSlopeTicks: p.minSlopeTicks,
-      rangeLen: p.rangeLen,
-      minRangeTicks: p.minRangeTicks,
-      cooldownBars: p.cooldownBars,
-      tickSize: p.tickSize
+      params: p
     });
 
-    const report = evaluateSmaFromSignalSet(set, strategy, p, tm);
+    const report = evaluateSmaFromSignalSet({ signals: signalSet }, strategy, p, tm);
     report.rangePreset = input.rangePreset || "week";
     return report;
   }
@@ -1536,42 +1634,49 @@
       },
       runSignals: runSmaCrossover
     },
-    nas100_momentum_scalper: {
-      id: "nas100_momentum_scalper",
-      name: "NAS100 Momentum Scalper",
-      notes: "Fast trend-following breakout entries with ATR momentum and anti-consolidation filters.",
+    nas100_hybrid_scalper: {
+      id: "nas100_hybrid_scalper",
+      name: "NAS100 Hybrid Scalper (Trend+Wick)",
+      notes: "2-mode scalper combining trend-burst continuation (Setup A) and wick-rejection at key zones (Setup B) with M5 trend filter and consolidation detection.",
       liveDefaults: {
         instrumentId: "NAS100",
-        timeframeSec: 60,
-        lookback: 1200,
+        timeframeSec: 300,
+        lookback: 400,
         lots: 0.01,
-        tpTicks: 32,
-        slTicks: 28,
+        tpTicks: 35,
+        slTicks: 25,
         tickSize: 1
       },
       defaultParams: {
-        fastEma: 18,
-        slowEma: 55,
-        breakoutLen: 8,
-        breakoutBufferTicks: 3,
-        atrShortLen: 8,
-        atrLongLen: 34,
-        minAtrRatio: 1.12,
-        slopeLen: 5,
-        minSlopeTicks: 20,
-        rangeLen: 14,
-        minRangeTicks: 55,
-        cooldownBars: 3,
+        timeZone: "America/Chicago",
+        sessionStart: "09:35",
+        sessionEnd: "11:30",
+        altSessionStart: "14:00",
+        altSessionEnd: "15:30",
+        useAltSession: false,
+        allowAltSession: true,
+        skipFirstMinutes: 5,
+        m5EmaFast: 20,
+        m5EmaSlow: 50,
+        m5AdxLen: 14,
+        m5AdxThreshold: 22,
+        trendBurstMode: true,
+        wickRejectionMode: true,
+        pullbackRetraceMax: 0.45,
+        minCandleRangePoints: 2,
+        consolidationLookback: 10,
+        maxConsolidationRange: 6,
+        minAdxForEntry: 20,
         tickSize: 1
       },
       tradeManagementDefaults: {
-        slTicks: 28,
-        tpTicks: 32,
+        slTicks: 25,
+        tpTicks: 35,
         tickSize: 1,
         exitOnOpposite: true,
         bothHitModel: "sl_first"
       },
-      runSignals: runNas100MomentumScalper
+      runSignals: runNas100HybridScalper
     },
     nas100_vwap_liquidity_sweep_fvg_scalper: {
       id: "nas100_vwap_liquidity_sweep_fvg_scalper",
@@ -1685,8 +1790,8 @@
     if (id === "sma_crossover") {
       return await runSmaBacktest(input || {}, s);
     }
-    if (id === "nas100_momentum_scalper") {
-      return await runNas100MomentumBacktest(input || {}, s);
+    if (id === "nas100_hybrid_scalper") {
+      return await runNas100HybridBacktest(input || {}, s);
     }
     if (id === "nas100_vwap_liquidity_sweep_fvg_scalper") {
       return await runNas100VwapLiquiditySweepBacktest(input || {}, s);

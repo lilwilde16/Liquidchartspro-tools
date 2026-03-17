@@ -464,7 +464,7 @@
       if (!registry) {
         liveStrategySelectEl.innerHTML =
           '<option value="sma_crossover">SMA Crossover</option>' +
-          '<option value="nas100_momentum_scalper">NAS100 Momentum Scalper</option>' +
+          '<option value="nas100_hybrid_scalper">NAS100 Hybrid Scalper (Trend+Wick)</option>' +
           '<option value="nas100_vwap_liquidity_sweep_fvg_scalper">NAS100 VWAP Liquidity Sweep FVG Scalper</option>';
         if (!liveStrategySelectEl.value) liveStrategySelectEl.value = "sma_crossover";
         return false;
@@ -476,7 +476,7 @@
       if (!items.length) {
         liveStrategySelectEl.innerHTML =
           '<option value="sma_crossover">SMA Crossover</option>' +
-          '<option value="nas100_momentum_scalper">NAS100 Momentum Scalper</option>' +
+          '<option value="nas100_hybrid_scalper">NAS100 Hybrid Scalper (Trend+Wick)</option>' +
           '<option value="nas100_vwap_liquidity_sweep_fvg_scalper">NAS100 VWAP Liquidity Sweep FVG Scalper</option>';
         if (!liveStrategySelectEl.value) liveStrategySelectEl.value = "sma_crossover";
         return false;
@@ -614,20 +614,20 @@
         });
       }
 
-      if (strategyId === "nas100_momentum_scalper") {
-        const fastEma = Number((rt.params && rt.params.fastEma) || 18);
-        const slowEma = Number((rt.params && rt.params.slowEma) || 55);
-        const eFast = emaSeries(closes, fastEma);
-        const eSlow = emaSeries(closes, slowEma);
+      if (strategyId === "nas100_hybrid_scalper") {
+        const m5EmaFast = Number((rt.params && rt.params.m5EmaFast) || 20);
+        const m5EmaSlow = Number((rt.params && rt.params.m5EmaSlow) || 50);
+        const eFast = emaSeries(closes, m5EmaFast);
+        const eSlow = emaSeries(closes, m5EmaSlow);
         const ef = Number(eFast[n - 1]);
         const es = Number(eSlow[n - 1]);
         return Object.assign({}, common, {
-          fastEma,
-          slowEma,
+          m5EmaFast,
+          m5EmaSlow,
           emaFast: ef,
           emaSlow: es,
           trendBias: Number.isFinite(ef) && Number.isFinite(es) ? (ef >= es ? "bull" : "bear") : "unknown",
-          waitingFor: latestSignal ? "signal_ready" : "waiting_for_momentum_breakout"
+          waitingFor: latestSignal ? "signal_ready" : "waiting_for_setup_conditions"
         });
       }
 
