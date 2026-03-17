@@ -2448,7 +2448,7 @@
       }
     };
 
-    write("Tools ready (build 20260317-2). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260317-3). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
@@ -2460,6 +2460,7 @@
     const btnCloseAllPositions = $("btnCloseAllPositions");
     const btnCloseOrderById = $("btnCloseOrderById");
     const btnRefreshActionButtons = $("btnRefreshActionButtons");
+    const btnCheckHarnessConnection = $("btnCheckHarnessConnection");
     const toolActionButtons = $("toolActionButtons");
     const toolActionPayload = $("toolActionPayload");
     const toolActionStatus = $("toolActionStatus");
@@ -2474,6 +2475,49 @@
       marketTickInput: null,
       marketLotsInput: null
     };
+
+    function getHarnessConnectionDiagnostics() {
+      const lc = window.LCPro || null;
+      const core = lc && lc.Core ? lc.Core : null;
+      const marketData = lc && lc.MarketData ? lc.MarketData : null;
+      const trading = lc && lc.Trading ? lc.Trading : null;
+      const strategy = lc && lc.Strategy ? lc.Strategy : null;
+
+      let frameworkStatus = { ok: false, error: "Core unavailable" };
+      if (core && typeof core.ensureFramework === "function") {
+        try {
+          const fw = core.ensureFramework();
+          frameworkStatus = {
+            ok: !!fw,
+            hasOrders: !!(fw && fw.Orders),
+            hasPositions: !!(fw && fw.Positions)
+          };
+        } catch (e) {
+          frameworkStatus = { ok: false, error: e && e.message ? e.message : String(e) };
+        }
+      }
+
+      return {
+        ts: new Date().toISOString(),
+        hasLCPro: !!lc,
+        modules: {
+          Core: !!core,
+          MarketData: !!marketData,
+          Trading: !!trading,
+          Strategy: !!strategy
+        },
+        framework: frameworkStatus,
+        tradingMethods: {
+          executeAction: !!(trading && typeof trading.executeAction === "function"),
+          listActions: !!(trading && typeof trading.listActions === "function"),
+          sendMarketOrder: !!(trading && typeof trading.sendMarketOrder === "function"),
+          entryThenModify: !!(trading && typeof trading.entryThenModify === "function"),
+          closeOrderById: !!(trading && typeof trading.closeOrderById === "function"),
+          closeAllPositions: !!(trading && typeof trading.closeAllPositions === "function"),
+          closeSideOnInstrument: !!(trading && typeof trading.closeSideOnInstrument === "function")
+        }
+      };
+    }
 
     function readToolTradeInput() {
       return {
@@ -2754,7 +2798,11 @@
         }
       }
       if (!Trading) {
-        write("Trading module is unavailable.");
+        write({
+          error: "Trading module is unavailable.",
+          diagnostics: getHarnessConnectionDiagnostics(),
+          hint: "Run Check Connection and confirm build stamp is latest."
+        });
         return;
       }
 
@@ -3046,6 +3094,12 @@
             : [];
         const count = Array.isArray(names) ? names.length : 0;
         write("Action buttons refreshed from trading registry. Count=" + count);
+      });
+    }
+
+    if (btnCheckHarnessConnection) {
+      btnCheckHarnessConnection.addEventListener("click", function () {
+        write({ action: "check_connection", diagnostics: getHarnessConnectionDiagnostics() });
       });
     }
 
