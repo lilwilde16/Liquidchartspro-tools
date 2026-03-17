@@ -2711,6 +2711,8 @@
     const btnCheckHarnessConnection = $("btnCheckHarnessConnection");
     const btnCopyToolsOutput = $("btnCopyToolsOutput");
     const btnExportCsvFromDate = $("btnExportCsvFromDate");
+    const toolCsvExportStatus = $("toolCsvExportStatus");
+    const toolCsvDownloadLink = $("toolCsvDownloadLink");
     const toolActionButtons = $("toolActionButtons");
     const toolActionPayload = $("toolActionPayload");
     const toolActionStatus = $("toolActionStatus");
@@ -2725,6 +2727,7 @@
       marketTickInput: null,
       marketLotsInput: null
     };
+    let activeCsvUrl = "";
 
     function candleTimeMs(c) {
       if (!c || typeof c !== "object") return 0;
@@ -2749,6 +2752,34 @@
       return s;
     }
 
+    function clearPreparedCsvLink() {
+      if (activeCsvUrl) {
+        try {
+          URL.revokeObjectURL(activeCsvUrl);
+        } catch (e) {}
+        activeCsvUrl = "";
+      }
+      if (toolCsvDownloadLink) {
+        toolCsvDownloadLink.removeAttribute("href");
+        toolCsvDownloadLink.removeAttribute("download");
+        toolCsvDownloadLink.style.display = "none";
+        toolCsvDownloadLink.textContent = "Download Prepared CSV";
+      }
+    }
+
+    function setPreparedCsvLink(url, fileName, count) {
+      if (!toolCsvDownloadLink) return;
+      toolCsvDownloadLink.href = url;
+      toolCsvDownloadLink.download = fileName;
+      toolCsvDownloadLink.textContent = "Download Prepared CSV (" + count + " rows)";
+      toolCsvDownloadLink.style.display = "inline-block";
+    }
+
+    function setCsvExportStatus(text) {
+      if (!toolCsvExportStatus) return;
+      toolCsvExportStatus.textContent = text;
+    }
+
     async function exportCsvFromDate() {
       const instrument = $("toolCsvInstrument") ? String($("toolCsvInstrument").value || "NAS100") : "NAS100";
       const timeframeSec = Math.max(10, parseInt($("toolCsvTimeframeSec") ? $("toolCsvTimeframeSec").value : "60", 10) || 60);
@@ -2769,6 +2800,8 @@
       const spanMs = toMs - fromMs;
       const roughBars = Math.ceil(spanMs / (timeframeSec * 1000)) + 20;
       const lookback = Math.max(200, Math.min(50000, roughBars));
+      clearPreparedCsvLink();
+      setCsvExportStatus("Preparing CSV...");
 
       write({ action: "export_csv_from_date", status: "requesting", instrument, timeframeSec, lookback, fromRaw, toRaw: toRaw || "now" });
 
@@ -2784,6 +2817,7 @@
         });
 
       if (!filtered.length) {
+        setCsvExportStatus("No candles found for the selected date range.");
         write({ action: "export_csv_from_date", status: "empty", reason: "No candles in selected date window", candlesReceived: candles.length });
         return;
       }
@@ -2807,21 +2841,25 @@
       const csv = lines.join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
       const fromTag = fromRaw || "from";
       const toTag = toRaw || "now";
-      a.href = url;
-      a.download = instrument.replace(/[^A-Za-z0-9_-]/g, "_") + "_" + timeframeSec + "s_" + fromTag + "_" + toTag + ".csv";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const fileName = instrument.replace(/[^A-Za-z0-9_-]/g, "_") + "_" + timeframeSec + "s_" + fromTag + "_" + toTag + ".csv";
+      activeCsvUrl = url;
+      setPreparedCsvLink(url, fileName, filtered.length);
+      setCsvExportStatus("CSV prepared. If the browser does not auto-download, click the download link below.");
+
+      try {
+        if (toolCsvDownloadLink) {
+          toolCsvDownloadLink.click();
+        }
+      } catch (e) {}
 
       write({
         action: "export_csv_from_date",
-        status: "downloaded",
+        status: "prepared",
         instrument,
         timeframeSec,
+        fileName,
         requestedLookback: lookback,
         candlesReceived: candles.length,
         candlesExported: filtered.length,
@@ -3536,6 +3574,10 @@
         }
       });
     }
+
+    window.addEventListener("beforeunload", function () {
+      clearPreparedCsvLink();
+    });
 
     refreshOrderDropdown();
     renderActionButtons();
