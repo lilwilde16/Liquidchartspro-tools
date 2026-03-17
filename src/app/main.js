@@ -2448,7 +2448,7 @@
       }
     };
 
-    write("Tools ready. Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260317-2). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
@@ -2743,7 +2743,16 @@
 
     async function runRegisteredAction(actionName) {
       const action = String(actionName || "").toUpperCase();
-      const Trading = window.LCPro && window.LCPro.Trading ? window.LCPro.Trading : null;
+      let Trading = window.LCPro && window.LCPro.Trading ? window.LCPro.Trading : null;
+      if (!Trading) {
+        const deadline = Date.now() + 2000;
+        while (!Trading && Date.now() < deadline) {
+          await new Promise(function (r) {
+            setTimeout(r, 100);
+          });
+          Trading = window.LCPro && window.LCPro.Trading ? window.LCPro.Trading : null;
+        }
+      }
       if (!Trading) {
         write("Trading module is unavailable.");
         return;
