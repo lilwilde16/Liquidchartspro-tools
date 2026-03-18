@@ -2936,12 +2936,46 @@
       return true;
     }
 
-    function getRepoExportBaseUrl() {
+    function getRepoExportEndpoints() {
       const loc = window.location;
-      if (loc && /^https?:$/i.test(String(loc.protocol || ""))) {
-        return String(loc.origin || "");
+      const list = [];
+
+      function addBase(base) {
+        const value = String(base || "").trim().replace(/\/$/, "");
+        if (!value) return;
+        if (!/^https?:\/\//i.test(value)) return;
+        if (list.indexOf(value) >= 0) return;
+        list.push(value);
       }
-      return "http://127.0.0.1:8787";
+
+      try {
+        if (window.LCPro) {
+          addBase(window.LCPro.repoExportBaseUrl || "");
+          addBase(window.LCPro.REPO_EXPORT_BASE_URL || "");
+        }
+      } catch (e) {}
+
+      try {
+        if (window.localStorage) {
+          addBase(window.localStorage.getItem("lcpro.repoExportBaseUrl") || "");
+          addBase(window.localStorage.getItem("LCProRepoExportBaseUrl") || "");
+        }
+      } catch (e) {}
+
+      if (loc && /^https?:$/i.test(String(loc.protocol || ""))) {
+        addBase(String(loc.origin || ""));
+      }
+
+      if (loc && String(loc.protocol || "").toLowerCase() === "http:") {
+        addBase("http://" + String(loc.hostname || "127.0.0.1") + ":8787");
+      }
+
+      addBase("http://127.0.0.1:8787");
+      addBase("http://localhost:8787");
+
+      return list.map(function (base) {
+        return base + "/api/save-csv";
+      });
     }
 
     async function saveCsvToRepo() {
@@ -2958,29 +2992,66 @@
       const fileName =
         activeCsvFileName ||
         instrument.replace(/[^A-Za-z0-9_-]/g, "_") + "_" + timeframeSec + "s_" + fromRaw + "_" + toRaw + ".csv";
-      const endpoint = getRepoExportBaseUrl().replace(/\/$/, "") + "/api/save-csv";
+      const endpoints = getRepoExportEndpoints();
+      const body = JSON.stringify({ fileName: fileName, csvText: csvText });
+      const failures = [];
 
-      setCsvExportStatus("Saving CSV to repo...");
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: fileName, csvText: csvText })
-      });
-
-      let payload = null;
-      try {
-        payload = await res.json();
-      } catch (e) {
-        payload = null;
+      if (!endpoints.length) {
+        throw new Error("No valid repo export endpoint is configured.");
       }
 
-      if (!res.ok || !payload || payload.ok !== true) {
-        const msg = payload && payload.error ? payload.error : "Repo save service is unavailable";
-        throw new Error(msg + ". Open the app from the repo export server on port 8787 or make sure it is running.");
+      for (let i = 0; i < endpoints.length; i++) {
+        const endpoint = endpoints[i];
+        setCsvExportStatus("Saving CSV to repo... (" + (i + 1) + "/" + endpoints.length + ")");
+
+        let res = null;
+        let payload = null;
+        try {
+          res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body
+          });
+        } catch (networkErr) {
+          failures.push({ endpoint: endpoint, error: networkErr && networkErr.message ? networkErr.message : "Network error" });
+          continue;
+        }
+
+        try {
+          payload = await res.json();
+        } catch (e) {
+          payload = null;
+        }
+
+        if (res.ok && payload && payload.ok === true) {
+          setCsvExportStatus("Saved to repo: " + payload.relativePath);
+          write({
+            action: "save_csv_to_repo",
+            status: "saved",
+            endpoint: endpoint,
+            fileName: fileName,
+            relativePath: payload.relativePath,
+            bytes: payload.bytes
+          });
+          return;
+        }
+
+        failures.push({
+          endpoint: endpoint,
+          status: res.status,
+          error: payload && payload.error ? payload.error : "Repo save service is unavailable"
+        });
       }
 
-      setCsvExportStatus("Saved to repo: " + payload.relativePath);
-      write({ action: "save_csv_to_repo", status: "saved", fileName: fileName, relativePath: payload.relativePath, bytes: payload.bytes });
+      const firstFailure = failures.length ? failures[0] : null;
+      const hint =
+        "Start the repo server with: node repo-export-server.js, then open http://localhost:8787 or set window.LCPro.repoExportBaseUrl.";
+      const detail = firstFailure
+        ? " First error at " + firstFailure.endpoint + ": " + (firstFailure.error || "Request failed")
+        : "";
+
+      write({ action: "save_csv_to_repo", status: "failed", fileName: fileName, attempts: failures });
+      throw new Error("Could not save CSV to repo via any endpoint." + detail + " " + hint);
     }
 
     async function exportCsvFromDate() {
