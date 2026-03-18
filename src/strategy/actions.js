@@ -1246,11 +1246,53 @@
     const pointValue = Math.max(0, toNum(tm.pointValue, 1));
     const exitOnOpposite = tm.exitOnOpposite !== false;
     const bothHitModel = tm.bothHitModel === "tp_first" ? "tp_first" : "sl_first";
+    const tpMode = String(tm.tpMode || "fixed");
+    const slMode = String(tm.slMode || "fixed");
+    const dynamicRangeLookback = Math.max(1, toPosInt(tm.dynamicRangeLookback, 8, 1));
+    const tpRangeMultiplier = Math.max(0.1, toNum(tm.tpRangeMultiplier, 1));
+    const slRangeMultiplier = Math.max(0.1, toNum(tm.slRangeMultiplier, 1));
+    const minDynamicTpTicks = Math.max(1, toNum(tm.minDynamicTpTicks, tpTicks));
+    const maxDynamicTpTicks = Math.max(minDynamicTpTicks, toNum(tm.maxDynamicTpTicks, Math.max(tpTicks, minDynamicTpTicks)));
+    const minDynamicSlTicks = Math.max(1, toNum(tm.minDynamicSlTicks, slTicks));
+    const maxDynamicSlTicks = Math.max(minDynamicSlTicks, toNum(tm.maxDynamicSlTicks, Math.max(slTicks, minDynamicSlTicks)));
+    const breakEvenTriggerTicks = Math.max(0, toNum(tm.breakEvenTriggerTicks, 0));
+    const trailingStopTicks = Math.max(0, toNum(tm.trailingStopTicks, 0));
+    const trailingActivationTicks = Math.max(0, toNum(tm.trailingActivationTicks, trailingStopTicks > 0 ? trailingStopTicks : breakEvenTriggerTicks));
+    const maxBarsInTrade = Math.max(0, toPosInt(tm.maxBarsInTrade, 0, 0));
 
     const signals = set.allSignals || [];
     const candles = set.candlesChron || [];
     const byIdx = {};
     for (let i = 0; i < signals.length; i++) byIdx[signals[i].idx] = signals[i];
+
+    function clampTicks(value, minTicks, maxTicks, fallbackTicks) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return fallbackTicks;
+      return Math.max(minTicks, Math.min(maxTicks, n));
+    }
+
+    function resolveDynamicTicks(mode, fixedTicks, signalIdx, multiplier, minTicks, maxTicks) {
+      if (mode !== "range") return fixedTicks;
+
+      const end = Math.max(0, Number(signalIdx) - 1);
+      const start = Math.max(0, end - dynamicRangeLookback + 1);
+      let sum = 0;
+      let count = 0;
+      for (let candleIdx = start; candleIdx <= end; candleIdx++) {
+        const candle = candles[candleIdx] || {};
+        const h = Number(candle.h);
+        const l = Number(candle.l);
+        if (!Number.isFinite(h) || !Number.isFinite(l)) continue;
+        sum += Math.max(0, h - l);
+        count += 1;
+      }
+
+      if (!count || tickSize <= 0) return fixedTicks;
+      const avgRangePoints = sum / count;
+      const rangeTicks = avgRangePoints / tickSize;
+      const scaledTicks = Math.round(rangeTicks * multiplier);
+      return clampTicks(scaledTicks, minTicks, maxTicks, fixedTicks);
+    }
 
     const trades = [];
     let wins = 0;
@@ -1264,8 +1306,11 @@
       const entry = Number(sig.price);
       if (!Number.isFinite(entry)) continue;
 
-      const tpPrice = side === "BUY" ? entry + tpTicks * tickSize : entry - tpTicks * tickSize;
-      const slPrice = side === "BUY" ? entry - slTicks * tickSize : entry + slTicks * tickSize;
+      const tradeTpTicks = resolveDynamicTicks(tpMode, tpTicks, sig.idx, tpRangeMultiplier, minDynamicTpTicks, maxDynamicTpTicks);
+      const tradeSlTicks = resolveDynamicTicks(slMode, slTicks, sig.idx, slRangeMultiplier, minDynamicSlTicks, maxDynamicSlTicks);
+      let activeTpPrice = side === "BUY" ? entry + tradeTpTicks * tickSize : entry - tradeTpTicks * tickSize;
+      let activeSlPrice = side === "BUY" ? entry - tradeSlTicks * tickSize : entry + tradeSlTicks * tickSize;
+      let movedToBreakEven = false;
 
       let exitPrice = entry;
       let exitTime = sig.time;
@@ -1277,32 +1322,52 @@
         const l = Number(c.l);
         const close = Number(c.c);
         const t = window.LCPro.Backtest.candleTimeMs(c);
+        const barsHeld = j - sig.idx;
 
-        const hitTp = side === "BUY" ? h >= tpPrice : l <= tpPrice;
-        const hitSl = side === "BUY" ? l <= slPrice : h >= slPrice;
+        const hitTp = side === "BUY" ? h >= activeTpPrice : l <= activeTpPrice;
+        const hitSl = side === "BUY" ? l <= activeSlPrice : h >= activeSlPrice;
 
         if (hitTp && hitSl) {
-          exitPrice = bothHitModel === "tp_first" ? tpPrice : slPrice;
+          exitPrice = bothHitModel === "tp_first" ? activeTpPrice : activeSlPrice;
           exitReason = bothHitModel === "tp_first" ? "both_hit_tp_first" : "both_hit_sl_first";
           exitTime = t || exitTime;
           break;
         }
         if (hitTp) {
-          exitPrice = tpPrice;
+          exitPrice = activeTpPrice;
           exitReason = "tp";
           exitTime = t || exitTime;
           break;
         }
         if (hitSl) {
-          exitPrice = slPrice;
+          exitPrice = activeSlPrice;
           exitReason = "sl";
           exitTime = t || exitTime;
           break;
         }
 
+        const favorableTicks = side === "BUY" ? (h - entry) / tickSize : (entry - l) / tickSize;
+
+        if (!movedToBreakEven && breakEvenTriggerTicks > 0 && favorableTicks >= breakEvenTriggerTicks) {
+          activeSlPrice = side === "BUY" ? Math.max(activeSlPrice, entry) : Math.min(activeSlPrice, entry);
+          movedToBreakEven = true;
+        }
+
+        if (trailingStopTicks > 0 && favorableTicks >= trailingActivationTicks && Number.isFinite(close)) {
+          const trailPrice = side === "BUY" ? close - trailingStopTicks * tickSize : close + trailingStopTicks * tickSize;
+          activeSlPrice = side === "BUY" ? Math.max(activeSlPrice, trailPrice) : Math.min(activeSlPrice, trailPrice);
+        }
+
         if (exitOnOpposite && byIdx[j] && byIdx[j].type !== side) {
           exitPrice = Number.isFinite(close) ? close : entry;
           exitReason = "opposite_signal";
+          exitTime = t || exitTime;
+          break;
+        }
+
+        if (maxBarsInTrade > 0 && barsHeld >= maxBarsInTrade) {
+          exitPrice = Number.isFinite(close) ? close : entry;
+          exitReason = "time_stop";
           exitTime = t || exitTime;
           break;
         }
@@ -1317,7 +1382,7 @@
       const pnlTicksRaw = side === "BUY" ? (exitPrice - entry) / tickSize : (entry - exitPrice) / tickSize;
       const pnlTicks = Number.isFinite(pnlTicksRaw) ? pnlTicksRaw : 0;
       const pnlCurrency = pnlTicks * lots * pointValue;
-      const pnlR = slTicks > 0 ? pnlTicks / slTicks : 0;
+      const pnlR = tradeSlTicks > 0 ? pnlTicks / tradeSlTicks : 0;
 
       if (pnlTicks >= 0) wins += 1;
       else losses += 1;
@@ -1332,6 +1397,8 @@
         exitTime,
         exitPrice,
         exitReason,
+        tpTicks: tradeTpTicks,
+        slTicks: tradeSlTicks,
         pnlTicks,
         pnlCurrency,
         pnlR
@@ -1346,7 +1413,26 @@
       strategyId: strategy.id,
       strategyName: strategy.name,
       params: p,
-      tradeManagement: { slTicks, tpTicks, tickSize, exitOnOpposite, bothHitModel },
+      tradeManagement: {
+        slTicks,
+        tpTicks,
+        tickSize,
+        exitOnOpposite,
+        bothHitModel,
+        tpMode,
+        slMode,
+        dynamicRangeLookback,
+        tpRangeMultiplier,
+        slRangeMultiplier,
+        minDynamicTpTicks,
+        maxDynamicTpTicks,
+        minDynamicSlTicks,
+        maxDynamicSlTicks,
+        breakEvenTriggerTicks,
+        trailingStopTicks,
+        trailingActivationTicks,
+        maxBarsInTrade
+      },
       summary: {
         totalTrades,
         wins,
@@ -1612,7 +1698,20 @@
       lots: Math.max(0.00001, toNum(tmInput.lots, toNum(strategy && strategy.liveDefaults && strategy.liveDefaults.lots, 0.01))),
       pointValue: Math.max(0, toNum(tmInput.pointValue, toNum(tmDefaults.pointValue, 1))),
       exitOnOpposite: tmInput.exitOnOpposite !== false,
-      bothHitModel: tmInput.bothHitModel === "tp_first" ? "tp_first" : "sl_first"
+      bothHitModel: tmInput.bothHitModel === "tp_first" ? "tp_first" : "sl_first",
+      tpMode: tmInput.tpMode || tmDefaults.tpMode || "fixed",
+      slMode: tmInput.slMode || tmDefaults.slMode || "fixed",
+      dynamicRangeLookback: Math.max(1, toPosInt(tmInput.dynamicRangeLookback, toPosInt(tmDefaults.dynamicRangeLookback, 8, 1), 1)),
+      tpRangeMultiplier: Math.max(0.1, toNum(tmInput.tpRangeMultiplier, toNum(tmDefaults.tpRangeMultiplier, 1))),
+      slRangeMultiplier: Math.max(0.1, toNum(tmInput.slRangeMultiplier, toNum(tmDefaults.slRangeMultiplier, 1))),
+      minDynamicTpTicks: Math.max(1, toNum(tmInput.minDynamicTpTicks, toNum(tmDefaults.minDynamicTpTicks, 4))),
+      maxDynamicTpTicks: Math.max(1, toNum(tmInput.maxDynamicTpTicks, toNum(tmDefaults.maxDynamicTpTicks, 12))),
+      minDynamicSlTicks: Math.max(1, toNum(tmInput.minDynamicSlTicks, toNum(tmDefaults.minDynamicSlTicks, 4))),
+      maxDynamicSlTicks: Math.max(1, toNum(tmInput.maxDynamicSlTicks, toNum(tmDefaults.maxDynamicSlTicks, 12))),
+      breakEvenTriggerTicks: Math.max(0, toNum(tmInput.breakEvenTriggerTicks, toNum(tmDefaults.breakEvenTriggerTicks, 0))),
+      trailingStopTicks: Math.max(0, toNum(tmInput.trailingStopTicks, toNum(tmDefaults.trailingStopTicks, 0))),
+      trailingActivationTicks: Math.max(0, toNum(tmInput.trailingActivationTicks, toNum(tmDefaults.trailingActivationTicks, 0))),
+      maxBarsInTrade: Math.max(0, toPosInt(tmInput.maxBarsInTrade, toPosInt(tmDefaults.maxBarsInTrade, 0, 0), 0))
     };
 
     const set = await window.LCPro.Backtest.buildNas100RsiSrStochSignalSet({
@@ -1952,7 +2051,7 @@
       id: "nas100_rsi_sr_stoch_scalper",
       name: "NAS100 RSI+SR+Stoch Scalper (M1)",
       notes:
-        "M1 momentum pullback scalper using trend EMA filter + support/resistance touch + RSI recovery + stochastic cross.",
+        "M1 momentum pullback scalper using trend EMA filter + support/resistance touch + RSI recovery + stochastic cross, with optional adaptive exit controls.",
       liveDefaults: {
         instrumentId: "NAS100",
         timeframeSec: 60,
@@ -1986,7 +2085,20 @@
         tickSize: 1,
         pointValue: 1,
         exitOnOpposite: true,
-        bothHitModel: "sl_first"
+        bothHitModel: "sl_first",
+        tpMode: "fixed",
+        slMode: "fixed",
+        dynamicRangeLookback: 8,
+        tpRangeMultiplier: 1.2,
+        slRangeMultiplier: 1.0,
+        minDynamicTpTicks: 4,
+        maxDynamicTpTicks: 12,
+        minDynamicSlTicks: 4,
+        maxDynamicSlTicks: 12,
+        breakEvenTriggerTicks: 3,
+        trailingStopTicks: 0,
+        trailingActivationTicks: 0,
+        maxBarsInTrade: 5
       },
       runSignals: runNas100RsiSrStochScalper
     }
