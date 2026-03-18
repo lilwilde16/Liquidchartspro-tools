@@ -3006,6 +3006,153 @@
       });
     }
 
+    function utf8ToBase64(text) {
+      try {
+        const bytes = new TextEncoder().encode(String(text || ""));
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      } catch (e) {
+        return btoa(unescape(encodeURIComponent(String(text || ""))));
+      }
+    }
+
+    function getGitHubRepoSaveConfig() {
+      const loc = window.location;
+      const search = loc && loc.search ? new URLSearchParams(loc.search) : null;
+      let owner = "";
+      let repo = "";
+      let branch = "main";
+      let token = "";
+
+      try {
+        if (window.LCPro) {
+          owner = String(window.LCPro.githubRepoOwner || window.LCPro.repoOwner || "").trim();
+          repo = String(window.LCPro.githubRepoName || window.LCPro.repoName || "").trim();
+          branch = String(window.LCPro.githubRepoBranch || window.LCPro.repoBranch || branch).trim() || "main";
+          token = String(window.LCPro.githubToken || window.LCPro.GITHUB_TOKEN || "").trim();
+        }
+      } catch (e) {}
+
+      if (search) {
+        if (!owner) owner = String(search.get("repoOwner") || "").trim();
+        if (!repo) repo = String(search.get("repoName") || "").trim();
+        branch = String(search.get("repoBranch") || branch || "main").trim() || "main";
+        if (!token) token = String(search.get("githubToken") || "").trim();
+      }
+
+      try {
+        if (!token && window.localStorage) {
+          token = String(window.localStorage.getItem("lcpro.githubToken") || "").trim();
+        }
+      } catch (e) {}
+
+      if (!owner) owner = "lilwilde16";
+      if (!repo) repo = "Liquidchartspro-tools";
+
+      return { owner, repo, branch, token };
+    }
+
+    async function saveCsvToGitHubRepo(fileName, csvText) {
+      const cfg = getGitHubRepoSaveConfig();
+      if (!cfg.owner || !cfg.repo) {
+        return { ok: false, reason: "Missing GitHub repo owner/name" };
+      }
+
+      let token = cfg.token;
+      if (!token) {
+        try {
+          token = String(window.prompt("Save to GitHub fallback: paste a token with repo contents write access") || "").trim();
+        } catch (e) {
+          token = "";
+        }
+      }
+
+      if (!token) {
+        return { ok: false, reason: "GitHub token is required for hosted repo-save fallback" };
+      }
+
+      try {
+        if (window.localStorage) {
+          window.localStorage.setItem("lcpro.githubToken", token);
+        }
+      } catch (e) {}
+
+      const pathInRepo = "exports/" + String(fileName || "export.csv");
+      const apiUrl =
+        "https://api.github.com/repos/" +
+        encodeURIComponent(cfg.owner) +
+        "/" +
+        encodeURIComponent(cfg.repo) +
+        "/contents/" +
+        pathInRepo
+          .split("/")
+          .map(function (seg) {
+            return encodeURIComponent(seg);
+          })
+          .join("/");
+
+      let existingSha = "";
+      try {
+        const existingRes = await fetch(apiUrl + "?ref=" + encodeURIComponent(cfg.branch), {
+          method: "GET",
+          headers: {
+            Authorization: "Bearer " + token,
+            Accept: "application/vnd.github+json"
+          }
+        });
+        if (existingRes.ok) {
+          const existing = await existingRes.json();
+          existingSha = existing && existing.sha ? String(existing.sha) : "";
+        }
+      } catch (e) {}
+
+      const payload = {
+        message: "Save CSV export: " + fileName,
+        content: utf8ToBase64(csvText),
+        branch: cfg.branch
+      };
+      if (existingSha) payload.sha = existingSha;
+
+      const putRes = await fetch(apiUrl, {
+        method: "PUT",
+        headers: {
+          Authorization: "Bearer " + token,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      let putBody = null;
+      try {
+        putBody = await putRes.json();
+      } catch (e) {
+        putBody = null;
+      }
+
+      if (!putRes.ok) {
+        const errMsg = putBody && putBody.message ? putBody.message : "GitHub API rejected save request";
+        return { ok: false, reason: errMsg, response: putBody };
+      }
+
+      const content = putBody && putBody.content ? putBody.content : null;
+      const relativePath = content && content.path ? content.path : pathInRepo;
+      const htmlUrl = content && content.html_url ? content.html_url : "";
+
+      return {
+        ok: true,
+        via: "github-api",
+        owner: cfg.owner,
+        repo: cfg.repo,
+        branch: cfg.branch,
+        relativePath: relativePath,
+        htmlUrl: htmlUrl
+      };
+    }
+
     async function saveCsvToRepo() {
       const csvText = toolCsvPreview ? String(toolCsvPreview.value || "") : "";
       if (!csvText.trim()) {
@@ -3093,7 +3240,28 @@
         : "";
 
       write({ action: "save_csv_to_repo", status: "failed", fileName: fileName, attempts: failures });
-      throw new Error("Could not save CSV to repo via any endpoint." + detail + " " + hint);
+
+      setCsvExportStatus("Repo server unreachable. Trying GitHub repo fallback...");
+      const gh = await saveCsvToGitHubRepo(fileName, csvText);
+      if (gh && gh.ok) {
+        setCsvExportStatus("Saved to repo via GitHub: " + gh.relativePath);
+        write({
+          action: "save_csv_to_repo",
+          status: "saved",
+          via: gh.via,
+          owner: gh.owner,
+          repo: gh.repo,
+          branch: gh.branch,
+          fileName: fileName,
+          relativePath: gh.relativePath,
+          htmlUrl: gh.htmlUrl,
+          bytes: csvText.length
+        });
+        return;
+      }
+
+      const ghReason = gh && gh.reason ? " GitHub fallback failed: " + gh.reason : "";
+      throw new Error("Could not save CSV to repo via any endpoint." + detail + " " + hint + ghReason);
     }
 
     async function exportCsvFromDate() {
