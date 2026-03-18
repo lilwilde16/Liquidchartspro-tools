@@ -2867,6 +2867,41 @@
       activeCsvFileName = fileName;
     }
 
+    function triggerCsvDownload() {
+      const csvText = toolCsvPreview ? String(toolCsvPreview.value || "") : "";
+      if (!activeCsvUrl && csvText.trim()) {
+        const rebuiltBlob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+        activeCsvUrl = URL.createObjectURL(rebuiltBlob);
+      }
+
+      if (!activeCsvUrl) {
+        setCsvExportStatus("Prepare a CSV before downloading.");
+        return false;
+      }
+
+      const fileName = activeCsvFileName || "export.csv";
+      try {
+        const tmp = document.createElement("a");
+        tmp.href = activeCsvUrl;
+        tmp.download = fileName;
+        tmp.style.display = "none";
+        document.body.appendChild(tmp);
+        tmp.click();
+        document.body.removeChild(tmp);
+        setCsvExportStatus("CSV download started.");
+        return true;
+      } catch (e) {
+        try {
+          window.open(activeCsvUrl, "_blank", "noopener");
+          setCsvExportStatus("CSV opened in a new tab. Save it manually if auto-download is blocked.");
+          return true;
+        } catch (openErr) {
+          setCsvExportStatus("Download was blocked. Use Copy CSV Text as a fallback.");
+          return false;
+        }
+      }
+    }
+
     function setCsvExportStatus(text) {
       if (!toolCsvExportStatus) return;
       toolCsvExportStatus.textContent = text;
@@ -3039,9 +3074,7 @@
       }
 
       try {
-        if (toolCsvDownloadLink) {
-          toolCsvDownloadLink.click();
-        }
+        triggerCsvDownload();
       } catch (e) {}
 
       write({
@@ -3796,6 +3829,13 @@
         }
 
         setCsvExportStatus("CSV is ready, but copy failed. Select the preview manually.");
+      });
+    }
+
+    if (toolCsvDownloadLink) {
+      toolCsvDownloadLink.addEventListener("click", function (event) {
+        event.preventDefault();
+        triggerCsvDownload();
       });
     }
 
