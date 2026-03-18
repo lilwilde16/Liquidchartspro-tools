@@ -3069,8 +3069,8 @@
       }
 
       try {
-        if (!token && window.localStorage) {
-          token = String(window.localStorage.getItem("lcpro.githubToken") || "").trim();
+        if (!token && window.sessionStorage) {
+          token = String(window.sessionStorage.getItem("lcpro.githubToken") || "").trim();
         }
       } catch (e) {}
 
@@ -3100,8 +3100,8 @@
       }
 
       try {
-        if (window.localStorage) {
-          window.localStorage.setItem("lcpro.githubToken", token);
+        if (window.sessionStorage) {
+          window.sessionStorage.setItem("lcpro.githubToken", token);
         }
       } catch (e) {}
 
@@ -3193,19 +3193,24 @@
         activeCsvFileName ||
         instrument.replace(/[^A-Za-z0-9_-]/g, "_") + "_" + timeframeSec + "s_" + fromRaw + "_" + toRaw + ".csv";
 
-      if (!isLocalRepoServerContext()) {
-        const localUrl = buildLocalRepoOpenUrl();
-        setCsvExportStatus("Open local repo app (http://localhost:8787) and save from there.");
+      // Preferred path: save directly to GitHub so HTTPS pages can persist without localhost server.
+      setCsvExportStatus("Saving CSV to GitHub repo...");
+      const ghFirst = await saveCsvToGitHubRepo(fileName, csvText);
+      if (ghFirst && ghFirst.ok) {
+        setCsvExportStatus("Saved to repo via GitHub: " + ghFirst.relativePath);
         write({
           action: "save_csv_to_repo",
-          status: "redirect_required",
-          reason: "Hosted HTTPS page cannot reliably write to local repo server endpoint.",
-          openLocalUrl: localUrl
+          status: "saved",
+          via: ghFirst.via,
+          owner: ghFirst.owner,
+          repo: ghFirst.repo,
+          branch: ghFirst.branch,
+          fileName: fileName,
+          relativePath: ghFirst.relativePath,
+          htmlUrl: ghFirst.htmlUrl,
+          bytes: csvText.length
         });
-        try {
-          window.open(localUrl, "_blank", "noopener");
-        } catch (e) {}
-        throw new Error("Open the local app tab and run Save CSV To Repo there.");
+        return;
       }
 
       const endpoints = getRepoExportEndpoints();
@@ -3213,7 +3218,8 @@
       const failures = [];
 
       if (!endpoints.length) {
-        throw new Error("No valid repo export endpoint is configured.");
+        const ghReason = ghFirst && ghFirst.reason ? " GitHub save failed: " + ghFirst.reason : "";
+        throw new Error("No valid repo export endpoint is configured." + ghReason);
       }
 
       for (let i = 0; i < endpoints.length; i++) {
@@ -3282,26 +3288,7 @@
 
       write({ action: "save_csv_to_repo", status: "failed", fileName: fileName, attempts: failures });
 
-      setCsvExportStatus("Repo server unreachable. Trying GitHub repo fallback...");
-      const gh = await saveCsvToGitHubRepo(fileName, csvText);
-      if (gh && gh.ok) {
-        setCsvExportStatus("Saved to repo via GitHub: " + gh.relativePath);
-        write({
-          action: "save_csv_to_repo",
-          status: "saved",
-          via: gh.via,
-          owner: gh.owner,
-          repo: gh.repo,
-          branch: gh.branch,
-          fileName: fileName,
-          relativePath: gh.relativePath,
-          htmlUrl: gh.htmlUrl,
-          bytes: csvText.length
-        });
-        return;
-      }
-
-      const ghReason = gh && gh.reason ? " GitHub fallback failed: " + gh.reason : "";
+      const ghReason = ghFirst && ghFirst.reason ? " GitHub save failed: " + ghFirst.reason : "";
       throw new Error("Could not save CSV to repo via any endpoint." + detail + " " + hint + ghReason);
     }
 
