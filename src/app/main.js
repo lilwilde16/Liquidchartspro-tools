@@ -2939,14 +2939,38 @@
     function getRepoExportEndpoints() {
       const loc = window.location;
       const list = [];
+      const isHttpsPage = loc && String(loc.protocol || "").toLowerCase() === "https:";
+
+      function normalizeBase(base) {
+        return String(base || "").trim().replace(/\/$/, "");
+      }
+
+      function rememberBase(base) {
+        const value = normalizeBase(base);
+        if (!value) return;
+        try {
+          if (window.localStorage) {
+            window.localStorage.setItem("lcpro.repoExportBaseUrl", value);
+          }
+        } catch (e) {}
+      }
 
       function addBase(base) {
-        const value = String(base || "").trim().replace(/\/$/, "");
+        const value = normalizeBase(base);
         if (!value) return;
         if (!/^https?:\/\//i.test(value)) return;
         if (list.indexOf(value) >= 0) return;
         list.push(value);
       }
+
+      try {
+        const search = loc && loc.search ? new URLSearchParams(loc.search) : null;
+        const paramBase = search ? search.get("repoExportBaseUrl") : "";
+        if (paramBase) {
+          addBase(paramBase);
+          rememberBase(paramBase);
+        }
+      } catch (e) {}
 
       try {
         if (window.LCPro) {
@@ -2968,6 +2992,10 @@
 
       if (loc && String(loc.protocol || "").toLowerCase() === "http:") {
         addBase("http://" + String(loc.hostname || "127.0.0.1") + ":8787");
+      }
+
+      if (isHttpsPage) {
+        addBase("https://" + String(loc.hostname || "localhost") + ":8787");
       }
 
       addBase("http://127.0.0.1:8787");
@@ -3002,6 +3030,15 @@
 
       for (let i = 0; i < endpoints.length; i++) {
         const endpoint = endpoints[i];
+        const blockedByMixedContent =
+          window.location &&
+          String(window.location.protocol || "").toLowerCase() === "https:" &&
+          /^http:\/\//i.test(endpoint);
+        if (blockedByMixedContent) {
+          failures.push({ endpoint: endpoint, error: "Blocked by browser mixed-content policy from HTTPS page" });
+          continue;
+        }
+
         setCsvExportStatus("Saving CSV to repo... (" + (i + 1) + "/" + endpoints.length + ")");
 
         let res = null;
@@ -3044,8 +3081,13 @@
       }
 
       const firstFailure = failures.length ? failures[0] : null;
-      const hint =
-        "Start the repo server with: node repo-export-server.js, then open http://localhost:8787 or set window.LCPro.repoExportBaseUrl.";
+      const httpsPage = window.location && String(window.location.protocol || "").toLowerCase() === "https:";
+      const mixedContentBlocked = failures.some(function (f) {
+        return f && /mixed-content/i.test(String(f.error || ""));
+      });
+      const hint = httpsPage && mixedContentBlocked
+        ? "You are on an HTTPS page, so browser blocks HTTP localhost repo endpoints. Use a HTTPS repo export URL via ?repoExportBaseUrl=https://<your-url> or window.LCPro.repoExportBaseUrl, or open this app from http://localhost:8787."
+        : "Start the repo server with: node repo-export-server.js, then open http://localhost:8787 or set window.LCPro.repoExportBaseUrl.";
       const detail = firstFailure
         ? " First error at " + firstFailure.endpoint + ": " + (firstFailure.error || "Request failed")
         : "";
