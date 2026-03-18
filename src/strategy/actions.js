@@ -1259,9 +1259,14 @@
     const trailingStopTicks = Math.max(0, toNum(tm.trailingStopTicks, 0));
     const trailingActivationTicks = Math.max(0, toNum(tm.trailingActivationTicks, trailingStopTicks > 0 ? trailingStopTicks : breakEvenTriggerTicks));
     const maxBarsInTrade = Math.max(0, toPosInt(tm.maxBarsInTrade, 0, 0));
+    const bbPeriod = Math.max(2, toPosInt(tm.bbPeriod, 15, 2));
+    const bbStdDev = Math.max(0.1, toNum(tm.bbStdDev, 1));
+    const minBbTpTicks = Math.max(1, toNum(tm.minBbTpTicks, minDynamicTpTicks));
+    const maxBbTpTicks = Math.max(minBbTpTicks, toNum(tm.maxBbTpTicks, maxDynamicTpTicks));
 
     const signals = set.allSignals || [];
     const candles = set.candlesChron || [];
+    const closeSeries = candles.map((c) => Number(c.c));
     const byIdx = {};
     for (let i = 0; i < signals.length; i++) byIdx[signals[i].idx] = signals[i];
 
@@ -1294,6 +1299,37 @@
       return clampTicks(scaledTicks, minTicks, maxTicks, fixedTicks);
     }
 
+    function bollingerAt(series, idx, period, stdMult) {
+      if (!Array.isArray(series) || idx < period - 1) return null;
+      let sum = 0;
+      for (let i = idx - period + 1; i <= idx; i++) {
+        const v = Number(series[i]);
+        if (!Number.isFinite(v)) return null;
+        sum += v;
+      }
+      const mean = sum / period;
+      let varianceSum = 0;
+      for (let i = idx - period + 1; i <= idx; i++) {
+        const diff = Number(series[i]) - mean;
+        varianceSum += diff * diff;
+      }
+      const std = Math.sqrt(varianceSum / period);
+      return {
+        mid: mean,
+        upper: mean + std * stdMult,
+        lower: mean - std * stdMult
+      };
+    }
+
+    function resolveBollingerTpTicks(side, entry, signalIdx, fallbackTicks) {
+      const bb = bollingerAt(closeSeries, Number(signalIdx), bbPeriod, bbStdDev);
+      if (!bb) return fallbackTicks;
+      const targetPrice = side === "BUY" ? Number(bb.upper) : Number(bb.lower);
+      if (!Number.isFinite(targetPrice)) return fallbackTicks;
+      const rawTicks = Math.round(Math.abs(targetPrice - entry) / tickSize);
+      return clampTicks(rawTicks, minBbTpTicks, maxBbTpTicks, fallbackTicks);
+    }
+
     const trades = [];
     let wins = 0;
     let losses = 0;
@@ -1306,7 +1342,10 @@
       const entry = Number(sig.price);
       if (!Number.isFinite(entry)) continue;
 
-      const tradeTpTicks = resolveDynamicTicks(tpMode, tpTicks, sig.idx, tpRangeMultiplier, minDynamicTpTicks, maxDynamicTpTicks);
+      const rangeTpTicks = resolveDynamicTicks(tpMode, tpTicks, sig.idx, tpRangeMultiplier, minDynamicTpTicks, maxDynamicTpTicks);
+      const tradeTpTicks = tpMode === "bb_outer"
+        ? resolveBollingerTpTicks(side, entry, sig.idx, tpTicks)
+        : rangeTpTicks;
       const tradeSlTicks = resolveDynamicTicks(slMode, slTicks, sig.idx, slRangeMultiplier, minDynamicSlTicks, maxDynamicSlTicks);
       let activeTpPrice = side === "BUY" ? entry + tradeTpTicks * tickSize : entry - tradeTpTicks * tickSize;
       let activeSlPrice = side === "BUY" ? entry - tradeSlTicks * tickSize : entry + tradeSlTicks * tickSize;
@@ -1428,6 +1467,10 @@
         maxDynamicTpTicks,
         minDynamicSlTicks,
         maxDynamicSlTicks,
+        bbPeriod,
+        bbStdDev,
+        minBbTpTicks,
+        maxBbTpTicks,
         breakEvenTriggerTicks,
         trailingStopTicks,
         trailingActivationTicks,
@@ -1708,6 +1751,10 @@
       maxDynamicTpTicks: Math.max(1, toNum(tmInput.maxDynamicTpTicks, toNum(tmDefaults.maxDynamicTpTicks, 12))),
       minDynamicSlTicks: Math.max(1, toNum(tmInput.minDynamicSlTicks, toNum(tmDefaults.minDynamicSlTicks, 4))),
       maxDynamicSlTicks: Math.max(1, toNum(tmInput.maxDynamicSlTicks, toNum(tmDefaults.maxDynamicSlTicks, 12))),
+      bbPeriod: Math.max(2, toPosInt(tmInput.bbPeriod, toPosInt(tmDefaults.bbPeriod, 15, 2), 2)),
+      bbStdDev: Math.max(0.1, toNum(tmInput.bbStdDev, toNum(tmDefaults.bbStdDev, 1))),
+      minBbTpTicks: Math.max(1, toNum(tmInput.minBbTpTicks, toNum(tmDefaults.minBbTpTicks, 4))),
+      maxBbTpTicks: Math.max(1, toNum(tmInput.maxBbTpTicks, toNum(tmDefaults.maxBbTpTicks, 12))),
       breakEvenTriggerTicks: Math.max(0, toNum(tmInput.breakEvenTriggerTicks, toNum(tmDefaults.breakEvenTriggerTicks, 0))),
       trailingStopTicks: Math.max(0, toNum(tmInput.trailingStopTicks, toNum(tmDefaults.trailingStopTicks, 0))),
       trailingActivationTicks: Math.max(0, toNum(tmInput.trailingActivationTicks, toNum(tmDefaults.trailingActivationTicks, 0))),
@@ -2095,6 +2142,10 @@
         maxDynamicTpTicks: 12,
         minDynamicSlTicks: 4,
         maxDynamicSlTicks: 12,
+        bbPeriod: 15,
+        bbStdDev: 1,
+        minBbTpTicks: 4,
+        maxBbTpTicks: 12,
         breakEvenTriggerTicks: 3,
         trailingStopTicks: 0,
         trailingActivationTicks: 0,
