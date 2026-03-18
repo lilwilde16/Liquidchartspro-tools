@@ -1,0 +1,222 @@
+{
+  "dataset": "exports/NDX_1m_30d_2026-03-18.csv",
+  "rows": 8581,
+  "split": {
+    "trainRows": 5749,
+    "testRows": 2832
+  },
+  "candidatesEvaluated": 15552,
+  "trainQualified": 11664,
+  "top": [
+    {
+      "rank": 1,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 53,
+        "srBufferTicks": 3,
+        "cooldownBars": 1,
+        "bbEntryEnabled": false,
+        "bbConfluenceMode": "either"
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 2,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1
+      },
+      "trainTrades": 47,
+      "train": {
+        "net": -12,
+        "maxDd": 52,
+        "std": 12.623787070447602,
+        "pos": 8,
+        "neg": 7,
+        "pf": 0.9130434782608696,
+        "score": -52.702982110321656
+      },
+      "testTrades": 15,
+      "test": {
+        "net": 6,
+        "maxDd": 18,
+        "std": 10.303397497913009,
+        "pos": 3,
+        "neg": 1,
+        "pf": 1.166666666666667,
+        "score": -9.909586622182562
+      },
+      "combined": -22.748
+    },
+    {
+      "rank": 2,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 53,
+        "srBufferTicks": 3,
+        "cooldownBars": 1,
+        "bbEntryEnabled": false,
+        "bbConfluenceMode": "either"
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 2,
+        "maxBarsInTrade": 5,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1
+      },
+      "trainTrades": 47,
+      "train": {
+        "net": -12,
+        "maxDd": 52,
+        "std": 12.623787070447602,
+        "pos": 8,
+        "neg": 7,
+        "pf": 0.9130434782608696,
+        "score": -52.702982110321656
+      },
+      "testTrades": 15,
+      "test": {
+        "net": 6,
+        "maxDd": 18,
+        "std": 10.303397497913009,
+        "pos": 3,
+        "neg": 1,
+        "pf": 1.166666666666667,
+        "score": -9.909586622182562
+      },
+      "combined": -22.748
+    },
+    {
+      "rank": 3,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 53,
+        "srBufferTicks": 4,
+        "cooldownBars": 1,
+        "bbEntryEnabled": false,
+        "bbConfluenceMode": "either"
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 2,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1
+      },
+      "trainTrades": 47,
+      "train": {
+        "net": -12,
+        "maxDd": 52,
+        "std": 12.623787070447602,
+        "pos": 8,
+        "neg": 7,
+        "pf": 0.9130434782608696,
+        "score": -52.702982110321656
+      },
+      "testTrades": 15,
+      "test": {
+        "net": 6,
+        "maxDd": 18,
+        "std": 10.303397497913009,
+        "pos": 3,
+        "neg": 1,
+        "pf": 1.166666666666667,
+        "score": -9.909586622182562
+      },
+      "combined": -22.748
+    },
+    {
+      "rank": 4,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 53,
+        "srBufferTicks": 4,
+        "cooldownBars": 1,
+        "bbEntryEnabled": false,
+        "bbConfluenceMode": "either"
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 2,
+        "maxBarsInTrade": 5,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1
+      },
+      "trainTrades": 47,
+      "train": {
+        "net": -12,
+        "maxDd": 52,
+        "std": 12.623787070447602,
+        "pos": 8,
+        "neg": 7,
+        "pf": 0.9130434782608696,
+        "score": -52.702982110321656
+      },
+      "testTrades": 15,
+      "test": {
+        "net": 6,
+        "maxDd": 18,
+        "std": 10.303397497913009,
+        "pos": 3,
+        "neg": 1,
+        "pf": 1.166666666666667,
+        "score": -9.909586622182562
+      },
+      "combined": -22.748
+    },
+    {
+      "rank": 5,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 53,
+        "srBufferTicks": 5,
+        "cooldownBars": 1,
+        "bbEntryEnabled": false,
+        "bbConfluenceMode": "either"
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 2,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1
+      },
+      "trainTrades": 47,
+      "train": {
+        "net": -12,
+        "maxDd": 52,
+        "std": 12.623787070447602,
+        "pos": 8,
+        "neg": 7,
+        "pf": 0.9130434782608696,
+        "score": -52.702982110321656
+      },
+      "testTrades": 15,
+      "test": {
+        "net": 6,
+        "maxDd": 18,
+        "std": 10.303397497913009,
+        "pos": 3,
+        "neg": 1,
+        "pf": 1.166666666666667,
+        "score": -9.909586622182562
+      },
+      "combined": -22.748
+    }
+  ]
+}
