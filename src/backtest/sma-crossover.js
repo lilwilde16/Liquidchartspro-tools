@@ -57,6 +57,72 @@
     return out;
   }
 
+  function rsiSeries(close, len) {
+    const out = new Array(close.length).fill(null);
+    if (!close.length || len < 2 || close.length <= len) return out;
+
+    let gainSum = 0;
+    let lossSum = 0;
+    for (let i = 1; i <= len; i++) {
+      const diff = Number(close[i]) - Number(close[i - 1]);
+      if (!Number.isFinite(diff)) continue;
+      if (diff >= 0) gainSum += diff;
+      else lossSum += -diff;
+    }
+
+    let avgGain = gainSum / len;
+    let avgLoss = lossSum / len;
+    out[len] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+
+    for (let i = len + 1; i < close.length; i++) {
+      const diff = Number(close[i]) - Number(close[i - 1]);
+      const gain = Number.isFinite(diff) && diff > 0 ? diff : 0;
+      const loss = Number.isFinite(diff) && diff < 0 ? -diff : 0;
+      avgGain = (avgGain * (len - 1) + gain) / len;
+      avgLoss = (avgLoss * (len - 1) + loss) / len;
+      out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
+
+    return out;
+  }
+
+  function smaNullable(series, len) {
+    const out = new Array(series.length).fill(null);
+    if (!series.length || len < 1) return out;
+    for (let i = len - 1; i < series.length; i++) {
+      let sum = 0;
+      let ok = true;
+      for (let j = i - len + 1; j <= i; j++) {
+        const v = Number(series[j]);
+        if (!Number.isFinite(v)) {
+          ok = false;
+          break;
+        }
+        sum += v;
+      }
+      out[i] = ok ? sum / len : null;
+    }
+    return out;
+  }
+
+  function stochasticSeries(high, low, close, kLen, smoothK, smoothD) {
+    const rawK = new Array(close.length).fill(null);
+    for (let i = kLen - 1; i < close.length; i++) {
+      let hh = -Infinity;
+      let ll = Infinity;
+      for (let j = i - kLen + 1; j <= i; j++) {
+        hh = Math.max(hh, Number(high[j]));
+        ll = Math.min(ll, Number(low[j]));
+      }
+      const c = Number(close[i]);
+      const den = hh - ll;
+      rawK[i] = Number.isFinite(c) && Number.isFinite(den) && den > 0 ? ((c - ll) / den) * 100 : null;
+    }
+    const k = smaNullable(rawK, Math.max(1, smoothK));
+    const d = smaNullable(k, Math.max(1, smoothD));
+    return { k, d };
+  }
+
   async function lastCrossSignals(instrumentId, timeframeSec, pullCount, fastN, slowN, keepN) {
     const msg = await MarketData.requestCandles(instrumentId, timeframeSec, pullCount);
     const candles = msg && msg.candles ? msg.candles : null;
@@ -388,6 +454,227 @@
       cooldownBars: Number(input.cooldownBars || 3),
       tickSize: Number(input.tickSize || 1),
       keepN: Number(input.keepN || 25),
+      rangePreset: input.rangePreset || "week"
+    });
+  }
+
+  function buildNas100RsiSrStochSignalSetFromCandles(candles, options) {
+    const rsiLen = Number(options.rsiLen || 14);
+    const trendEmaLen = Number(options.trendEmaLen || 50);
+    const fastEmaLen = Number(options.fastEmaLen || 9);
+    const slowEmaLen = Number(options.slowEmaLen || 21);
+    const stochLen = Number(options.stochLen || 14);
+    const stochSmoothK = Number(options.stochSmoothK || 3);
+    const stochSmoothD = Number(options.stochSmoothD || 3);
+    const stochLower = Number(options.stochLower || 40);
+    const stochUpper = Number(options.stochUpper || 65);
+    const rsiBuyMax = Number(options.rsiBuyMax || 50);
+    const rsiSellMin = Number(options.rsiSellMin || 50);
+    const srLookback = Number(options.srLookback || 20);
+    const srBufferTicks = Number(options.srBufferTicks || 4);
+    const trendSlopeBars = Number(options.trendSlopeBars || 3);
+    const cooldownBars = Number(options.cooldownBars || 1);
+    const tickSize = Number(options.tickSize || 1);
+    const keepN = Number(options.keepN || 50);
+    const rangePreset = options.rangePreset || "week";
+
+    const minBars = Math.max(
+      trendEmaLen + trendSlopeBars + 2,
+      slowEmaLen + 2,
+      rsiLen + 2,
+      stochLen + stochSmoothK + stochSmoothD + 2,
+      srLookback + 2
+    );
+
+    if (!candles || candles.length < minBars + 10) {
+      return {
+        ok: true,
+        signals: [],
+        allSignals: [],
+        candlesChron: [],
+        verification: {
+          strategy: "nas100_rsi_sr_stoch_scalper",
+          candlesReceived: candles ? candles.length : 0,
+          candlesClosed: candles && candles.length ? Math.max(0, candles.length - 1) : 0,
+          candlesInRange: 0,
+          signalsTotal: 0,
+          signalsInRange: 0,
+          trendQualifiedBars: 0,
+          stochCrossQualifiedBars: 0,
+          srTouchQualifiedBars: 0,
+          monotonicTime: true,
+          missingTimeCount: 0
+        }
+      };
+    }
+
+    const closed = candles.slice(1);
+    const cChron = MarketData.candlesToChron(closed);
+    const open = cChron.map((c) => Number(c.o));
+    const high = cChron.map((c) => Number(c.h));
+    const low = cChron.map((c) => Number(c.l));
+    const close = cChron.map((c) => Number(c.c));
+    const timeMs = cChron.map((c) => candleTimeMs(c));
+
+    const emaTrend = ema(close, trendEmaLen);
+    const emaFast = ema(close, fastEmaLen);
+    const emaSlow = ema(close, slowEmaLen);
+    const rsi = rsiSeries(close, rsiLen);
+    const stoch = stochasticSeries(high, low, close, stochLen, stochSmoothK, stochSmoothD);
+
+    const allSignals = [];
+    let trendQualifiedBars = 0;
+    let stochCrossQualifiedBars = 0;
+    let srTouchQualifiedBars = 0;
+    let cooldownUntil = -1;
+
+    for (let i = minBars; i < cChron.length; i++) {
+      if (i <= cooldownUntil) continue;
+
+      let srHigh = -Infinity;
+      let srLow = Infinity;
+      for (let j = i - srLookback; j < i; j++) {
+        srHigh = Math.max(srHigh, high[j]);
+        srLow = Math.min(srLow, low[j]);
+      }
+
+      const c = close[i];
+      const o = open[i];
+      const et = Number(emaTrend[i]);
+      const etPrev = Number(emaTrend[i - trendSlopeBars]);
+      const ef = Number(emaFast[i]);
+      const es = Number(emaSlow[i]);
+      const r = Number(rsi[i]);
+      const rPrev = Number(rsi[i - 1]);
+      const k = Number(stoch.k[i]);
+      const d = Number(stoch.d[i]);
+      const kPrev = Number(stoch.k[i - 1]);
+      const dPrev = Number(stoch.d[i - 1]);
+      if (!Number.isFinite(c) || !Number.isFinite(o) || !Number.isFinite(et) || !Number.isFinite(etPrev)) continue;
+      if (!Number.isFinite(ef) || !Number.isFinite(es) || !Number.isFinite(r) || !Number.isFinite(rPrev)) continue;
+      if (!Number.isFinite(k) || !Number.isFinite(d) || !Number.isFinite(kPrev) || !Number.isFinite(dPrev)) continue;
+
+      const trendUp = c > et && ef > es && et > etPrev;
+      const trendDown = c < et && ef < es && et < etPrev;
+      if (trendUp || trendDown) trendQualifiedBars += 1;
+
+      const nearSupport = low[i] <= srLow + srBufferTicks * tickSize;
+      const nearResistance = high[i] >= srHigh - srBufferTicks * tickSize;
+      if (nearSupport || nearResistance) srTouchQualifiedBars += 1;
+
+      const stochCrossUp = kPrev <= dPrev && k > d && k <= stochLower;
+      const stochCrossDown = kPrev >= dPrev && k < d && k >= stochUpper;
+      const stochRecoverUp = k < stochLower && k > kPrev;
+      const stochRecoverDown = k > stochUpper && k < kPrev;
+      if (stochCrossUp || stochCrossDown) stochCrossQualifiedBars += 1;
+
+      const rsiRecoverBuy = rPrev <= rsiBuyMax && r > rPrev;
+      const rsiRecoverSell = rPrev >= rsiSellMin && r < rPrev;
+      const bullishCandle = c > o || c > close[i - 1];
+      const bearishCandle = c < o || c < close[i - 1];
+      const pullbackToFastBuy = low[i] <= ef;
+      const pullbackToFastSell = high[i] >= ef;
+      const longEntryOk = nearSupport || pullbackToFastBuy;
+      const shortEntryOk = nearResistance || pullbackToFastSell;
+      const momentumBuyOk = stochCrossUp || stochRecoverUp;
+      const momentumSellOk = stochCrossDown || stochRecoverDown;
+
+      if (trendUp && longEntryOk && momentumBuyOk && rsiRecoverBuy && bullishCandle) {
+        allSignals.push({
+          type: "BUY",
+          time: timeMs[i],
+          price: c,
+          idx: i,
+          info: {
+            rsi: Number(r.toFixed(2)),
+            stochK: Number(k.toFixed(2)),
+            stochD: Number(d.toFixed(2)),
+            support: Number(srLow.toFixed(2))
+          }
+        });
+        cooldownUntil = i + cooldownBars;
+      } else if (trendDown && shortEntryOk && momentumSellOk && rsiRecoverSell && bearishCandle) {
+        allSignals.push({
+          type: "SELL",
+          time: timeMs[i],
+          price: c,
+          idx: i,
+          info: {
+            rsi: Number(r.toFixed(2)),
+            stochK: Number(k.toFixed(2)),
+            stochD: Number(d.toFixed(2)),
+            resistance: Number(srHigh.toFixed(2))
+          }
+        });
+        cooldownUntil = i + cooldownBars;
+      }
+    }
+
+    const endMs = timeMs.length ? Math.max.apply(null, timeMs) : Date.now();
+    const windowRange = getRangeWindowMs(rangePreset, endMs);
+    const inRangeSignals = allSignals.filter((s0) => {
+      const t = Number(s0.time);
+      if (!Number.isFinite(t) || t <= 0) return false;
+      return t >= windowRange.fromMs && t <= windowRange.toMs;
+    });
+
+    let missingTimeCount = 0;
+    let monotonicTime = true;
+    let prev = 0;
+    for (let i = 0; i < timeMs.length; i++) {
+      const t = timeMs[i];
+      if (!t) missingTimeCount += 1;
+      if (t && prev && t < prev) monotonicTime = false;
+      if (t) prev = t;
+    }
+
+    const candlesInRange = timeMs.filter((t) => t >= windowRange.fromMs && t <= windowRange.toMs).length;
+
+    return {
+      ok: true,
+      signals: inRangeSignals.slice(-keepN).reverse(),
+      allSignals: inRangeSignals,
+      candlesChron: cChron,
+      verification: {
+        strategy: "nas100_rsi_sr_stoch_scalper",
+        rangePreset,
+        rangeFrom: windowRange.fromMs,
+        rangeTo: windowRange.toMs,
+        candlesReceived: candles.length,
+        candlesClosed: closed.length,
+        candlesInRange,
+        signalsTotal: allSignals.length,
+        signalsInRange: inRangeSignals.length,
+        trendQualifiedBars,
+        stochCrossQualifiedBars,
+        srTouchQualifiedBars,
+        monotonicTime,
+        missingTimeCount
+      }
+    };
+  }
+
+  async function buildNas100RsiSrStochSignalSet(input) {
+    const msg = await MarketData.requestCandles(input.instrumentId, Number(input.timeframeSec), Number(input.lookback));
+    const candles = msg && msg.candles ? msg.candles : null;
+    return buildNas100RsiSrStochSignalSetFromCandles(candles, {
+      rsiLen: Number(input.rsiLen || 14),
+      trendEmaLen: Number(input.trendEmaLen || 50),
+      fastEmaLen: Number(input.fastEmaLen || 9),
+      slowEmaLen: Number(input.slowEmaLen || 21),
+      stochLen: Number(input.stochLen || 14),
+      stochSmoothK: Number(input.stochSmoothK || 3),
+      stochSmoothD: Number(input.stochSmoothD || 3),
+      stochLower: Number(input.stochLower || 40),
+      stochUpper: Number(input.stochUpper || 65),
+      rsiBuyMax: Number(input.rsiBuyMax || 50),
+      rsiSellMin: Number(input.rsiSellMin || 50),
+      srLookback: Number(input.srLookback || 20),
+      srBufferTicks: Number(input.srBufferTicks || 4),
+      trendSlopeBars: Number(input.trendSlopeBars || 3),
+      cooldownBars: Number(input.cooldownBars || 1),
+      tickSize: Number(input.tickSize || 1),
+      keepN: Number(input.keepN || 50),
       rangePreset: input.rangePreset || "week"
     });
   }
@@ -834,6 +1121,8 @@
     buildSmaSignalSetFromCandles,
     buildNas100MomentumSignalSet,
     buildNas100MomentumSignalSetFromCandles,
+    buildNas100RsiSrStochSignalSet,
+    buildNas100RsiSrStochSignalSetFromCandles,
     buildNas100VwapLiquiditySweepSignalSet,
     buildNas100VwapLiquiditySweepSignalSetFromCandles
   };

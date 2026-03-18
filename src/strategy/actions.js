@@ -200,6 +200,34 @@
     return set.signals || [];
   }
 
+  async function runNas100RsiSrStochScalper(input) {
+    const p = (input && input.params) || {};
+    const set = await window.LCPro.Backtest.buildNas100RsiSrStochSignalSet({
+      instrumentId: input.instrumentId,
+      timeframeSec: input.timeframeSec,
+      lookback: input.lookback,
+      keepN: toPosInt(input && input.keepN, 50, 1),
+      rangePreset: input.rangePreset || "week",
+      rsiLen: toPosInt(p.rsiLen, 14, 2),
+      trendEmaLen: toPosInt(p.trendEmaLen, 50, 5),
+      fastEmaLen: toPosInt(p.fastEmaLen, 9, 2),
+      slowEmaLen: toPosInt(p.slowEmaLen, 21, 3),
+      stochLen: toPosInt(p.stochLen, 14, 3),
+      stochSmoothK: toPosInt(p.stochSmoothK, 3, 1),
+      stochSmoothD: toPosInt(p.stochSmoothD, 3, 1),
+      stochLower: Math.max(1, toNum(p.stochLower, 40)),
+      stochUpper: Math.min(99, toNum(p.stochUpper, 65)),
+      rsiBuyMax: Math.max(1, toNum(p.rsiBuyMax, 50)),
+      rsiSellMin: Math.min(99, toNum(p.rsiSellMin, 50)),
+      srLookback: toPosInt(p.srLookback, 20, 5),
+      srBufferTicks: Math.max(0, toNum(p.srBufferTicks, 4)),
+      trendSlopeBars: toPosInt(p.trendSlopeBars, 3, 1),
+      cooldownBars: toPosInt(p.cooldownBars, 1, 0),
+      tickSize: Math.max(0.00001, toNum(p.tickSize, 1))
+    });
+    return set.signals || [];
+  }
+
   function getDayKey(ms, timeZone) {
     const dtf = new Intl.DateTimeFormat("en-US", {
       timeZone: timeZone || "America/Chicago",
@@ -1553,6 +1581,69 @@
     return report;
   }
 
+  async function runNas100RsiSrStochBacktest(input, strategy) {
+    const pInput = input && input.params ? input.params : {};
+    const tmDefaults = (strategy && strategy.tradeManagementDefaults) || {};
+    const tmInput = input && input.tradeManagement ? input.tradeManagement : {};
+
+    const p = {
+      rsiLen: toPosInt(pInput.rsiLen, 14, 2),
+      trendEmaLen: toPosInt(pInput.trendEmaLen, 50, 5),
+      fastEmaLen: toPosInt(pInput.fastEmaLen, 9, 2),
+      slowEmaLen: toPosInt(pInput.slowEmaLen, 21, 3),
+      stochLen: toPosInt(pInput.stochLen, 14, 3),
+      stochSmoothK: toPosInt(pInput.stochSmoothK, 3, 1),
+      stochSmoothD: toPosInt(pInput.stochSmoothD, 3, 1),
+      stochLower: Math.max(1, toNum(pInput.stochLower, 40)),
+      stochUpper: Math.min(99, toNum(pInput.stochUpper, 65)),
+      rsiBuyMax: Math.max(1, toNum(pInput.rsiBuyMax, 50)),
+      rsiSellMin: Math.min(99, toNum(pInput.rsiSellMin, 50)),
+      srLookback: toPosInt(pInput.srLookback, 20, 5),
+      srBufferTicks: Math.max(0, toNum(pInput.srBufferTicks, 4)),
+      trendSlopeBars: toPosInt(pInput.trendSlopeBars, 3, 1),
+      cooldownBars: Math.max(0, toPosInt(pInput.cooldownBars, 1, 0)),
+      tickSize: Math.max(0.00001, toNum(pInput.tickSize, 1))
+    };
+
+    const tm = {
+      slTicks: Math.max(1, toNum(tmInput.slTicks, toNum(tmDefaults.slTicks, 7))),
+      tpTicks: Math.max(1, toNum(tmInput.tpTicks, toNum(tmDefaults.tpTicks, 6))),
+      tickSize: Math.max(0.00001, toNum(tmInput.tickSize, toNum(tmDefaults.tickSize, 1))),
+      lots: Math.max(0.00001, toNum(tmInput.lots, toNum(strategy && strategy.liveDefaults && strategy.liveDefaults.lots, 0.01))),
+      pointValue: Math.max(0, toNum(tmInput.pointValue, toNum(tmDefaults.pointValue, 1))),
+      exitOnOpposite: tmInput.exitOnOpposite !== false,
+      bothHitModel: tmInput.bothHitModel === "tp_first" ? "tp_first" : "sl_first"
+    };
+
+    const set = await window.LCPro.Backtest.buildNas100RsiSrStochSignalSet({
+      instrumentId: input.instrumentId,
+      timeframeSec: input.timeframeSec,
+      lookback: input.lookback,
+      keepN: toPosInt(input && input.keepN, 50, 1),
+      rangePreset: input.rangePreset || "week",
+      rsiLen: p.rsiLen,
+      trendEmaLen: p.trendEmaLen,
+      fastEmaLen: p.fastEmaLen,
+      slowEmaLen: p.slowEmaLen,
+      stochLen: p.stochLen,
+      stochSmoothK: p.stochSmoothK,
+      stochSmoothD: p.stochSmoothD,
+      stochLower: p.stochLower,
+      stochUpper: p.stochUpper,
+      rsiBuyMax: p.rsiBuyMax,
+      rsiSellMin: p.rsiSellMin,
+      srLookback: p.srLookback,
+      srBufferTicks: p.srBufferTicks,
+      trendSlopeBars: p.trendSlopeBars,
+      cooldownBars: p.cooldownBars,
+      tickSize: p.tickSize
+    });
+
+    const report = evaluateSmaFromSignalSet(set, strategy, p, tm);
+    report.rangePreset = input.rangePreset || "week";
+    return report;
+  }
+
   function scoreTowardTarget(summary, targetWinRate) {
     const wr = toNum(summary && summary.winRate, 0);
     return -Math.abs(wr - targetWinRate);
@@ -1856,6 +1947,48 @@
         bothHitModel: "sl_first"
       },
       runSignals: runNas100VwapLiquiditySweepScalper
+    },
+    nas100_rsi_sr_stoch_scalper: {
+      id: "nas100_rsi_sr_stoch_scalper",
+      name: "NAS100 RSI+SR+Stoch Scalper (M1)",
+      notes:
+        "M1 momentum pullback scalper using trend EMA filter + support/resistance touch + RSI recovery + stochastic cross.",
+      liveDefaults: {
+        instrumentId: "NAS100",
+        timeframeSec: 60,
+        lookback: 1500,
+        lots: 0.01,
+        tpTicks: 6,
+        slTicks: 7,
+        tickSize: 1
+      },
+      defaultParams: {
+        rsiLen: 14,
+        trendEmaLen: 50,
+        fastEmaLen: 9,
+        slowEmaLen: 21,
+        stochLen: 14,
+        stochSmoothK: 3,
+        stochSmoothD: 3,
+        stochLower: 40,
+        stochUpper: 65,
+        rsiBuyMax: 50,
+        rsiSellMin: 50,
+        srLookback: 20,
+        srBufferTicks: 4,
+        trendSlopeBars: 3,
+        cooldownBars: 1,
+        tickSize: 1
+      },
+      tradeManagementDefaults: {
+        slTicks: 7,
+        tpTicks: 6,
+        tickSize: 1,
+        pointValue: 1,
+        exitOnOpposite: true,
+        bothHitModel: "sl_first"
+      },
+      runSignals: runNas100RsiSrStochScalper
     }
   };
 
@@ -1882,6 +2015,9 @@
     }
     if (id === "nas100_vwap_liquidity_sweep_fvg_scalper") {
       return await runNas100VwapLiquiditySweepBacktest(input || {}, s);
+    }
+    if (id === "nas100_rsi_sr_stoch_scalper") {
+      return await runNas100RsiSrStochBacktest(input || {}, s);
     }
     throw new Error("Backtest runner not implemented for strategy: " + id);
   }
