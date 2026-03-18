@@ -483,6 +483,21 @@
       <button id="btnCheckHarnessConnection" type="button">Check Connection</button>
       <button id="btnCopyToolsOutput" type="button">Copy Output</button>
     </div>
+    <div style="border-top:1px solid #d6dde8; margin-top:12px; padding-top:12px;">
+      <div class="title" style="font-size:14px; margin-bottom:8px;">GitHub Token (for CSV repo save)</div>
+      <div class="small" style="margin-bottom:8px;">Token is stored only in your browser session, never in files. Clears when you close the tab.</div>
+      <div class="row" style="margin-bottom:8px;">
+        <div class="field" style="min-width:280px;">
+          <label>Paste your GitHub token (repo contents write)</label>
+          <input id="toolGithubToken" type="password" placeholder="ghp_..." style="font-family:ui-monospace;" />
+        </div>
+        <div style="display:flex; align-items:flex-end; gap:8px;">
+          <button id="btnSetGithubToken" type="button" class="primary">Save Token to Session</button>
+          <button id="btnClearGithubToken" type="button">Clear Token</button>
+        </div>
+      </div>
+      <div id="toolGithubTokenStatus" class="small" style="color:#5b6678;">No token set yet.</div>
+    </div>
     <div class="row" style="margin-top:10px;">
       <div class="field">
         <label>CSV Instrument</label>
@@ -532,28 +547,28 @@
   </div>
 </div>
 </div>
-<script src="./src/core/framework.js?v=20260318-18"></script>
-<script src="./src/core/market-data.js?v=20260318-18"></script>
-<script src="./src/core/trading-actions.js?v=20260318-18"></script>
-<script src="./src/backtest/sma-crossover.js?v=20260318-18"></script>
-<script src="./src/strategy/actions.js?v=20260318-18"></script>
-<script src="./src/debug/logger.js?v=20260318-18"></script>
-<script src="./src/csvrg/config.js?v=20260318-18"></script>
-<script src="./src/csvrg/state.js?v=20260318-18"></script>
-<script src="./src/csvrg/indicators.js?v=20260318-18"></script>
-<script src="./src/csvrg/market-data-module.js?v=20260318-18"></script>
-<script src="./src/csvrg/session-manager.js?v=20260318-18"></script>
-<script src="./src/csvrg/logger-analytics.js?v=20260318-18"></script>
-<script src="./src/csvrg/currency-strength.js?v=20260318-18"></script>
-<script src="./src/csvrg/pair-selection.js?v=20260318-18"></script>
-<script src="./src/csvrg/regime-filter.js?v=20260318-18"></script>
-<script src="./src/csvrg/volatility-reversion.js?v=20260318-18"></script>
-<script src="./src/csvrg/grid-execution.js?v=20260318-18"></script>
-<script src="./src/csvrg/trade-manager.js?v=20260318-18"></script>
-<script src="./src/csvrg/risk-management.js?v=20260318-18"></script>
-<script src="./src/csvrg/scoring.js?v=20260318-18"></script>
-<script src="./src/csvrg/counter-scalp.js?v=20260318-18"></script>
-<script src="./src/csvrg/engine.js?v=20260318-18"></script>
-<script src="./src/app/main.js?v=20260318-18"></script>
+<script src="./src/core/framework.js?v=20260318-19"></script>
+<script src="./src/core/market-data.js?v=20260318-19"></script>
+<script src="./src/core/trading-actions.js?v=20260318-19"></script>
+<script src="./src/backtest/sma-crossover.js?v=20260318-19"></script>
+<script src="./src/strategy/actions.js?v=20260318-19"></script>
+<script src="./src/debug/logger.js?v=20260318-19"></script>
+<script src="./src/csvrg/config.js?v=20260318-19"></script>
+<script src="./src/csvrg/state.js?v=20260318-19"></script>
+<script src="./src/csvrg/indicators.js?v=20260318-19"></script>
+<script src="./src/csvrg/market-data-module.js?v=20260318-19"></script>
+<script src="./src/csvrg/session-manager.js?v=20260318-19"></script>
+<script src="./src/csvrg/logger-analytics.js?v=20260318-19"></script>
+<script src="./src/csvrg/currency-strength.js?v=20260318-19"></script>
+<script src="./src/csvrg/pair-selection.js?v=20260318-19"></script>
+<script src="./src/csvrg/regime-filter.js?v=20260318-19"></script>
+<script src="./src/csvrg/volatility-reversion.js?v=20260318-19"></script>
+<script src="./src/csvrg/grid-execution.js?v=20260318-19"></script>
+<script src="./src/csvrg/trade-manager.js?v=20260318-19"></script>
+<script src="./src/csvrg/risk-management.js?v=20260318-19"></script>
+<script src="./src/csvrg/scoring.js?v=20260318-19"></script>
+<script src="./src/csvrg/counter-scalp.js?v=20260318-19"></script>
+<script src="./src/csvrg/engine.js?v=20260318-19"></script>
+<script src="./src/app/main.js?v=20260318-19"></script>
 </body>
 </html>

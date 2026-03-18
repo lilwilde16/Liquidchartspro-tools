@@ -2696,7 +2696,7 @@
       }
     };
 
-    write("Tools ready (build 20260318-17). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260318-19). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
@@ -4161,6 +4161,64 @@
         }
       });
     }
+
+    const toolGithubToken = $("toolGithubToken");
+    const btnSetGithubToken = $("btnSetGithubToken");
+    const btnClearGithubToken = $("btnClearGithubToken");
+    const toolGithubTokenStatus = $("toolGithubTokenStatus");
+
+    function updateGithubTokenStatus() {
+      if (!toolGithubTokenStatus) return;
+      const hasToken = !!(window.sessionStorage && window.sessionStorage.getItem("lcpro.githubToken"));
+      toolGithubTokenStatus.textContent = hasToken
+        ? "✓ Token loaded in session. Will be cleared when you close this tab."
+        : "No token set yet.";
+      toolGithubTokenStatus.style.color = hasToken ? "#169f5f" : "#5b6678";
+    }
+
+    if (btnSetGithubToken) {
+      btnSetGithubToken.addEventListener("click", function () {
+        const token = toolGithubToken ? String(toolGithubToken.value || "").trim() : "";
+        if (!token) {
+          updateGithubTokenStatus();
+          toolGithubTokenStatus.textContent = "Token field is empty.";
+          toolGithubTokenStatus.style.color = "#c93434";
+          return;
+        }
+        if (!token.startsWith("ghp_") && !token.startsWith("github_pat_")) {
+          updateGithubTokenStatus();
+          toolGithubTokenStatus.textContent = "Invalid token format (should start with ghp_ or github_pat_).";
+          toolGithubTokenStatus.style.color = "#c93434";
+          return;
+        }
+        try {
+          if (window.sessionStorage) {
+            window.sessionStorage.setItem("lcpro.githubToken", token);
+            if (toolGithubToken) toolGithubToken.value = "";
+            updateGithubTokenStatus();
+          }
+        } catch (e) {
+          toolGithubTokenStatus.textContent = "Failed to save token: " + (e && e.message ? e.message : String(e));
+          toolGithubTokenStatus.style.color = "#c93434";
+        }
+      });
+    }
+
+    if (btnClearGithubToken) {
+      btnClearGithubToken.addEventListener("click", function () {
+        try {
+          if (window.sessionStorage) {
+            window.sessionStorage.removeItem("lcpro.githubToken");
+            updateGithubTokenStatus();
+          }
+        } catch (e) {
+          toolGithubTokenStatus.textContent = "Failed to clear token.";
+          toolGithubTokenStatus.style.color = "#c93434";
+        }
+      });
+    }
+
+    updateGithubTokenStatus();
 
     window.addEventListener("beforeunload", function () {
       clearPreparedCsvLink();
