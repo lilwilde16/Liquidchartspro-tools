@@ -416,6 +416,8 @@
     const cooldownMinutes = Math.max(0, toPosInt(p.cooldown_minutes, 3, 0));
     const dailyLossLimitPct = Math.max(0.1, toNum(p.daily_loss_limit_percent, 2));
     const dailyProfitLockPct = Math.max(0.1, toNum(p.daily_profit_lock_percent, 3));
+    const fixedLotSize = Math.max(0, toNum(p.fixed_lot_size, 0));
+    const maxDrawdownPercent = Math.max(0, toNum(p.max_drawdown_percent, 0));
     const entryMode = String(p.entry_mode || "both");
     const tpMode = String(p.tp_mode || "partial_rr");
     const tp1Rr = Math.max(0.2, toNum(p.tp1_rr, 1));
@@ -481,6 +483,10 @@
     }
 
     let equity = initialEquity;
+    let peakEquity = initialEquity;
+    let maxObservedDrawdownPercent = 0;
+    let drawdownStopTriggered = false;
+    let drawdownStopTime = 0;
     let dayKey = "";
     let dayStartEquity = initialEquity;
     let dayLocked = false;
@@ -539,6 +545,12 @@
       trade.exitTime = exitTime;
       trade.exitReason = exitReason;
       equity += pnlCurrency;
+      if (equity > peakEquity) peakEquity = equity;
+
+      const ddPct = peakEquity > 0 ? ((peakEquity - equity) / peakEquity) * 100 : 0;
+      if (Number.isFinite(ddPct) && ddPct > maxObservedDrawdownPercent) {
+        maxObservedDrawdownPercent = ddPct;
+      }
 
       const tradeRow = {
         trade: trades.length + 1,
@@ -683,6 +695,29 @@
         }
       }
 
+      const currentDdPct = peakEquity > 0 ? ((peakEquity - equity) / peakEquity) * 100 : 0;
+      if (
+        !drawdownStopTriggered &&
+        maxDrawdownPercent > 0 &&
+        Number.isFinite(currentDdPct) &&
+        currentDdPct >= maxDrawdownPercent
+      ) {
+        drawdownStopTriggered = true;
+        drawdownStopTime = t;
+        dayLocked = true;
+        deactivateBurst("max_drawdown_stop", t, i);
+
+        for (let k = openTrades.length - 1; k >= 0; k--) {
+          const tr = openTrades[k];
+          closeTrade(tr, cl, t, "max_drawdown_stop");
+          openTrades.splice(k, 1);
+        }
+      }
+
+      if (drawdownStopTriggered) {
+        continue;
+      }
+
       if (signalsByIdx[i] && signalsByIdx[i].length) {
         for (let s = 0; s < signalsByIdx[i].length; s++) {
           pending.push({ signal: signalsByIdx[i][s], expiresAt: i + entryWindowBars, entered: false });
@@ -765,7 +800,7 @@
             continue;
           }
           const riskAmount = equity * (riskPerTradePct / 100);
-          const qty = riskAmount / (riskPoints * pointValue);
+          const qty = fixedLotSize > 0 ? fixedLotSize : riskAmount / (riskPoints * pointValue);
           if (!Number.isFinite(qty) || qty <= 0) {
             logDecision({ time: t, idx: i, blocked: true, reason: "position_size_failed", side: sig.type, system: "MAIN" });
             pending.splice(q, 1);
@@ -1005,7 +1040,7 @@
                 logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "invalid_risk" });
               } else {
                 const riskAmount = equity * (burstRiskPerTradePct / 100);
-                const qty = riskAmount / (riskPoints * pointValue);
+                const qty = fixedLotSize > 0 ? fixedLotSize : riskAmount / (riskPoints * pointValue);
                 if (!Number.isFinite(qty) || qty <= 0) {
                   logBurst({ time: t, idx: i, burstModeActive: true, blocked: true, reason: "position_size_failed" });
                 } else {
@@ -1127,6 +1162,8 @@
         maxConsecutiveLosses,
         dailyLossLimitPct,
         dailyProfitLockPct,
+        fixedLotSize,
+        maxDrawdownPercent,
         newsFilterEnabled,
         bothHitModel,
         strategyMode,
@@ -1146,6 +1183,9 @@
         grossCurrency,
         avgR,
         endingEquity: equity,
+        maxObservedDrawdownPercent,
+        drawdownStopTriggered,
+        drawdownStopTime,
         bySystem
       },
       trades,
@@ -1155,6 +1195,7 @@
         decisionsLogged: decisionLog.length,
         burstDecisionsLogged: burstDecisionLog.length,
         dayLockEnabled: true,
+        drawdownStopEnabled: maxDrawdownPercent > 0,
         lossPauseMinutes: pauseMinutesAfterLosses,
         burstPauseMinutes: burstPauseMinutesAfterLossStreak
       }),
@@ -1410,6 +1451,8 @@
       session_end: pInput.session_end || "11:30",
       timeZone: pInput.timeZone || "America/Chicago",
       risk_per_trade: Math.max(0.01, toNum(pInput.risk_per_trade, 0.5)),
+      fixed_lot_size: Math.max(0, toNum(pInput.fixed_lot_size, 0)),
+      max_drawdown_percent: Math.max(0, toNum(pInput.max_drawdown_percent, 0)),
       stop_buffer_points: Math.max(0, toNum(pInput.stop_buffer_points, 5)),
       min_sweep_points: Math.max(0, toNum(pInput.min_sweep_points, 3)),
       displacement_body_multiplier: Math.max(0.5, toNum(pInput.displacement_body_multiplier, 1.3)),
