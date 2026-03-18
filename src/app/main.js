@@ -2696,7 +2696,7 @@
       }
     };
 
-    write("Tools ready (build 20260318-01). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260318-17). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
@@ -2987,7 +2987,12 @@
       } catch (e) {}
 
       if (loc && /^https?:$/i.test(String(loc.protocol || ""))) {
-        addBase(String(loc.origin || ""));
+        const host = String(loc.hostname || "").toLowerCase();
+        const port = String(loc.port || "");
+        const isLocalRepoHost = (host === "localhost" || host === "127.0.0.1") && (port === "8787" || port === "");
+        if (isLocalRepoHost) {
+          addBase(String(loc.origin || ""));
+        }
       }
 
       if (loc && String(loc.protocol || "").toLowerCase() === "http:") {
@@ -3004,6 +3009,26 @@
       return list.map(function (base) {
         return base + "/api/save-csv";
       });
+    }
+
+    function isLocalRepoServerContext() {
+      const loc = window.location;
+      const host = String((loc && loc.hostname) || "").toLowerCase();
+      const port = String((loc && loc.port) || "");
+      return (host === "localhost" || host === "127.0.0.1") && (port === "8787" || port === "");
+    }
+
+    function buildLocalRepoOpenUrl() {
+      const instrument = $("toolCsvInstrument") ? String($("toolCsvInstrument").value || "NAS100") : "NAS100";
+      const timeframeSec = Math.max(10, parseInt($("toolCsvTimeframeSec") ? $("toolCsvTimeframeSec").value : "60", 10) || 60);
+      const fromRaw = $("toolCsvFromDate") ? String($("toolCsvFromDate").value || "").trim() : "";
+      const toRaw = $("toolCsvToDate") ? String($("toolCsvToDate").value || "").trim() : "";
+      const p = new URLSearchParams();
+      p.set("instrument", instrument);
+      p.set("tf", String(timeframeSec));
+      if (fromRaw) p.set("from", fromRaw);
+      if (toRaw) p.set("to", toRaw);
+      return "http://localhost:8787/?" + p.toString();
     }
 
     function utf8ToBase64(text) {
@@ -3167,6 +3192,22 @@
       const fileName =
         activeCsvFileName ||
         instrument.replace(/[^A-Za-z0-9_-]/g, "_") + "_" + timeframeSec + "s_" + fromRaw + "_" + toRaw + ".csv";
+
+      if (!isLocalRepoServerContext()) {
+        const localUrl = buildLocalRepoOpenUrl();
+        setCsvExportStatus("Open local repo app (http://localhost:8787) and save from there.");
+        write({
+          action: "save_csv_to_repo",
+          status: "redirect_required",
+          reason: "Hosted HTTPS page cannot reliably write to local repo server endpoint.",
+          openLocalUrl: localUrl
+        });
+        try {
+          window.open(localUrl, "_blank", "noopener");
+        } catch (e) {}
+        throw new Error("Open the local app tab and run Save CSV To Repo there.");
+      }
+
       const endpoints = getRepoExportEndpoints();
       const body = JSON.stringify({ fileName: fileName, csvText: csvText });
       const failures = [];
