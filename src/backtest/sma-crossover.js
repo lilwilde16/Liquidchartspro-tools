@@ -123,6 +123,39 @@
     return { k, d };
   }
 
+  function bollingerSeries(close, period, stdMult) {
+    const mid = new Array(close.length).fill(null);
+    const upper = new Array(close.length).fill(null);
+    const lower = new Array(close.length).fill(null);
+    if (!Array.isArray(close) || !close.length || !Number.isFinite(period) || period < 2) {
+      return { mid, upper, lower };
+    }
+    for (let i = period - 1; i < close.length; i++) {
+      let sum = 0;
+      let ok = true;
+      for (let j = i - period + 1; j <= i; j++) {
+        const v = Number(close[j]);
+        if (!Number.isFinite(v)) {
+          ok = false;
+          break;
+        }
+        sum += v;
+      }
+      if (!ok) continue;
+      const mean = sum / period;
+      let varianceSum = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        const diff = Number(close[j]) - mean;
+        varianceSum += diff * diff;
+      }
+      const std = Math.sqrt(varianceSum / period);
+      mid[i] = mean;
+      upper[i] = mean + std * stdMult;
+      lower[i] = mean - std * stdMult;
+    }
+    return { mid, upper, lower };
+  }
+
   async function lastCrossSignals(instrumentId, timeframeSec, pullCount, fastN, slowN, keepN) {
     const msg = await MarketData.requestCandles(instrumentId, timeframeSec, pullCount);
     const candles = msg && msg.candles ? msg.candles : null;
@@ -474,6 +507,15 @@
     const srBufferTicks = Number(options.srBufferTicks || 4);
     const trendSlopeBars = Number(options.trendSlopeBars || 3);
     const cooldownBars = Number(options.cooldownBars || 1);
+    const bbEntryEnabled = options.bbEntryEnabled !== false;
+    const bbConfluenceMode = String(options.bbConfluenceMode || "either");
+    const bbPeriod = Number(options.bbPeriod || 15);
+    const bbStdDev = Number(options.bbStdDev || 1);
+    const bbTouchBufferTicks = Number(options.bbTouchBufferTicks || 1);
+    const bbReclaimRequired = options.bbReclaimRequired === true;
+    const bbUseRsiExtreme = options.bbUseRsiExtreme === true;
+    const bbRsiBuyMax = Number(options.bbRsiBuyMax || 45);
+    const bbRsiSellMin = Number(options.bbRsiSellMin || 55);
     const tickSize = Number(options.tickSize || 1);
     const keepN = Number(options.keepN || 50);
     const rangePreset = options.rangePreset || "week";
@@ -483,7 +525,8 @@
       slowEmaLen + 2,
       rsiLen + 2,
       stochLen + stochSmoothK + stochSmoothD + 2,
-      srLookback + 2
+      srLookback + 2,
+      bbPeriod + 2
     );
 
     if (!candles || candles.length < minBars + 10) {
@@ -502,6 +545,7 @@
           trendQualifiedBars: 0,
           stochCrossQualifiedBars: 0,
           srTouchQualifiedBars: 0,
+          bbTouchQualifiedBars: 0,
           monotonicTime: true,
           missingTimeCount: 0
         }
@@ -521,11 +565,13 @@
     const emaSlow = ema(close, slowEmaLen);
     const rsi = rsiSeries(close, rsiLen);
     const stoch = stochasticSeries(high, low, close, stochLen, stochSmoothK, stochSmoothD);
+    const bb = bollingerSeries(close, bbPeriod, bbStdDev);
 
     const allSignals = [];
     let trendQualifiedBars = 0;
     let stochCrossQualifiedBars = 0;
     let srTouchQualifiedBars = 0;
+    let bbTouchQualifiedBars = 0;
     let cooldownUntil = -1;
 
     for (let i = minBars; i < cChron.length; i++) {
@@ -550,9 +596,15 @@
       const d = Number(stoch.d[i]);
       const kPrev = Number(stoch.k[i - 1]);
       const dPrev = Number(stoch.d[i - 1]);
+      const bbUpper = Number(bb.upper[i]);
+      const bbLower = Number(bb.lower[i]);
+      const bbUpperPrev = Number(bb.upper[i - 1]);
+      const bbLowerPrev = Number(bb.lower[i - 1]);
       if (!Number.isFinite(c) || !Number.isFinite(o) || !Number.isFinite(et) || !Number.isFinite(etPrev)) continue;
       if (!Number.isFinite(ef) || !Number.isFinite(es) || !Number.isFinite(r) || !Number.isFinite(rPrev)) continue;
       if (!Number.isFinite(k) || !Number.isFinite(d) || !Number.isFinite(kPrev) || !Number.isFinite(dPrev)) continue;
+      if (bbEntryEnabled && (!Number.isFinite(bbUpper) || !Number.isFinite(bbLower))) continue;
+      if (bbEntryEnabled && bbReclaimRequired && (!Number.isFinite(bbUpperPrev) || !Number.isFinite(bbLowerPrev))) continue;
 
       const trendUp = c > et && ef > es && et > etPrev;
       const trendDown = c < et && ef < es && et < etPrev;
@@ -561,6 +613,20 @@
       const nearSupport = low[i] <= srLow + srBufferTicks * tickSize;
       const nearResistance = high[i] >= srHigh - srBufferTicks * tickSize;
       if (nearSupport || nearResistance) srTouchQualifiedBars += 1;
+
+      const touchedBbLower = low[i] <= bbLower + bbTouchBufferTicks * tickSize;
+      const touchedBbUpper = high[i] >= bbUpper - bbTouchBufferTicks * tickSize;
+      const reclaimedFromLower = bbReclaimRequired
+        ? low[i - 1] <= bbLowerPrev - bbTouchBufferTicks * tickSize && c > bbLower
+        : touchedBbLower;
+      const reclaimedFromUpper = bbReclaimRequired
+        ? high[i - 1] >= bbUpperPrev + bbTouchBufferTicks * tickSize && c < bbUpper
+        : touchedBbUpper;
+      const bbRsiLongOk = !bbUseRsiExtreme || r <= bbRsiBuyMax;
+      const bbRsiShortOk = !bbUseRsiExtreme || r >= bbRsiSellMin;
+      const bbLongOk = !bbEntryEnabled || (reclaimedFromLower && bbRsiLongOk);
+      const bbShortOk = !bbEntryEnabled || (reclaimedFromUpper && bbRsiShortOk);
+      if (bbLongOk || bbShortOk) bbTouchQualifiedBars += 1;
 
       const stochCrossUp = kPrev <= dPrev && k > d && k <= stochLower;
       const stochCrossDown = kPrev >= dPrev && k < d && k >= stochUpper;
@@ -574,10 +640,23 @@
       const bearishCandle = c < o || c < close[i - 1];
       const pullbackToFastBuy = low[i] <= ef;
       const pullbackToFastSell = high[i] >= ef;
-      const longEntryOk = nearSupport || pullbackToFastBuy;
-      const shortEntryOk = nearResistance || pullbackToFastSell;
+      const longEntryBaseOk = nearSupport || pullbackToFastBuy;
+      const shortEntryBaseOk = nearResistance || pullbackToFastSell;
       const momentumBuyOk = stochCrossUp || stochRecoverUp;
       const momentumSellOk = stochCrossDown || stochRecoverDown;
+
+      let longEntryOk = longEntryBaseOk;
+      let shortEntryOk = shortEntryBaseOk;
+      if (bbConfluenceMode === "both") {
+        longEntryOk = longEntryBaseOk && bbLongOk;
+        shortEntryOk = shortEntryBaseOk && bbShortOk;
+      } else if (bbConfluenceMode === "bb_only") {
+        longEntryOk = bbLongOk;
+        shortEntryOk = bbShortOk;
+      } else {
+        longEntryOk = longEntryBaseOk || bbLongOk;
+        shortEntryOk = shortEntryBaseOk || bbShortOk;
+      }
 
       if (trendUp && longEntryOk && momentumBuyOk && rsiRecoverBuy && bullishCandle) {
         allSignals.push({
@@ -589,7 +668,8 @@
             rsi: Number(r.toFixed(2)),
             stochK: Number(k.toFixed(2)),
             stochD: Number(d.toFixed(2)),
-            support: Number(srLow.toFixed(2))
+            support: Number(srLow.toFixed(2)),
+            bbLower: Number(bbLower.toFixed(2))
           }
         });
         cooldownUntil = i + cooldownBars;
@@ -603,7 +683,8 @@
             rsi: Number(r.toFixed(2)),
             stochK: Number(k.toFixed(2)),
             stochD: Number(d.toFixed(2)),
-            resistance: Number(srHigh.toFixed(2))
+            resistance: Number(srHigh.toFixed(2)),
+            bbUpper: Number(bbUpper.toFixed(2))
           }
         });
         cooldownUntil = i + cooldownBars;
@@ -648,6 +729,7 @@
         trendQualifiedBars,
         stochCrossQualifiedBars,
         srTouchQualifiedBars,
+        bbTouchQualifiedBars,
         monotonicTime,
         missingTimeCount
       }
@@ -673,6 +755,15 @@
       srBufferTicks: Number(input.srBufferTicks || 4),
       trendSlopeBars: Number(input.trendSlopeBars || 3),
       cooldownBars: Number(input.cooldownBars || 1),
+      bbEntryEnabled: input.bbEntryEnabled !== false,
+      bbConfluenceMode: String(input.bbConfluenceMode || "either"),
+      bbPeriod: Number(input.bbPeriod || 15),
+      bbStdDev: Number(input.bbStdDev || 1),
+      bbTouchBufferTicks: Number(input.bbTouchBufferTicks || 1),
+      bbReclaimRequired: input.bbReclaimRequired === true,
+      bbUseRsiExtreme: input.bbUseRsiExtreme === true,
+      bbRsiBuyMax: Number(input.bbRsiBuyMax || 45),
+      bbRsiSellMin: Number(input.bbRsiSellMin || 55),
       tickSize: Number(input.tickSize || 1),
       keepN: Number(input.keepN || 50),
       rangePreset: input.rangePreset || "week"

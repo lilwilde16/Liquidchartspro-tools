@@ -1731,6 +1731,15 @@
       srBufferTicks: Math.max(0, toNum(pInput.srBufferTicks, 4)),
       trendSlopeBars: toPosInt(pInput.trendSlopeBars, 3, 1),
       cooldownBars: Math.max(0, toPosInt(pInput.cooldownBars, 1, 0)),
+      bbEntryEnabled: pInput.bbEntryEnabled !== false,
+      bbConfluenceMode: String(pInput.bbConfluenceMode || "either"),
+      bbPeriod: Math.max(2, toPosInt(pInput.bbPeriod, 15, 2)),
+      bbStdDev: Math.max(0.1, toNum(pInput.bbStdDev, 1)),
+      bbTouchBufferTicks: Math.max(0, toNum(pInput.bbTouchBufferTicks, 1)),
+      bbReclaimRequired: pInput.bbReclaimRequired === true,
+      bbUseRsiExtreme: pInput.bbUseRsiExtreme === true,
+      bbRsiBuyMax: Math.max(1, toNum(pInput.bbRsiBuyMax, 45)),
+      bbRsiSellMin: Math.min(99, toNum(pInput.bbRsiSellMin, 55)),
       tickSize: Math.max(0.00001, toNum(pInput.tickSize, 1))
     };
 
@@ -1782,6 +1791,15 @@
       srBufferTicks: p.srBufferTicks,
       trendSlopeBars: p.trendSlopeBars,
       cooldownBars: p.cooldownBars,
+      bbEntryEnabled: p.bbEntryEnabled,
+      bbConfluenceMode: p.bbConfluenceMode,
+      bbPeriod: p.bbPeriod,
+      bbStdDev: p.bbStdDev,
+      bbTouchBufferTicks: p.bbTouchBufferTicks,
+      bbReclaimRequired: p.bbReclaimRequired,
+      bbUseRsiExtreme: p.bbUseRsiExtreme,
+      bbRsiBuyMax: p.bbRsiBuyMax,
+      bbRsiSellMin: p.bbRsiSellMin,
       tickSize: p.tickSize
     });
 
@@ -2124,6 +2142,15 @@
         srBufferTicks: 4,
         trendSlopeBars: 3,
         cooldownBars: 1,
+        bbEntryEnabled: true,
+        bbConfluenceMode: "either",
+        bbPeriod: 15,
+        bbStdDev: 1,
+        bbTouchBufferTicks: 1,
+        bbReclaimRequired: false,
+        bbUseRsiExtreme: false,
+        bbRsiBuyMax: 45,
+        bbRsiSellMin: 55,
         tickSize: 1
       },
       tradeManagementDefaults: {
