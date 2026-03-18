@@ -2696,7 +2696,7 @@
       }
     };
 
-    write("Tools ready (build 20260317-15). Use buttons to run checks or test orders.");
+    write("Tools ready (build 20260318-01). Use buttons to run checks or test orders.");
 
     const btnHealthCheck = $("btnHealthCheck");
     const btnDumpState = $("btnDumpState");
