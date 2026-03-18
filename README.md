@@ -100,3 +100,34 @@ The Tools tab `Save CSV To Repo` button writes files into:
 ```text
 exports/
 ```
+
+## Fast Extra Data For Backtests
+
+If you want more chart history quickly without manual export, use:
+
+```bash
+node scripts/fetch-yahoo-chart.js --symbol ^NDX --interval 5m --range 1mo
+```
+
+This writes a CSV into `exports/` with the same format used by existing backtests:
+
+```text
+time_iso,time_ms,open,high,low,close,volume
+```
+
+Useful examples:
+
+```bash
+# More intraday bars
+node scripts/fetch-yahoo-chart.js --symbol ^NDX --interval 1m --range 5d
+
+# Broader history (daily)
+node scripts/fetch-yahoo-chart.js --symbol ^NDX --interval 1d --range 1y
+
+# Custom output file
+node scripts/fetch-yahoo-chart.js --symbol ^NDX --interval 15m --range 3mo --out exports/NDX_15m_3mo.csv
+```
+
+Notes:
+- Yahoo intraday depth varies by interval (for example, `1m` is limited).
+- For final realism, still prefer broker-native exports when available.
