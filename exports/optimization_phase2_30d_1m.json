@@ -1,0 +1,249 @@
+{
+  "dataset": "exports/NDX_1m_30d_2026-03-18.csv",
+  "rows": 8581,
+  "folds": 3,
+  "sampledCandidates": 1413,
+  "retainedCandidates": 54,
+  "top": [
+    {
+      "rank": 1,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 52,
+        "srBufferTicks": 4,
+        "cooldownBars": 1,
+        "bbEntryEnabled": false,
+        "bbConfluenceMode": "either",
+        "bbReclaimRequired": false
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 2,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 0.9,
+        "sessionStartMin": null,
+        "sessionEndMin": null
+      },
+      "folds": 3,
+      "trainTradesAvg": 42.33,
+      "testTradesAvg": 11.67,
+      "trainScoreAvg": -85.679,
+      "testScoreAvg": -37.305,
+      "combined": -49.399
+    },
+    {
+      "rank": 2,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 65,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 52,
+        "srBufferTicks": 3,
+        "cooldownBars": 1,
+        "bbEntryEnabled": true,
+        "bbConfluenceMode": "either",
+        "bbReclaimRequired": false
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 3,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1,
+        "sessionStartMin": null,
+        "sessionEndMin": null
+      },
+      "folds": 3,
+      "trainTradesAvg": 37.67,
+      "testTradesAvg": 11,
+      "trainScoreAvg": -87.173,
+      "testScoreAvg": -37.325,
+      "combined": -49.787
+    },
+    {
+      "rank": 3,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 52,
+        "srBufferTicks": 3,
+        "cooldownBars": 1,
+        "bbEntryEnabled": true,
+        "bbConfluenceMode": "either",
+        "bbReclaimRequired": false
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 6,
+        "breakEvenTriggerTicks": 3,
+        "maxBarsInTrade": 5,
+        "slMode": "fixed",
+        "slRangeMultiplier": 0.9,
+        "sessionStartMin": null,
+        "sessionEndMin": null
+      },
+      "folds": 3,
+      "trainTradesAvg": 38.67,
+      "testTradesAvg": 11.33,
+      "trainScoreAvg": -78.068,
+      "testScoreAvg": -42.336,
+      "combined": -51.269
+    },
+    {
+      "rank": 4,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 65,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 52,
+        "srBufferTicks": 4,
+        "cooldownBars": 1,
+        "bbEntryEnabled": true,
+        "bbConfluenceMode": "either",
+        "bbReclaimRequired": true
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 2,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1,
+        "sessionStartMin": null,
+        "sessionEndMin": null
+      },
+      "folds": 3,
+      "trainTradesAvg": 40.33,
+      "testTradesAvg": 11.33,
+      "trainScoreAvg": -89.981,
+      "testScoreAvg": -38.861,
+      "combined": -51.641
+    },
+    {
+      "rank": 5,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 52,
+        "srBufferTicks": 3,
+        "cooldownBars": 2,
+        "bbEntryEnabled": false,
+        "bbConfluenceMode": "either",
+        "bbReclaimRequired": false
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 2,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1,
+        "sessionStartMin": null,
+        "sessionEndMin": null
+      },
+      "folds": 3,
+      "trainTradesAvg": 39.33,
+      "testTradesAvg": 11.67,
+      "trainScoreAvg": -96.275,
+      "testScoreAvg": -37.305,
+      "combined": -52.048
+    },
+    {
+      "rank": 6,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 65,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 52,
+        "srBufferTicks": 3,
+        "cooldownBars": 2,
+        "bbEntryEnabled": true,
+        "bbConfluenceMode": "either",
+        "bbReclaimRequired": false
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 3,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 0.9,
+        "sessionStartMin": null,
+        "sessionEndMin": null
+      },
+      "folds": 3,
+      "trainTradesAvg": 34.67,
+      "testTradesAvg": 11,
+      "trainScoreAvg": -97.891,
+      "testScoreAvg": -37.325,
+      "combined": -52.467
+    },
+    {
+      "rank": 7,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 60,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 52,
+        "srBufferTicks": 4,
+        "cooldownBars": 2,
+        "bbEntryEnabled": true,
+        "bbConfluenceMode": "either",
+        "bbReclaimRequired": false
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 6,
+        "breakEvenTriggerTicks": 3,
+        "maxBarsInTrade": 4,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1,
+        "sessionStartMin": null,
+        "sessionEndMin": null
+      },
+      "folds": 3,
+      "trainTradesAvg": 35.67,
+      "testTradesAvg": 11.33,
+      "trainScoreAvg": -84.723,
+      "testScoreAvg": -42.336,
+      "combined": -52.933
+    },
+    {
+      "rank": 8,
+      "params": {
+        "stochLower": 45,
+        "stochUpper": 65,
+        "rsiBuyMax": 50,
+        "rsiSellMin": 52,
+        "srBufferTicks": 4,
+        "cooldownBars": 1,
+        "bbEntryEnabled": false,
+        "bbConfluenceMode": "either",
+        "bbReclaimRequired": false
+      },
+      "tradeManagement": {
+        "slTicks": 6,
+        "tpTicks": 7,
+        "breakEvenTriggerTicks": 3,
+        "maxBarsInTrade": 5,
+        "slMode": "fixed",
+        "slRangeMultiplier": 1,
+        "sessionStartMin": null,
+        "sessionEndMin": null
+      },
+      "folds": 3,
+      "trainTradesAvg": 40.33,
+      "testTradesAvg": 11.33,
+      "trainScoreAvg": -91.145,
+      "testScoreAvg": -41.67,
+      "combined": -54.038
+    }
+  ]
+}
