@@ -53,6 +53,16 @@
         size_lots: 0,
         timeout_at: null
       },
+      signal_trade: {
+        active: false,
+        side: "NONE",
+        entry_price: null,
+        tp_price: null,
+        sl_price: null,
+        size_lots: 0,
+        opened_at: null,
+        diagnostics: null
+      },
       realized_pnl: 0,
       unrealized_pnl: 0,
       drawdown_pct: 0,

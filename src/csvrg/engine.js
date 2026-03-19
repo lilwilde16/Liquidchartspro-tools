@@ -18,6 +18,7 @@
   const TradeManager = CSVRG.TradeManager || {};
   const Risk = CSVRG.RiskManagement || {};
   const CounterScalp = CSVRG.CounterScalp || {};
+  const StrengthMtf = CSVRG.StrengthMtfStrategy || {};
 
   function handle_friday_shutdown(state) {
     if (!Session.is_friday_shutdown_time(state.settings, Date.now())) return false;
@@ -67,22 +68,33 @@
         });
       }
 
-      const side = Volatility.get_reversion_side(state, pair);
-      if (side !== "NONE" && Scoring.is_trade_allowed(state, pair)) {
-        await Grid.activate_grid(state, pair, side);
+      if (state.settings.mtf_signal_enabled) {
+        const signalCheck = StrengthMtf.check_entry ? StrengthMtf.check_entry(state, pair) : { allowed: false };
+        if (signalCheck.allowed && StrengthMtf.open_trade) {
+          StrengthMtf.open_trade(state, pair, signalCheck.side, signalCheck.diagnostics || null);
+        }
+      } else {
+        const side = Volatility.get_reversion_side(state, pair);
+        if (side !== "NONE" && Scoring.is_trade_allowed(state, pair)) {
+          await Grid.activate_grid(state, pair, side);
+        }
       }
     }
 
     const allPairs = Object.keys(state.pair_states || {});
     for (let i = 0; i < allPairs.length; i++) {
       const pair = allPairs[i];
-      TradeManager.manage_grid_positions(state, pair);
+      if (state.settings.mtf_signal_enabled) {
+        if (StrengthMtf.manage_trade) StrengthMtf.manage_trade(state, pair);
+      } else {
+        TradeManager.manage_grid_positions(state, pair);
 
-      const scalpCheck = CounterScalp.check_counter_scalp(state, pair);
-      if (scalpCheck.allowed) {
-        CounterScalp.open_counter_scalp(state, pair, scalpCheck.side);
+        const scalpCheck = CounterScalp.check_counter_scalp(state, pair);
+        if (scalpCheck.allowed) {
+          CounterScalp.open_counter_scalp(state, pair, scalpCheck.side);
+        }
+        CounterScalp.manage_counter_scalp(state, pair);
       }
-      CounterScalp.manage_counter_scalp(state, pair);
 
       Risk.enforce_pair_risk(state, pair);
     }
@@ -180,6 +192,15 @@
       },
       manage_counter_scalp: function (pair) {
         return CounterScalp.manage_counter_scalp(state, pair);
+      },
+      check_strength_mtf_entry: function (pair) {
+        return StrengthMtf.check_entry ? StrengthMtf.check_entry(state, pair) : { allowed: false, reason: "UNAVAILABLE" };
+      },
+      open_strength_mtf_trade: function (pair, side, diagnostics) {
+        return StrengthMtf.open_trade ? StrengthMtf.open_trade(state, pair, side, diagnostics || null) : false;
+      },
+      manage_strength_mtf_trade: function (pair) {
+        return StrengthMtf.manage_trade ? StrengthMtf.manage_trade(state, pair) : false;
       },
 
       enforce_pair_risk: function (pair) {

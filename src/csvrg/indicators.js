@@ -84,6 +84,105 @@
     return sum / period;
   }
 
+  function rsi(values, period) {
+    if (!Array.isArray(values) || values.length < period + 1 || period < 2) return null;
+
+    let gains = 0;
+    let losses = 0;
+    for (let i = values.length - period; i < values.length; i++) {
+      const prev = toNum(values[i - 1]);
+      const curr = toNum(values[i]);
+      if (![prev, curr].every(Number.isFinite)) return null;
+      const delta = curr - prev;
+      if (delta >= 0) gains += delta;
+      else losses += Math.abs(delta);
+    }
+
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - 100 / (1 + rs);
+  }
+
+  function adxComponents(candles, period) {
+    if (!Array.isArray(candles) || candles.length < period * 2 + 3) return null;
+
+    const plusDM = [];
+    const minusDM = [];
+    const trs = [];
+
+    for (let i = 1; i < candles.length; i++) {
+      const h = toNum(candles[i].h);
+      const l = toNum(candles[i].l);
+      const ph = toNum(candles[i - 1].h);
+      const pl = toNum(candles[i - 1].l);
+      const pc = toNum(candles[i - 1].c);
+      if (![h, l, ph, pl, pc].every(Number.isFinite)) continue;
+
+      const upMove = h - ph;
+      const downMove = pl - l;
+
+      plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+      minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+      trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+    }
+
+    if (trs.length < period + 2) return null;
+
+    function sumWindow(arr, start, len) {
+      let s = 0;
+      for (let i = start; i < start + len; i++) s += arr[i] || 0;
+      return s;
+    }
+
+    const endNow = trs.length;
+    const startNow = endNow - period;
+    const endPrev = endNow - 1;
+    const startPrev = endPrev - period;
+    if (startNow < 0 || startPrev < 0) return null;
+
+    const trNow = sumWindow(trs, startNow, period);
+    const pdmNow = sumWindow(plusDM, startNow, period);
+    const mdmNow = sumWindow(minusDM, startNow, period);
+    const trPrev = sumWindow(trs, startPrev, period);
+    const pdmPrev = sumWindow(plusDM, startPrev, period);
+    const mdmPrev = sumWindow(minusDM, startPrev, period);
+    if (trNow <= 0 || trPrev <= 0) return null;
+
+    const plusDI = (100 * pdmNow) / trNow;
+    const minusDI = (100 * mdmNow) / trNow;
+    const prevPlusDI = (100 * pdmPrev) / trPrev;
+    const prevMinusDI = (100 * mdmPrev) / trPrev;
+
+    const dxs = [];
+    for (let end = period; end <= trs.length; end++) {
+      const start = end - period;
+      const trN = sumWindow(trs, start, period);
+      const pdmN = sumWindow(plusDM, start, period);
+      const mdmN = sumWindow(minusDM, start, period);
+      if (trN <= 0) continue;
+      const pdi = (100 * pdmN) / trN;
+      const mdi = (100 * mdmN) / trN;
+      const den = pdi + mdi;
+      dxs.push(den > 0 ? (100 * Math.abs(pdi - mdi)) / den : 0);
+    }
+    if (!dxs.length) return null;
+
+    let dxSum = 0;
+    for (let i = dxs.length - Math.min(period, dxs.length); i < dxs.length; i++) {
+      dxSum += dxs[i];
+    }
+
+    return {
+      adx: dxSum / Math.min(period, dxs.length),
+      plusDI,
+      minusDI,
+      prevPlusDI,
+      prevMinusDI
+    };
+  }
+
   function adx(candles, period) {
     if (!Array.isArray(candles) || candles.length < period * 2 + 2) return null;
 
@@ -155,7 +254,9 @@
     stdev,
     bollinger,
     atr,
+    rsi,
     adx,
+    adxComponents,
     emaSlopeRatio
   };
 })();
