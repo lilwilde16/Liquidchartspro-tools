@@ -346,30 +346,27 @@
 
     const slAtrMult = Math.max(0.3, toNum(state.settings.signal_sl_atr_mult, 1.0));
     const rr = Math.max(0.4, toNum(state.settings.signal_tp_rr, 1.2));
-    const zones = ps.supply_demand || {};
-    const stopBuffer = Math.max(0, toNum(state.settings.signal_sd_stop_atr_buffer, 0.15)) * atrValue;
-    const targetBuffer = Math.max(0, toNum(state.settings.signal_sd_target_atr_buffer, 0.1)) * atrValue;
+    const signalCandle = m5[m5.length - 1] || null;
+    const signalLow = toNum(signalCandle && signalCandle.l, NaN);
+    const signalHigh = toNum(signalCandle && signalCandle.h, NaN);
+    const atrFallbackDist = atrValue * slAtrMult;
 
-    let slDist = atrValue * slAtrMult;
-    if (side === "BUY" && zones.demand && Number.isFinite(zones.demand.low)) {
-      slDist = Math.max(slDist, entry - (zones.demand.low - stopBuffer));
+    let sl = NaN;
+    if (side === "BUY" && Number.isFinite(signalLow)) sl = signalLow;
+    if (side === "SELL" && Number.isFinite(signalHigh)) sl = signalHigh;
+
+    if (!Number.isFinite(sl)) {
+      sl = side === "BUY" ? entry - atrFallbackDist : entry + atrFallbackDist;
     }
-    if (side === "SELL" && zones.supply && Number.isFinite(zones.supply.high)) {
-      slDist = Math.max(slDist, (zones.supply.high + stopBuffer) - entry);
+
+    let slDist = Math.abs(entry - sl);
+    if (!Number.isFinite(slDist) || slDist <= 0) {
+      slDist = atrFallbackDist;
+      sl = side === "BUY" ? entry - slDist : entry + slDist;
     }
+
     const tpDist = slDist * rr;
-
-    const sl = side === "BUY" ? entry - slDist : entry + slDist;
-    let tp = side === "BUY" ? entry + tpDist : entry - tpDist;
-
-    if (side === "BUY" && zones.supply && Number.isFinite(zones.supply.low)) {
-      const zoneTarget = zones.supply.low - targetBuffer;
-      if (zoneTarget > entry) tp = Math.min(tp, zoneTarget);
-    }
-    if (side === "SELL" && zones.demand && Number.isFinite(zones.demand.high)) {
-      const zoneTarget = zones.demand.high + targetBuffer;
-      if (zoneTarget < entry) tp = Math.max(tp, zoneTarget);
-    }
+    const tp = side === "BUY" ? entry + tpDist : entry - tpDist;
 
     return {
       side,
@@ -410,8 +407,6 @@
 
     const m5 = ps.timeframe.M5 || [];
     if (m5.length < 60) return { allowed: false, reason: "M5_DATA" };
-
-    const zones = detectSupplyDemand(ps, state.settings);
 
     const closes = Indicators.closeSeries ? Indicators.closeSeries(m5) : [];
     const rsi = Indicators.rsi ? Indicators.rsi(closes, state.settings.signal_rsi_period) : null;
@@ -465,9 +460,7 @@
         minusDI: toNum(adxPack && adxPack.minusDI, NaN),
         strengthScore: pairBias.score,
         biasBase: pairBias.base,
-        biasQuote: pairBias.quote,
-        demandZone: zones.demand,
-        supplyZone: zones.supply
+        biasQuote: pairBias.quote
       }
     };
   }
@@ -526,26 +519,30 @@
     if (!ps || !ps.signal_trade || !ps.signal_trade.active) return;
 
     const m5 = ps.timeframe.M5 || [];
-    const closes = Indicators.closeSeries ? Indicators.closeSeries(m5) : [];
-    const bb = Indicators.bollinger
-      ? Indicators.bollinger(closes, state.settings.signal_bb_period, state.settings.signal_bb_stddev)
-      : null;
-    if (!bb) return;
+    if (!m5.length) return;
 
     const t = ps.signal_trade;
     const atr = Indicators.atr ? Indicators.atr(m5, state.settings.signal_atr_period) : null;
     const atrTrail = Math.max(0, toNum(state.settings.signal_trail_atr_buffer, 0.2)) * Math.max(0, toNum(atr, 0));
+    const lb = Math.max(1, toNum(state.settings.signal_trail_candle_lookback, 2));
+    const start = Math.max(0, m5.length - lb);
 
     if (t.side === "BUY") {
-      const nextSl = toNum(bb.middle, t.sl_price) - atrTrail;
+      let trailLow = Infinity;
+      for (let i = start; i < m5.length; i++) {
+        const low = toNum(m5[i] && m5[i].l, NaN);
+        if (Number.isFinite(low) && low < trailLow) trailLow = low;
+      }
+      const nextSl = trailLow - atrTrail;
       if (Number.isFinite(nextSl) && nextSl > t.sl_price) t.sl_price = nextSl;
-      const nextTp = toNum(bb.upper, t.tp_price);
-      if (Number.isFinite(nextTp) && nextTp > t.entry_price) t.tp_price = Math.max(t.tp_price, nextTp);
     } else if (t.side === "SELL") {
-      const nextSl = toNum(bb.middle, t.sl_price) + atrTrail;
+      let trailHigh = -Infinity;
+      for (let i = start; i < m5.length; i++) {
+        const high = toNum(m5[i] && m5[i].h, NaN);
+        if (Number.isFinite(high) && high > trailHigh) trailHigh = high;
+      }
+      const nextSl = trailHigh + atrTrail;
       if (Number.isFinite(nextSl) && nextSl < t.sl_price) t.sl_price = nextSl;
-      const nextTp = toNum(bb.lower, t.tp_price);
-      if (Number.isFinite(nextTp) && nextTp < t.entry_price) t.tp_price = Math.min(t.tp_price, nextTp);
     }
   }
 
