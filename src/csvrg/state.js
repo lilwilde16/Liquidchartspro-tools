@@ -63,6 +63,11 @@
         opened_at: null,
         diagnostics: null
       },
+      supply_demand: {
+        demand: null,
+        supply: null,
+        last_updated_at: null
+      },
       realized_pnl: 0,
       unrealized_pnl: 0,
       drawdown_pct: 0,

@@ -96,6 +96,147 @@
     return false;
   }
 
+  function pivotLow(candles, idx, left, right) {
+    const c = candles[idx];
+    if (!c) return false;
+    const low = toNum(c.l, NaN);
+    if (!Number.isFinite(low)) return false;
+    for (let i = idx - left; i <= idx + right; i++) {
+      if (i === idx || i < 0 || i >= candles.length) continue;
+      const cmp = toNum(candles[i].l, NaN);
+      if (!Number.isFinite(cmp) || cmp <= low) return false;
+    }
+    return true;
+  }
+
+  function pivotHigh(candles, idx, left, right) {
+    const c = candles[idx];
+    if (!c) return false;
+    const high = toNum(c.h, NaN);
+    if (!Number.isFinite(high)) return false;
+    for (let i = idx - left; i <= idx + right; i++) {
+      if (i === idx || i < 0 || i >= candles.length) continue;
+      const cmp = toNum(candles[i].h, NaN);
+      if (!Number.isFinite(cmp) || cmp >= high) return false;
+    }
+    return true;
+  }
+
+  function buildZone(kind, candles, idx, atrValue) {
+    const c = candles[idx];
+    if (!c) return null;
+    const open = toNum(c.o, NaN);
+    const close = toNum(c.c, NaN);
+    const high = toNum(c.h, NaN);
+    const low = toNum(c.l, NaN);
+    if (![open, close, high, low].every(Number.isFinite)) return null;
+
+    if (kind === "demand") {
+      return {
+        kind,
+        startIdx: idx,
+        low,
+        high: Math.max(open, close),
+        pivotPrice: low,
+        atr: atrValue
+      };
+    }
+
+    return {
+      kind,
+      startIdx: idx,
+      low: Math.min(open, close),
+      high,
+      pivotPrice: high,
+      atr: atrValue
+    };
+  }
+
+  function zoneDisplacementOk(kind, candles, idx, atrValue, departureBars, minDepartureAtr) {
+    if (!Number.isFinite(atrValue) || atrValue <= 0) return false;
+    const pivot = candles[idx];
+    if (!pivot) return false;
+    const ref = kind === "demand" ? toNum(pivot.h, NaN) : toNum(pivot.l, NaN);
+    if (!Number.isFinite(ref)) return false;
+
+    for (let i = idx + 1; i <= Math.min(candles.length - 1, idx + departureBars); i++) {
+      const c = candles[i];
+      if (!c) continue;
+      const close = toNum(c.c, NaN);
+      if (!Number.isFinite(close)) continue;
+      const move = kind === "demand" ? close - ref : ref - close;
+      if (move >= atrValue * minDepartureAtr) return true;
+    }
+    return false;
+  }
+
+  function zoneStillFresh(zone, candles, freshnessBars) {
+    if (!zone) return false;
+    const latestIdx = candles.length - 1;
+    if (latestIdx - zone.startIdx > freshnessBars) return false;
+    for (let i = zone.startIdx + 1; i <= latestIdx; i++) {
+      const c = candles[i];
+      if (!c) continue;
+      const low = toNum(c.l, NaN);
+      const high = toNum(c.h, NaN);
+      if (zone.kind === "demand" && Number.isFinite(low) && low < zone.low) return false;
+      if (zone.kind === "supply" && Number.isFinite(high) && high > zone.high) return false;
+    }
+    return true;
+  }
+
+  function findActiveZone(candles, kind, settings) {
+    if (!Array.isArray(candles) || candles.length < 20) return null;
+    const closes = Indicators.closeSeries ? Indicators.closeSeries(candles) : [];
+    const atrValue = Indicators.atr ? Indicators.atr(candles, settings.signal_atr_period) : null;
+    const lookback = Math.max(20, toNum(settings.signal_sd_lookback_bars, 80));
+    const left = Math.max(1, toNum(settings.signal_sd_pivot_left, 2));
+    const right = Math.max(1, toNum(settings.signal_sd_pivot_right, 2));
+    const departureBars = Math.max(2, toNum(settings.signal_sd_departure_bars, 6));
+    const minDepartureAtr = Math.max(0.1, toNum(settings.signal_sd_departure_atr, 0.6));
+    const freshnessBars = Math.max(6, toNum(settings.signal_sd_freshness_bars, 36));
+    if (!closes.length || !Number.isFinite(atrValue) || atrValue <= 0) return null;
+
+    const latestIdx = candles.length - 1;
+    const startIdx = Math.max(left, latestIdx - lookback);
+    let best = null;
+    for (let idx = latestIdx - right; idx >= startIdx; idx--) {
+      const isPivot = kind === "demand" ? pivotLow(candles, idx, left, right) : pivotHigh(candles, idx, left, right);
+      if (!isPivot) continue;
+      if (!zoneDisplacementOk(kind, candles, idx, atrValue, departureBars, minDepartureAtr)) continue;
+      const zone = buildZone(kind, candles, idx, atrValue);
+      if (!zone) continue;
+      if (!zoneStillFresh(zone, candles, freshnessBars)) continue;
+      best = zone;
+      break;
+    }
+    return best;
+  }
+
+  function detectSupplyDemand(ps, settings) {
+    const m5 = ps.timeframe.M5 || [];
+    const demand = findActiveZone(m5, "demand", settings);
+    const supply = findActiveZone(m5, "supply", settings);
+    ps.supply_demand = {
+      demand,
+      supply,
+      last_updated_at: Date.now()
+    };
+    return ps.supply_demand;
+  }
+
+  function priceNearZone(side, price, zone, settings) {
+    if (!zone || !Number.isFinite(price)) return false;
+    const buffer = Math.max(0, toNum(settings.signal_sd_entry_atr_buffer, 0.2)) * Math.max(0, toNum(zone.atr, 0));
+    if (side === "BUY") {
+      return price >= zone.low - buffer && price <= zone.high + buffer;
+    }
+    if (side === "SELL") {
+      return price >= zone.low - buffer && price <= zone.high + buffer;
+    }
+    return false;
+  }
+
   function buildTradePlan(state, pair, side) {
     const ps = state.pair_states[pair];
     if (!ps) return null;
@@ -111,8 +252,16 @@
 
     const slAtrMult = Math.max(0.3, toNum(state.settings.signal_sl_atr_mult, 1.0));
     const rr = Math.max(0.4, toNum(state.settings.signal_tp_rr, 1.2));
+    const zones = ps.supply_demand || {};
+    const stopBuffer = Math.max(0, toNum(state.settings.signal_sd_stop_atr_buffer, 0.15)) * atrValue;
 
-    const slDist = atrValue * slAtrMult;
+    let slDist = atrValue * slAtrMult;
+    if (side === "BUY" && zones.demand && Number.isFinite(zones.demand.low)) {
+      slDist = Math.max(slDist, entry - (zones.demand.low - stopBuffer));
+    }
+    if (side === "SELL" && zones.supply && Number.isFinite(zones.supply.high)) {
+      slDist = Math.max(slDist, (zones.supply.high + stopBuffer) - entry);
+    }
     const tpDist = slDist * rr;
 
     const sl = side === "BUY" ? entry - slDist : entry + slDist;
@@ -158,6 +307,8 @@
     const m5 = ps.timeframe.M5 || [];
     if (m5.length < 60) return { allowed: false, reason: "M5_DATA" };
 
+    const zones = detectSupplyDemand(ps, state.settings);
+
     const closes = Indicators.closeSeries ? Indicators.closeSeries(m5) : [];
     const rsi = Indicators.rsi ? Indicators.rsi(closes, state.settings.signal_rsi_period) : null;
     const adxPack = Indicators.adxComponents ? Indicators.adxComponents(m5, state.settings.signal_adx_period) : null;
@@ -189,6 +340,17 @@
       return { allowed: false, reason: "MTF_MISMATCH" };
     }
 
+    if (state.settings.signal_use_supply_demand_zones) {
+      const entryPrice = toNum(ps.mid, NaN);
+      const zone = signal === "BUY" ? zones.demand : zones.supply;
+      if (!zone) {
+        return { allowed: false, reason: "NO_ZONE" };
+      }
+      if (!priceNearZone(signal, entryPrice, zone, state.settings)) {
+        return { allowed: false, reason: "ZONE_MISS" };
+      }
+    }
+
     if (state.settings.signal_use_fvg_filter) {
       const maxFvgAge = Math.max(2, toNum(state.settings.signal_fvg_max_age_bars, 10));
       if (!hasRecentFvg(ps, signal, maxFvgAge)) {
@@ -206,7 +368,9 @@
         minusDI: toNum(adxPack && adxPack.minusDI, NaN),
         strengthScore: pairBias.score,
         biasBase: pairBias.base,
-        biasQuote: pairBias.quote
+        biasQuote: pairBias.quote,
+        demandZone: zones.demand,
+        supplyZone: zones.supply
       }
     };
   }
