@@ -237,6 +237,100 @@
     return false;
   }
 
+  function reclaimEntryOk(ps, side, settings) {
+    const m5 = ps.timeframe.M5 || [];
+    const closes = Indicators.closeSeries ? Indicators.closeSeries(m5) : [];
+    const atr = Indicators.atr ? Indicators.atr(m5, settings.signal_atr_period) : null;
+    if (!Array.isArray(m5) || m5.length < 30 || !Number.isFinite(atr) || atr <= 0) {
+      return { ok: false, reason: "RECLAIM_DATA" };
+    }
+
+    const lookback = Math.max(3, toNum(settings.signal_entry_reclaim_lookback_bars, 6));
+    const minBodyAtr = Math.max(0, toNum(settings.signal_entry_reclaim_min_body_atr, 0.1));
+    const crossBufferAtr = Math.max(0, toNum(settings.signal_entry_reclaim_cross_buffer_atr, 0.05));
+    const crossBuffer = atr * crossBufferAtr;
+
+    const latestIdx = m5.length - 1;
+    const prevIdx = latestIdx - 1;
+    if (prevIdx < 0) return { ok: false, reason: "RECLAIM_DATA" };
+
+    const latest = m5[latestIdx];
+    const prev = m5[prevIdx];
+    if (!latest || !prev) return { ok: false, reason: "RECLAIM_DATA" };
+
+    const latestOpen = toNum(latest.o, NaN);
+    const latestClose = toNum(latest.c, NaN);
+    const prevClose = toNum(prev.c, NaN);
+    const prevHigh = toNum(prev.h, NaN);
+    const prevLow = toNum(prev.l, NaN);
+    if (![latestOpen, latestClose, prevClose, prevHigh, prevLow].every(Number.isFinite)) {
+      return { ok: false, reason: "RECLAIM_DATA" };
+    }
+
+    const body = Math.abs(latestClose - latestOpen);
+    if (body < atr * minBodyAtr) {
+      return { ok: false, reason: "RECLAIM_WEAK_BODY" };
+    }
+
+    const useEma = settings.signal_entry_reclaim_use_ema !== false;
+    let trendRef = NaN;
+    if (useEma) {
+      const emaPeriod = Math.max(5, toNum(settings.signal_entry_reclaim_ema_period, 20));
+      trendRef = Indicators.ema ? Indicators.ema(closes, emaPeriod) : NaN;
+    } else {
+      const bb = Indicators.bollinger
+        ? Indicators.bollinger(closes, settings.signal_bb_period, settings.signal_bb_stddev)
+        : null;
+      trendRef = toNum(bb && bb.middle, NaN);
+    }
+    if (!Number.isFinite(trendRef)) return { ok: false, reason: "RECLAIM_TREND_REF" };
+
+    const start = Math.max(0, latestIdx - lookback);
+    let pullbackSeen = false;
+    for (let i = start; i <= prevIdx; i++) {
+      const c = m5[i];
+      if (!c) continue;
+      const close = toNum(c.c, NaN);
+      const low = toNum(c.l, NaN);
+      const high = toNum(c.h, NaN);
+      if (side === "BUY" && (close <= trendRef + crossBuffer || low <= trendRef + crossBuffer)) {
+        pullbackSeen = true;
+        break;
+      }
+      if (side === "SELL" && (close >= trendRef - crossBuffer || high >= trendRef - crossBuffer)) {
+        pullbackSeen = true;
+        break;
+      }
+    }
+    if (!pullbackSeen) return { ok: false, reason: "RECLAIM_NO_PULLBACK" };
+
+    if (side === "BUY") {
+      const closeBackInTrend = latestClose > trendRef + crossBuffer;
+      const crossedBack = prevClose <= trendRef + crossBuffer;
+      const brokeStructure = latestClose > prevHigh;
+      if (!closeBackInTrend || !crossedBack || !brokeStructure) {
+        return { ok: false, reason: "RECLAIM_PATTERN" };
+      }
+    } else if (side === "SELL") {
+      const closeBackInTrend = latestClose < trendRef - crossBuffer;
+      const crossedBack = prevClose >= trendRef - crossBuffer;
+      const brokeStructure = latestClose < prevLow;
+      if (!closeBackInTrend || !crossedBack || !brokeStructure) {
+        return { ok: false, reason: "RECLAIM_PATTERN" };
+      }
+    } else {
+      return { ok: false, reason: "RECLAIM_SIDE" };
+    }
+
+    return {
+      ok: true,
+      trendRef,
+      body,
+      atr,
+      pullbackSeen
+    };
+  }
+
   function buildTradePlan(state, pair, side) {
     const ps = state.pair_states[pair];
     if (!ps) return null;
@@ -345,6 +439,13 @@
 
     if (!mtfMomentumOk(ps, signal, state.settings)) {
       return { allowed: false, reason: "MTF_MISMATCH" };
+    }
+
+    if (state.settings.signal_entry_reclaim_enabled !== false) {
+      const reclaim = reclaimEntryOk(ps, signal, state.settings);
+      if (!reclaim.ok) {
+        return { allowed: false, reason: reclaim.reason || "RECLAIM_FILTER" };
+      }
     }
 
     if (state.settings.signal_use_fvg_filter) {
