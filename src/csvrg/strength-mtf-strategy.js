@@ -378,7 +378,7 @@
     if (![entry, atrValue].every(Number.isFinite) || atrValue <= 0) return null;
 
     const slAtrMult = Math.max(0.3, toNum(state.settings.signal_sl_atr_mult, 1.0));
-    const rr = Math.max(0.4, toNum(state.settings.signal_tp_rr, 1.2));
+    const rr = Math.max(1.0, toNum(state.settings.signal_tp_rr, 1.2));
     const signalCandle = m5[m5.length - 1] || null;
     const signalLow = toNum(signalCandle && signalCandle.l, NaN);
     const signalHigh = toNum(signalCandle && signalCandle.h, NaN);
