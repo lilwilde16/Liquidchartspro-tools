@@ -254,6 +254,7 @@
     const rr = Math.max(0.4, toNum(state.settings.signal_tp_rr, 1.2));
     const zones = ps.supply_demand || {};
     const stopBuffer = Math.max(0, toNum(state.settings.signal_sd_stop_atr_buffer, 0.15)) * atrValue;
+    const targetBuffer = Math.max(0, toNum(state.settings.signal_sd_target_atr_buffer, 0.1)) * atrValue;
 
     let slDist = atrValue * slAtrMult;
     if (side === "BUY" && zones.demand && Number.isFinite(zones.demand.low)) {
@@ -265,7 +266,16 @@
     const tpDist = slDist * rr;
 
     const sl = side === "BUY" ? entry - slDist : entry + slDist;
-    const tp = side === "BUY" ? entry + tpDist : entry - tpDist;
+    let tp = side === "BUY" ? entry + tpDist : entry - tpDist;
+
+    if (side === "BUY" && zones.supply && Number.isFinite(zones.supply.low)) {
+      const zoneTarget = zones.supply.low - targetBuffer;
+      if (zoneTarget > entry) tp = Math.min(tp, zoneTarget);
+    }
+    if (side === "SELL" && zones.demand && Number.isFinite(zones.demand.high)) {
+      const zoneTarget = zones.demand.high + targetBuffer;
+      if (zoneTarget < entry) tp = Math.max(tp, zoneTarget);
+    }
 
     return {
       side,
@@ -335,17 +345,6 @@
 
     if (!mtfMomentumOk(ps, signal, state.settings)) {
       return { allowed: false, reason: "MTF_MISMATCH" };
-    }
-
-    if (state.settings.signal_use_supply_demand_zones) {
-      const entryPrice = toNum(ps.mid, NaN);
-      const zone = signal === "BUY" ? zones.demand : zones.supply;
-      if (!zone) {
-        return { allowed: false, reason: "NO_ZONE" };
-      }
-      if (!priceNearZone(signal, entryPrice, zone, state.settings)) {
-        return { allowed: false, reason: "ZONE_MISS" };
-      }
     }
 
     if (state.settings.signal_use_fvg_filter) {

@@ -61,6 +61,7 @@
     signal_sd_freshness_bars: 36,
     signal_sd_entry_atr_buffer: 0.2,
     signal_sd_stop_atr_buffer: 0.15,
+    signal_sd_target_atr_buffer: 0.1,
     mtf_strength_m15_lookback: 3,
     mtf_strength_h1_lookback: 2,
     mtf_strength_m15_min_momentum: 0,
