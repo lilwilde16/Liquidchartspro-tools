@@ -48,7 +48,7 @@
     signal_entry_reclaim_cross_buffer_atr: 0.05,
     signal_entry_reclaim_use_ema: true,
     signal_entry_reclaim_ema_period: 20,
-    signal_strength_min_diff: 0.0006,
+    signal_strength_min_diff: 0.0003,
     signal_bb_period: 20,
     signal_bb_stddev: 2,
     signal_atr_period: 14,

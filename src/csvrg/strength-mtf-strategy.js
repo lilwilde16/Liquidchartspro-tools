@@ -40,6 +40,39 @@
     return "NONE";
   }
 
+  function candleBarKey(candle) {
+    if (!candle || typeof candle !== "object") return "";
+    const t = candle.t || candle.time || candle.ts || candle.timestamp || null;
+    if (t !== null && t !== undefined) return String(t);
+    const o = toNum(candle.o, NaN);
+    const h = toNum(candle.h, NaN);
+    const l = toNum(candle.l, NaN);
+    const c = toNum(candle.c, NaN);
+    return [o, h, l, c].map((v) => (Number.isFinite(v) ? String(v) : "na")).join("|");
+  }
+
+  function closedCandleSignal(m5) {
+    if (!Array.isArray(m5) || m5.length < 4) return { side: "NONE", barKey: "", reason: "M5_DATA" };
+
+    const latestClosed = m5[m5.length - 2];
+    const prevClosed = m5[m5.length - 3];
+    if (!latestClosed || !prevClosed) return { side: "NONE", barKey: "", reason: "M5_DATA" };
+
+    const closeNow = toNum(latestClosed.c, NaN);
+    const closePrev = toNum(prevClosed.c, NaN);
+    if (![closeNow, closePrev].every(Number.isFinite)) {
+      return { side: "NONE", barKey: "", reason: "M5_CLOSE_INVALID" };
+    }
+
+    const side = closeNow > closePrev ? "BUY" : closeNow < closePrev ? "SELL" : "NONE";
+    return {
+      side,
+      barKey: candleBarKey(latestClosed),
+      closeNow,
+      closePrev
+    };
+  }
+
   function mtfMomentumOk(ps, side, settings) {
     const lookbackM15 = Math.max(2, toNum(settings.mtf_strength_m15_lookback, 3));
     const lookbackH1 = Math.max(1, toNum(settings.mtf_strength_h1_lookback, 2));
@@ -250,7 +283,7 @@
     const crossBufferAtr = Math.max(0, toNum(settings.signal_entry_reclaim_cross_buffer_atr, 0.05));
     const crossBuffer = atr * crossBufferAtr;
 
-    const latestIdx = m5.length - 1;
+    const latestIdx = m5.length - 2;
     const prevIdx = latestIdx - 1;
     if (prevIdx < 0) return { ok: false, reason: "RECLAIM_DATA" };
 
@@ -408,11 +441,16 @@
     const m5 = ps.timeframe.M5 || [];
     if (m5.length < 60) return { allowed: false, reason: "M5_DATA" };
 
+    const closedSignal = closedCandleSignal(m5);
+    if (closedSignal.side === "NONE") return { allowed: false, reason: closedSignal.reason || "NO_CANDLE_SIGNAL" };
+    if (closedSignal.barKey && ps.signal_last_entry_bar_key === closedSignal.barKey) {
+      return { allowed: false, reason: "WAIT_CANDLE_CLOSE" };
+    }
+
     const closes = Indicators.closeSeries ? Indicators.closeSeries(m5) : [];
     const rsi = Indicators.rsi ? Indicators.rsi(closes, state.settings.signal_rsi_period) : null;
     const adxPack = Indicators.adxComponents ? Indicators.adxComponents(m5, state.settings.signal_adx_period) : null;
-    const signal = crossSignal(adxPack);
-    if (signal === "NONE") return { allowed: false, reason: "NO_ADX_CROSS" };
+    const signal = closedSignal.side;
 
     const adxNow = toNum(adxPack && adxPack.adx, NaN);
 
@@ -454,6 +492,7 @@
       allowed: true,
       side: signal,
       diagnostics: {
+        barKey: closedSignal.barKey,
         rsi: rsiNow,
         adx: adxNow,
         plusDI: toNum(adxPack && adxPack.plusDI, NaN),
@@ -482,6 +521,10 @@
       opened_at: plan.opened_at,
       diagnostics: diagnostics || null
     };
+
+    if (diagnostics && diagnostics.barKey) {
+      ps.signal_last_entry_bar_key = String(diagnostics.barKey);
+    }
 
     ps.positions.push({
       side: plan.side,

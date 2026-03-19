@@ -63,6 +63,7 @@
         opened_at: null,
         diagnostics: null
       },
+      signal_last_entry_bar_key: null,
       supply_demand: {
         demand: null,
         supply: null,
