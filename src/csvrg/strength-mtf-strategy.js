@@ -316,16 +316,13 @@
     if (signal === "NONE") return { allowed: false, reason: "NO_ADX_CROSS" };
 
     const adxNow = toNum(adxPack && adxPack.adx, NaN);
-    if (!Number.isFinite(adxNow) || adxNow < Math.max(8, toNum(state.settings.signal_adx_min, 18))) {
-      return { allowed: false, reason: "ADX_LOW" };
-    }
 
     const rsiNow = toNum(rsi, NaN);
-    const buyMax = Math.min(80, toNum(state.settings.signal_rsi_buy_max, 60));
-    const sellMin = Math.max(20, toNum(state.settings.signal_rsi_sell_min, 40));
+    const buyMin = toNum(state.settings.signal_rsi_buy_max, 50);
+    const sellMax = toNum(state.settings.signal_rsi_sell_min, 50);
     if (!Number.isFinite(rsiNow)) return { allowed: false, reason: "RSI_INVALID" };
-    if (signal === "BUY" && rsiNow > buyMax) return { allowed: false, reason: "RSI_FILTER" };
-    if (signal === "SELL" && rsiNow < sellMin) return { allowed: false, reason: "RSI_FILTER" };
+    if (signal === "BUY" && rsiNow < buyMin) return { allowed: false, reason: "RSI_BASIS" };
+    if (signal === "SELL" && rsiNow > sellMax) return { allowed: false, reason: "RSI_BASIS" };
 
     const pairBias = getPairBias(state, pair);
     const minStrengthDiff = Math.max(0, toNum(state.settings.signal_strength_min_diff, 0.0006));
